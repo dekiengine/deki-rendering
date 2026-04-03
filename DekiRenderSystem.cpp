@@ -142,14 +142,14 @@ void DekiRenderSystem::Render(Prefab* current_prefab)
     m_Renderer->Render(current_prefab, ctx);
 }
 
-void DekiRenderSystem::RenderToBuffer(Prefab* prefab, CameraComponent* camera,
+void DekiRenderSystem::RenderToBuffer(Prefab* prefab, ICamera* camera,
                                        uint8_t* buffer, int32_t width, int32_t height,
                                        DekiColorFormat format)
 {
     RenderToBufferStatic(prefab, camera, buffer, width, height, format);
 }
 
-void DekiRenderSystem::RenderToBufferStatic(Prefab* prefab, CameraComponent* camera,
+void DekiRenderSystem::RenderToBufferStatic(Prefab* prefab, ICamera* camera,
                                              uint8_t* buffer, int32_t width, int32_t height,
                                              DekiColorFormat format)
 {
@@ -161,7 +161,9 @@ void DekiRenderSystem::RenderToBufferStatic(Prefab* prefab, CameraComponent* cam
     if (!renderer)
         return;
 
-    RenderContext ctx{camera, buffer, width, height, format};
+    // RenderContext uses CameraComponent* internally — safe cast since
+    // the rendering module owns CameraComponent and knows the concrete type
+    RenderContext ctx{static_cast<CameraComponent*>(camera), buffer, width, height, format};
     renderer->Render(prefab, ctx);
 }
 

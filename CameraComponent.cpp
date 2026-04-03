@@ -1,12 +1,25 @@
 #include "CameraComponent.h"
 #include "DekiObject.h"
 #include "DekiEngine.h"
+#include "ICamera.h"
+#include "ComponentInterfaceAdapters.h"
 
 // ============================================================================
 // Component Registration
 // ============================================================================
 // NOTE: s_Properties[] and s_ComponentMeta are now auto-generated in
 // CameraComponent.gen.h (included at end of CameraComponent.h)
+
+// Register ICamera adapter so editor can use FindInterface<ICamera>()
+static struct CameraInterfaceRegistrar {
+    CameraInterfaceRegistrar() {
+        ComponentInterfaceAdapters::Register(
+            ICamera::InterfaceID, CameraComponent::StaticType,
+            [](DekiComponent* c) -> void* {
+                return static_cast<ICamera*>(static_cast<CameraComponent*>(c));
+            });
+    }
+} s_cameraInterfaceReg;
 
 
 // ============================================================================

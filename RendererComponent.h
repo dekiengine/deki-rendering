@@ -2,6 +2,7 @@
 #include <cstdint>
 
 #include "DekiBehaviour.h"
+#include "ISortableProvider.h"
 #include "reflection/DekiProperty.h"
 #include "QuadBlit.h"
 
@@ -27,7 +28,7 @@ enum class MaskRenderMode : uint8_t
  * Extends DekiBehaviour to provide lifecycle methods (Start, Update, PreRender)
  * in addition to the Render method for drawing.
  */
-class RendererComponent : public DekiBehaviour
+class RendererComponent : public DekiBehaviour, public ISortableProvider
 {
    public:
     DEKI_COMPONENT(RendererComponent, DekiBehaviour, "Core", "9604fa26-8be9-428a-9c29-e67c2d52c913", "")
@@ -49,7 +50,7 @@ class RendererComponent : public DekiBehaviour
 #endif
 
     void SetSortingOrder(int order);
-    int GetSortingOrder() const;
+    int32_t GetSortingOrder() const override;
 
 #ifdef V_ENGINE_ENABLE_MASK
     // Mask configuration methods

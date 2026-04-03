@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <cmath>
 #include "DekiComponent.h"
+#include "ICamera.h"
 #include "reflection/DekiProperty.h"
 #include "Color.h"
 
@@ -12,7 +13,7 @@
  * Everything is in pixels. A 64×64 sprite = 64×64 pixels on screen at zoom 1×.
  * Pixel-perfect mode is controlled at the project level (Display Settings).
  */
-class CameraComponent : public DekiComponent
+class CameraComponent : public DekiComponent, public ICamera
 {
 public:
     DEKI_COMPONENT(CameraComponent, DekiComponent, "Core", "146999a7-398f-4e52-a7c7-1e6a78bfb9c4", "")
@@ -26,9 +27,13 @@ public:
     CameraComponent();
     virtual ~CameraComponent() = default;
 
-    // Zoom accessors
-    int32_t GetZoom() const { return zoom; }
-    void SetZoom(int32_t z) { zoom = (z < 1) ? 1 : z; }
+    // ICamera: Zoom
+    int32_t GetZoom() const override { return zoom; }
+    void SetZoom(int32_t z) override { zoom = (z < 1) ? 1 : z; }
+
+    // ICamera: Clear color
+    void GetClearColor(uint8_t& r, uint8_t& g, uint8_t& b) const override { r = clear_color.r; g = clear_color.g; b = clear_color.b; }
+    void SetClearColor(uint8_t r, uint8_t g, uint8_t b) override { clear_color.r = r; clear_color.g = g; clear_color.b = b; }
 
     // Get camera world position from owner object (pixels)
     float GetPositionX() const;
@@ -42,14 +47,14 @@ public:
     float GetVisibleWidth(int32_t screen_width) const;
     float GetVisibleHeight(int32_t screen_height) const;
 
-    // Coordinate conversion
+    // ICamera: Coordinate conversion
     void WorldToScreen(float world_x, float world_y,
                        int32_t screen_width, int32_t screen_height,
-                       int32_t& screen_x, int32_t& screen_y) const;
+                       int32_t& screen_x, int32_t& screen_y) const override;
 
     void ScreenToWorld(int32_t screen_x, int32_t screen_y,
                        int32_t screen_width, int32_t screen_height,
-                       float& world_x, float& world_y) const;
+                       float& world_x, float& world_y) const override;
 };
 
 // Generated property metadata (after class definition for offsetof)

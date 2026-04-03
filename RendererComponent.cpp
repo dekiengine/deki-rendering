@@ -1,11 +1,23 @@
 #include "RendererComponent.h"
 #include "DekiEngine.h"
+#include "ComponentInterfaceAdapters.h"
 
 // ============================================================================
 // Component Registration
 // ============================================================================
 // NOTE: s_Properties[] and s_ComponentMeta are now auto-generated in
 // RendererComponent.gen.h (included at end of RendererComponent.h)
+
+// Register ISortableProvider adapter for sorting order queries
+static struct RendererSortableRegistrar {
+    RendererSortableRegistrar() {
+        ComponentInterfaceAdapters::Register(
+            ISortableProvider::InterfaceID, RendererComponent::StaticType,
+            [](DekiComponent* c) -> void* {
+                return static_cast<ISortableProvider*>(static_cast<RendererComponent*>(c));
+            });
+    }
+} s_rendererSortableReg;
 
 
 // ============================================================================
@@ -18,7 +30,7 @@ void RendererComponent::SetSortingOrder(int order)
     sortingOrder = order;
 }
 
-int RendererComponent::GetSortingOrder() const
+int32_t RendererComponent::GetSortingOrder() const
 {
     return sortingOrder;
 }

@@ -56,12 +56,12 @@ class DekiRenderSystem : public IDekiRenderSystem
     void ByteSwapFrameBuffer();
 
     // IDekiRenderSystem interface — delegates to the static implementation
-    void RenderToBuffer(Prefab* prefab, CameraComponent* camera,
+    void RenderToBuffer(Prefab* prefab, ICamera* camera,
                         uint8_t* buffer, int32_t width, int32_t height,
                         DekiColorFormat format) override;
 
     // Static render function (the actual implementation)
-    static void RenderToBufferStatic(Prefab* prefab, CameraComponent* camera,
+    static void RenderToBufferStatic(Prefab* prefab, ICamera* camera,
                                      uint8_t* buffer, int32_t width, int32_t height,
                                      DekiColorFormat format);
 };
