@@ -60,6 +60,7 @@ DEKI_RENDERING_API int DekiRendering_EnsureRegistered(void)
 
 extern "C" {
 
+#ifndef DEKI_PLUGIN_EXPORTS
 DEKI_PLUGIN_API const char* DekiPlugin_GetName(void)
 {
     return "Deki Rendering Module";
@@ -135,6 +136,8 @@ DEKI_PLUGIN_API const DekiModuleFeatureInfo* DekiPlugin_GetFeature(int index)
     return &s_Features[index];
 }
 
+#endif // DEKI_PLUGIN_EXPORTS
+
 } // extern "C"
 
 // =============================================================================
@@ -148,12 +151,14 @@ DEKI_RENDERING_API const char* DekiRendering_GetName(void)
 
 DEKI_RENDERING_API int DekiRendering_GetFeatureCount(void)
 {
-    return DekiPlugin_GetFeatureCount();
+    return static_cast<int>(sizeof(s_Features) / sizeof(s_Features[0]));
 }
 
 DEKI_RENDERING_API const DekiModuleFeatureInfo* DekiRendering_GetFeature(int index)
 {
-    return DekiPlugin_GetFeature(index);
+    if (index < 0 || index >= DekiRendering_GetFeatureCount())
+        return nullptr;
+    return &s_Features[index];
 }
 
 #endif // DEKI_EDITOR
