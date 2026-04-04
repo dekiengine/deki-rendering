@@ -112,6 +112,8 @@ DEKI_PLUGIN_API void DekiPlugin_RegisterComponents(void)
     DekiRendering_EnsureRegistered();
 }
 
+#endif // DEKI_PLUGIN_EXPORTS (resume after feature data)
+
 // =============================================================================
 // Module Feature API
 // =============================================================================
@@ -124,6 +126,7 @@ static const DekiModuleFeatureInfo s_Features[] = {
     {"renderer", "Renderer", "Base renderer component",        true, "",  s_RendererGuids,  1},
 };
 
+#ifndef DEKI_PLUGIN_EXPORTS
 DEKI_PLUGIN_API int DekiPlugin_GetFeatureCount(void)
 {
     return sizeof(s_Features) / sizeof(s_Features[0]);
