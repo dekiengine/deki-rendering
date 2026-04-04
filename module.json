@@ -1,6 +1,7 @@
 {
-  "id": "deki:rendering",
+  "id": "deki-rendering",
   "displayName": "Rendering",
   "buildDefine": "DEKI_MODULE_RENDERING",
+  "requires": [],
   "alwaysIncluded": true
 }
