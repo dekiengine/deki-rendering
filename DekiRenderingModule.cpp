@@ -22,7 +22,8 @@
 
 #include "imgui.h"
 
-// Auto-generated registration helpers
+#ifndef DEKI_PLUGIN_EXPORTS
+// Auto-generated registration helpers (standalone DLL only)
 extern void DekiRendering_RegisterComponents();
 extern int DekiRendering_GetAutoComponentCount();
 extern const DekiComponentMeta* DekiRendering_GetAutoComponentMeta(int index);
@@ -53,6 +54,7 @@ DEKI_RENDERING_API int DekiRendering_EnsureRegistered(void)
 }
 
 } // extern "C"
+#endif // DEKI_PLUGIN_EXPORTS
 
 // =============================================================================
 // Plugin metadata (for dynamic loading compatibility)
