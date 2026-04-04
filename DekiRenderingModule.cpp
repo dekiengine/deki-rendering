@@ -12,7 +12,7 @@
 #include "DekiEngine.h"
 #include "DekiLogSystem.h"
 #include "interop/DekiPlugin.h"
-#include "modules/DekiModuleFeatureMeta.h"
+#include "DekiModuleFeatureMeta.h"
 #include "CameraComponent.h"
 #include "RendererComponent.h"
 #include "reflection/ComponentRegistry.h"
