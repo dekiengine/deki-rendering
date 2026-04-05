@@ -64,8 +64,8 @@ float CameraComponent::GetVisibleHeight(int32_t screen_height) const
 }
 
 void CameraComponent::WorldToScreen(float world_x, float world_y,
-                                     int32_t screen_width, int32_t screen_height,
-                                     int32_t& screen_x, int32_t& screen_y) const
+                                     int screen_width, int screen_height,
+                                     int& screen_x, int& screen_y) const
 {
     // World: center origin, Y UP (positive Y = up)
     // Screen: top-left origin, Y down
@@ -77,8 +77,8 @@ void CameraComponent::WorldToScreen(float world_x, float world_y,
     screen_y = static_cast<int32_t>(std::floor(-rel_y * zoom)) + screen_height / 2;  // Negate Y: world Y+ is up
 }
 
-void CameraComponent::ScreenToWorld(int32_t screen_x, int32_t screen_y,
-                                     int32_t screen_width, int32_t screen_height,
+void CameraComponent::ScreenToWorld(int screen_x, int screen_y,
+                                     int screen_width, int screen_height,
                                      float& world_x, float& world_y) const
 {
     // Screen: top-left origin, Y down

@@ -94,7 +94,7 @@ void Standard2DRenderer::ExecuteBuiltins(DekiObject* obj, RenderContext& ctx)
     auto* clip = obj->FindInterface<IClipProvider>();
     if (clip)
     {
-        int32_t screenX, screenY;
+        int screenX, screenY;
         ctx.camera->WorldToScreen(obj->GetWorldX(), obj->GetWorldY(),
                                    ctx.width, ctx.height, screenX, screenY);
 
@@ -119,7 +119,7 @@ void Standard2DRenderer::ExecuteBuiltins(DekiObject* obj, RenderContext& ctx)
         if (renderer->RenderContent(obj, source, pivotX, pivotY,
                                      tintR, tintG, tintB, tintA))
         {
-            int32_t screenX, screenY;
+            int screenX, screenY;
             ctx.camera->WorldToScreen(obj->GetWorldX(), obj->GetWorldY(),
                                        ctx.width, ctx.height, screenX, screenY);
 

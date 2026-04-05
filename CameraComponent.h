@@ -49,11 +49,11 @@ public:
 
     // ICamera: Coordinate conversion
     void WorldToScreen(float world_x, float world_y,
-                       int32_t screen_width, int32_t screen_height,
-                       int32_t& screen_x, int32_t& screen_y) const override;
+                       int screen_width, int screen_height,
+                       int& screen_x, int& screen_y) const override;
 
-    void ScreenToWorld(int32_t screen_x, int32_t screen_y,
-                       int32_t screen_width, int32_t screen_height,
+    void ScreenToWorld(int screen_x, int screen_y,
+                       int screen_width, int screen_height,
                        float& world_x, float& world_y) const override;
 };
 
