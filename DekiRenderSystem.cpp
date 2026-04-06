@@ -25,7 +25,7 @@ DekiRenderSystem::~DekiRenderSystem()
 {
     if (render_buffer && m_OwnsBuffer)
     {
-        DekiMemoryProvider::Free(render_buffer, "RenderSystem-framebuffer");
+        DekiMemoryProvider::FreeInternal(render_buffer);
     }
     render_buffer = nullptr;
 }
@@ -35,7 +35,7 @@ bool DekiRenderSystem::Setup(int32_t width, int32_t height, DekiColorFormat form
     // Clean up existing buffers if any
     if (render_buffer && m_OwnsBuffer)
     {
-        DekiMemoryProvider::Free(render_buffer, "RenderSystem-framebuffer");
+        DekiMemoryProvider::FreeInternal(render_buffer);
     }
     render_buffer = nullptr;
     m_OwnsBuffer = true;
@@ -43,7 +43,7 @@ bool DekiRenderSystem::Setup(int32_t width, int32_t height, DekiColorFormat form
     int bytes_per_pixel = GetBytesPerPixel(format);
     size_t buffer_size = width * height * bytes_per_pixel;
 
-    // Try display-provided internal RAM buffer first (avoids PSRAM→internal memcpy in Present)
+    // Try display-provided internal RAM buffer first (avoids memcpy in Present)
     IDekiDisplay* display = DekiDisplayProvider::GetDisplay();
     if (display)
     {
@@ -60,9 +60,17 @@ bool DekiRenderSystem::Setup(int32_t width, int32_t height, DekiColorFormat form
             return true;
         }
     }
+    else
+    {
+        // No display yet — defer allocation until display is available
+        screen_width = width;
+        screen_height = height;
+        color_format = format;
+        return true;
+    }
 
-    // Fallback: allocate in PSRAM
-    render_buffer = (uint8_t*)DekiMemoryProvider::Allocate(buffer_size, true, "DekiRenderSystem::Setup-framebuffer");
+    // Allocate in internal RAM for fast random-access rendering
+    render_buffer = (uint8_t*)DekiMemoryProvider::AllocateInternal(buffer_size, "DekiRenderSystem::Setup-framebuffer");
     if (!render_buffer)
     {
         return false;
@@ -82,7 +90,26 @@ bool DekiRenderSystem::Setup(int32_t width, int32_t height, DekiColorFormat form
 
 void DekiRenderSystem::Render(Prefab* current_prefab)
 {
-    if (!current_prefab || !render_buffer || !m_Renderer)
+    if (!current_prefab || !m_Renderer)
+    {
+        return;
+    }
+
+    // Re-query display buffer each frame for double-buffer support
+    // (render_index alternates in Present, so the pointer changes)
+    if (!m_OwnsBuffer)
+    {
+        IDekiDisplay* display = DekiDisplayProvider::GetDisplay();
+        if (display)
+        {
+            int32_t dw = 0, dh = 0;
+            uint8_t* buf = display->GetRenderBuffer(&dw, &dh);
+            if (buf)
+                render_buffer = buf;
+        }
+    }
+
+    if (!render_buffer)
     {
         return;
     }
@@ -175,16 +202,22 @@ void DekiRenderSystem::ClearBuffer(uint8_t r, uint8_t g, uint8_t b)
         case DekiColorFormat::RGB565:
         {
             uint16_t rgb565 = ((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3);
-            uint32_t pattern = (rgb565 << 16) | rgb565;
-            uint32_t* buf32 = (uint32_t*)render_buffer;
-            size_t count32 = pixel_count / 2;
-            for (size_t i = 0; i < count32; i++)
+            // memset works when both bytes of the RGB565 value are the same
+            if ((rgb565 >> 8) == (rgb565 & 0xFF))
             {
-                buf32[i] = pattern;
+                memset(render_buffer, rgb565 & 0xFF, pixel_count * 2);
             }
-            if (pixel_count & 1)
+            else
             {
-                ((uint16_t*)render_buffer)[pixel_count - 1] = rgb565;
+                // Fill using memcpy doubling -- faster than a loop on ESP32-S3
+                uint32_t pattern = (rgb565 << 16) | rgb565;
+                size_t total = pixel_count * 2;
+                memcpy(render_buffer, &pattern, 4);
+                for (size_t written = 4; written < total; written *= 2)
+                {
+                    size_t chunk = (written * 2 <= total) ? written : total - written;
+                    memcpy(render_buffer + written, render_buffer, chunk);
+                }
             }
             break;
         }

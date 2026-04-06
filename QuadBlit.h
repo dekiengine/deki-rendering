@@ -77,6 +77,10 @@ namespace QuadBlit
         // Pixel format info for color extraction
         bool isRGB565;            // True if RGB565 or RGB565A8 format
 
+        // Per-row opaque span data (optional, nullptr if not available)
+        // Packed int16_t pairs: [opaqueStart, opaqueEnd] per row
+        const int16_t* alphaRowSpans;
+
         // Ownership flag - if true, caller should delete[] pixels after blitting
         // Sprites set this to false since they own their own pixel data
         bool ownsPixels;
@@ -88,7 +92,8 @@ namespace QuadBlit
      */
     Source MakeSource(const uint8_t* pixels, int32_t width, int32_t height,
                       int32_t bytesPerPixel, bool hasAlpha, bool isRGB565,
-                      bool ownsPixels = true);
+                      bool ownsPixels = true,
+                      const int16_t* alphaRowSpans = nullptr);
 
     /**
      * @brief Blit source buffer to target with full 2D transforms

@@ -93,7 +93,7 @@ int GetClipStackDepth()
 
 Source MakeSource(const uint8_t* pixels, int32_t width, int32_t height,
                   int32_t bytesPerPixel, bool hasAlpha, bool isRGB565,
-                  bool ownsPixels)
+                  bool ownsPixels, const int16_t* alphaRowSpans)
 {
     Source src;
     src.pixels = pixels;
@@ -103,6 +103,7 @@ Source MakeSource(const uint8_t* pixels, int32_t width, int32_t height,
     src.hasAlpha = hasAlpha;
     src.isRGB565 = isRGB565;
     src.ownsPixels = ownsPixels;
+    src.alphaRowSpans = alphaRowSpans;
 
     if (hasAlpha)
         src.alphaOffset = isRGB565 ? 2 : 3;
@@ -322,47 +323,113 @@ static DEKI_FAST_ATTR void BlitScaled_RGB565A8_to_RGB565(
         }
         else
         {
-            // Alpha path at 1:1 — sequential pointer access
+            // Alpha path at 1:1 — with optional per-row opaque span optimization
+            const int16_t* rowSpans = source.alphaRowSpans;
+
             for (int32_t py = bounds.startY; py < bounds.endY; py++)
             {
-                const uint8_t* srcPtr = srcPixels + (py - destY) * srcStride + (bounds.startX - destX) * bpp;
+                int32_t srcY = py - destY;
+                const uint8_t* rowBase = srcPixels + srcY * srcStride;
                 uint16_t* dstRow = target16 + py * targetWidth;
-                for (int32_t px = bounds.startX; px < bounds.endX; px++)
+                int32_t srcStartX = bounds.startX - destX;
+
+                // If we have row span data, split into: left-alpha | opaque-middle | right-alpha
+                if (rowSpans && !hasTint && !hasAlphaTint)
                 {
-                    uint8_t a = srcPtr[2];
-                    if (a == 0) { srcPtr += bpp; continue; }
+                    int16_t opaqueStart = rowSpans[srcY * 2];
+                    int16_t opaqueEnd = rowSpans[srcY * 2 + 1];
 
-                    uint8_t effectiveAlpha = hasAlphaTint ? FAST_DIV255(a * tintA) : a;
-                    if (effectiveAlpha == 0) { srcPtr += bpp; continue; }
+                    // Clamp opaque span to blit bounds (in source coordinates)
+                    int32_t srcEndX = bounds.endX - destX;
+                    int32_t clampedOpaqueStart = (opaqueStart < srcStartX) ? srcStartX : opaqueStart;
+                    int32_t clampedOpaqueEnd = (opaqueEnd > srcEndX) ? srcEndX : opaqueEnd;
 
-                    uint16_t srcRGB = *(const uint16_t*)srcPtr;
-                    srcPtr += bpp;
-
-                    if (!hasTint && effectiveAlpha == 255)
+                    // Left alpha region
+                    const uint8_t* srcPtr = rowBase + srcStartX * bpp;
+                    for (int32_t sx = srcStartX; sx < clampedOpaqueStart && sx < srcEndX; sx++)
                     {
-                        dstRow[px] = srcRGB;
+                        uint8_t a = srcPtr[2];
+                        if (a == 0) { srcPtr += bpp; continue; }
+                        uint16_t srcRGB = *(const uint16_t*)srcPtr;
+                        srcPtr += bpp;
+                        if (a == 255) { dstRow[destX + sx] = srcRGB; continue; }
+                        uint16_t bg = dstRow[destX + sx];
+                        uint8_t invA = 255 - a;
+                        uint8_t r = FAST_DIV255(((srcRGB >> 11) << 3) * a + (((bg >> 11) << 3)) * invA);
+                        uint8_t g = FAST_DIV255((((srcRGB >> 5) & 0x3F) << 2) * a + ((((bg >> 5) & 0x3F) << 2)) * invA);
+                        uint8_t b = FAST_DIV255(((srcRGB & 0x1F) << 3) * a + (((bg & 0x1F) << 3)) * invA);
+                        dstRow[destX + sx] = ((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3);
                     }
-                    else
+
+                    // Opaque middle — direct copy, no alpha checks
+                    if (clampedOpaqueStart < clampedOpaqueEnd)
                     {
-                        uint8_t r = (srcRGB >> 11) << 3;
-                        uint8_t g = ((srcRGB >> 5) & 0x3F) << 2;
-                        uint8_t b = (srcRGB & 0x1F) << 3;
-                        if (hasTint) { r = FAST_DIV255(r * tintR); g = FAST_DIV255(g * tintG); b = FAST_DIV255(b * tintB); }
-                        if (effectiveAlpha == 255)
+                        srcPtr = rowBase + clampedOpaqueStart * bpp;
+                        for (int32_t sx = clampedOpaqueStart; sx < clampedOpaqueEnd; sx++)
                         {
-                            dstRow[px] = ((r >> 3 << 11) | ((g >> 2) << 5) | (b >> 3));
+                            dstRow[destX + sx] = *(const uint16_t*)srcPtr;
+                            srcPtr += bpp;
+                        }
+                    }
+
+                    // Right alpha region
+                    srcPtr = rowBase + clampedOpaqueEnd * bpp;
+                    for (int32_t sx = clampedOpaqueEnd; sx < srcEndX; sx++)
+                    {
+                        uint8_t a = srcPtr[2];
+                        if (a == 0) { srcPtr += bpp; continue; }
+                        uint16_t srcRGB = *(const uint16_t*)srcPtr;
+                        srcPtr += bpp;
+                        if (a == 255) { dstRow[destX + sx] = srcRGB; continue; }
+                        uint16_t bg = dstRow[destX + sx];
+                        uint8_t invA = 255 - a;
+                        uint8_t r = FAST_DIV255(((srcRGB >> 11) << 3) * a + (((bg >> 11) << 3)) * invA);
+                        uint8_t g = FAST_DIV255((((srcRGB >> 5) & 0x3F) << 2) * a + ((((bg >> 5) & 0x3F) << 2)) * invA);
+                        uint8_t b = FAST_DIV255(((srcRGB & 0x1F) << 3) * a + (((bg & 0x1F) << 3)) * invA);
+                        dstRow[destX + sx] = ((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3);
+                    }
+                }
+                else
+                {
+                    // Fallback: standard per-pixel alpha blend (with tint support)
+                    const uint8_t* srcPtr = rowBase + srcStartX * bpp;
+                    for (int32_t px = bounds.startX; px < bounds.endX; px++)
+                    {
+                        uint8_t a = srcPtr[2];
+                        if (a == 0) { srcPtr += bpp; continue; }
+
+                        uint8_t effectiveAlpha = hasAlphaTint ? FAST_DIV255(a * tintA) : a;
+                        if (effectiveAlpha == 0) { srcPtr += bpp; continue; }
+
+                        uint16_t srcRGB = *(const uint16_t*)srcPtr;
+                        srcPtr += bpp;
+
+                        if (!hasTint && effectiveAlpha == 255)
+                        {
+                            dstRow[px] = srcRGB;
                         }
                         else
                         {
-                            uint16_t bg = dstRow[px];
-                            uint8_t bgR = (bg >> 11) << 3;
-                            uint8_t bgG = ((bg >> 5) & 0x3F) << 2;
-                            uint8_t bgB = (bg & 0x1F) << 3;
-                            uint8_t invA = 255 - effectiveAlpha;
-                            r = FAST_DIV255(r * effectiveAlpha + bgR * invA);
-                            g = FAST_DIV255(g * effectiveAlpha + bgG * invA);
-                            b = FAST_DIV255(b * effectiveAlpha + bgB * invA);
-                            dstRow[px] = ((r >> 3 << 11) | ((g >> 2) << 5) | (b >> 3));
+                            uint8_t r = (srcRGB >> 11) << 3;
+                            uint8_t g = ((srcRGB >> 5) & 0x3F) << 2;
+                            uint8_t b = (srcRGB & 0x1F) << 3;
+                            if (hasTint) { r = FAST_DIV255(r * tintR); g = FAST_DIV255(g * tintG); b = FAST_DIV255(b * tintB); }
+                            if (effectiveAlpha == 255)
+                            {
+                                dstRow[px] = ((r >> 3 << 11) | ((g >> 2) << 5) | (b >> 3));
+                            }
+                            else
+                            {
+                                uint16_t bg = dstRow[px];
+                                uint8_t bgR = (bg >> 11) << 3;
+                                uint8_t bgG = ((bg >> 5) & 0x3F) << 2;
+                                uint8_t bgB = (bg & 0x1F) << 3;
+                                uint8_t invA = 255 - effectiveAlpha;
+                                r = FAST_DIV255(r * effectiveAlpha + bgR * invA);
+                                g = FAST_DIV255(g * effectiveAlpha + bgG * invA);
+                                b = FAST_DIV255(b * effectiveAlpha + bgB * invA);
+                                dstRow[px] = ((r >> 3 << 11) | ((g >> 2) << 5) | (b >> 3));
+                            }
                         }
                     }
                 }
