@@ -144,10 +144,4 @@ namespace QuadBlit
                     uint8_t tintB = 255,
                     uint8_t tintA = 255);
 
-    /**
-     * @brief Enable byte-swapping for RGB565 target writes (for display controllers)
-     * When enabled, all RGB565 pixels are written in big-endian byte order.
-     */
-    void SetByteSwap(bool enabled);
-    bool GetByteSwap();
 }

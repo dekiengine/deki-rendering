@@ -22,41 +22,6 @@ namespace QuadBlit
 {
 
 // ============================================================================
-// Byte-swap for display-native RGB565 output
-// ============================================================================
-
-static bool s_ByteSwap = false;
-
-void SetByteSwap(bool enabled) { s_ByteSwap = enabled; }
-bool GetByteSwap() { return s_ByteSwap; }
-
-// Swap bytes of RGB565 value for display controller endianness
-static inline uint16_t SwapRGB565(uint16_t v)
-{
-    return (v >> 8) | (v << 8);
-}
-
-// Compile-time elimination: editor never byte-swaps
-// Device builds cache s_ByteSwap in a local const at function entry
-#ifdef DEKI_EDITOR
-#define CACHE_BYTE_SWAP
-static inline uint16_t ToDisplay565(uint16_t v) { return v; }
-static inline uint16_t FromDisplay565(uint16_t v) { return v; }
-#else
-#define CACHE_BYTE_SWAP const bool _doSwap = s_ByteSwap;
-static inline uint16_t ToDisplay565_impl(uint16_t v, bool doSwap)
-{
-    return doSwap ? SwapRGB565(v) : v;
-}
-static inline uint16_t FromDisplay565_impl(uint16_t v, bool doSwap)
-{
-    return doSwap ? SwapRGB565(v) : v;
-}
-#define ToDisplay565(v) ToDisplay565_impl((v), _doSwap)
-#define FromDisplay565(v) FromDisplay565_impl((v), _doSwap)
-#endif
-
-// ============================================================================
 // Clip Rect Stack Implementation
 // ============================================================================
 
@@ -181,7 +146,7 @@ static DEKI_FAST_ATTR void BlitScaled_RGBA8888_to_RGB565(
     const BlitBounds& bounds, bool hasTint, bool hasAlphaTint,
     uint8_t tintR, uint8_t tintG, uint8_t tintB, uint8_t tintA)
 {
-    CACHE_BYTE_SWAP
+
     const uint8_t* srcPixels = source.pixels;
     int32_t srcW = source.width;
     int32_t srcH = source.height;
@@ -211,11 +176,11 @@ static DEKI_FAST_ATTR void BlitScaled_RGBA8888_to_RGB565(
 
                 if (effectiveAlpha == 255)
                 {
-                    dstRow[px] = ToDisplay565(((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3));
+                    dstRow[px] = ((r >> 3 << 11) | ((g >> 2) << 5) | (b >> 3));
                 }
                 else
                 {
-                    uint16_t bg = FromDisplay565(dstRow[px]);
+                    uint16_t bg = dstRow[px];
                     uint8_t bgR = (bg >> 11) << 3;
                     uint8_t bgG = ((bg >> 5) & 0x3F) << 2;
                     uint8_t bgB = (bg & 0x1F) << 3;
@@ -223,7 +188,7 @@ static DEKI_FAST_ATTR void BlitScaled_RGBA8888_to_RGB565(
                     r = FAST_DIV255(r * effectiveAlpha + bgR * invA);
                     g = FAST_DIV255(g * effectiveAlpha + bgG * invA);
                     b = FAST_DIV255(b * effectiveAlpha + bgB * invA);
-                    dstRow[px] = ToDisplay565(((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3));
+                    dstRow[px] = ((r >> 3 << 11) | ((g >> 2) << 5) | (b >> 3));
                 }
             }
         }
@@ -266,11 +231,11 @@ static DEKI_FAST_ATTR void BlitScaled_RGBA8888_to_RGB565(
 
             if (effectiveAlpha == 255)
             {
-                dstRow[px] = ToDisplay565(((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3));
+                dstRow[px] = ((r >> 3 << 11) | ((g >> 2) << 5) | (b >> 3));
             }
             else
             {
-                uint16_t bg = FromDisplay565(dstRow[px]);
+                uint16_t bg = dstRow[px];
                 uint8_t bgR = (bg >> 11) << 3;
                 uint8_t bgG = ((bg >> 5) & 0x3F) << 2;
                 uint8_t bgB = (bg & 0x1F) << 3;
@@ -279,7 +244,7 @@ static DEKI_FAST_ATTR void BlitScaled_RGBA8888_to_RGB565(
                 r = FAST_DIV255(r * effectiveAlpha + bgR * invA);
                 g = FAST_DIV255(g * effectiveAlpha + bgG * invA);
                 b = FAST_DIV255(b * effectiveAlpha + bgB * invA);
-                dstRow[px] = ToDisplay565(((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3));
+                dstRow[px] = ((r >> 3 << 11) | ((g >> 2) << 5) | (b >> 3));
             }
         }
     }
@@ -295,7 +260,7 @@ static DEKI_FAST_ATTR void BlitScaled_RGB565A8_to_RGB565(
     const BlitBounds& bounds, bool hasTint, bool hasAlphaTint,
     uint8_t tintR, uint8_t tintG, uint8_t tintB, uint8_t tintA)
 {
-    CACHE_BYTE_SWAP
+
     const uint8_t* srcPixels = source.pixels;
     int32_t srcW = source.width;
     int32_t srcH = source.height;
@@ -315,7 +280,7 @@ static DEKI_FAST_ATTR void BlitScaled_RGB565A8_to_RGB565(
                     uint16_t* dstRow = target16 + py * targetWidth;
                     for (int32_t px = bounds.startX; px < bounds.endX; px++)
                     {
-                        dstRow[px] = ToDisplay565(*(const uint16_t*)srcPtr);
+                        dstRow[px] = *(const uint16_t*)srcPtr;
                         srcPtr += bpp;
                     }
                 }
@@ -337,11 +302,11 @@ static DEKI_FAST_ATTR void BlitScaled_RGB565A8_to_RGB565(
                         if (hasTint) { r = FAST_DIV255(r * tintR); g = FAST_DIV255(g * tintG); b = FAST_DIV255(b * tintB); }
                         if (effectiveA == 255)
                         {
-                            dstRow[px] = ToDisplay565(((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3));
+                            dstRow[px] = ((r >> 3 << 11) | ((g >> 2) << 5) | (b >> 3));
                         }
                         else
                         {
-                            uint16_t bg = FromDisplay565(dstRow[px]);
+                            uint16_t bg = dstRow[px];
                             uint8_t bgR = (bg >> 11) << 3;
                             uint8_t bgG = ((bg >> 5) & 0x3F) << 2;
                             uint8_t bgB = (bg & 0x1F) << 3;
@@ -349,7 +314,7 @@ static DEKI_FAST_ATTR void BlitScaled_RGB565A8_to_RGB565(
                             r = FAST_DIV255(r * effectiveA + bgR * invA);
                             g = FAST_DIV255(g * effectiveA + bgG * invA);
                             b = FAST_DIV255(b * effectiveA + bgB * invA);
-                            dstRow[px] = ToDisplay565(((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3));
+                            dstRow[px] = ((r >> 3 << 11) | ((g >> 2) << 5) | (b >> 3));
                         }
                     }
                 }
@@ -375,7 +340,7 @@ static DEKI_FAST_ATTR void BlitScaled_RGB565A8_to_RGB565(
 
                     if (!hasTint && effectiveAlpha == 255)
                     {
-                        dstRow[px] = ToDisplay565(srcRGB);
+                        dstRow[px] = srcRGB;
                     }
                     else
                     {
@@ -385,11 +350,11 @@ static DEKI_FAST_ATTR void BlitScaled_RGB565A8_to_RGB565(
                         if (hasTint) { r = FAST_DIV255(r * tintR); g = FAST_DIV255(g * tintG); b = FAST_DIV255(b * tintB); }
                         if (effectiveAlpha == 255)
                         {
-                            dstRow[px] = ToDisplay565(((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3));
+                            dstRow[px] = ((r >> 3 << 11) | ((g >> 2) << 5) | (b >> 3));
                         }
                         else
                         {
-                            uint16_t bg = FromDisplay565(dstRow[px]);
+                            uint16_t bg = dstRow[px];
                             uint8_t bgR = (bg >> 11) << 3;
                             uint8_t bgG = ((bg >> 5) & 0x3F) << 2;
                             uint8_t bgB = (bg & 0x1F) << 3;
@@ -397,7 +362,7 @@ static DEKI_FAST_ATTR void BlitScaled_RGB565A8_to_RGB565(
                             r = FAST_DIV255(r * effectiveAlpha + bgR * invA);
                             g = FAST_DIV255(g * effectiveAlpha + bgG * invA);
                             b = FAST_DIV255(b * effectiveAlpha + bgB * invA);
-                            dstRow[px] = ToDisplay565(((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3));
+                            dstRow[px] = ((r >> 3 << 11) | ((g >> 2) << 5) | (b >> 3));
                         }
                     }
                 }
@@ -424,7 +389,7 @@ static DEKI_FAST_ATTR void BlitScaled_RGB565A8_to_RGB565(
                 {
                     int32_t srcX = srcX_acc >> 16;
                     srcX_acc += xStep;
-                    dstRow[px] = ToDisplay565(*(const uint16_t*)(srcRow + srcX * bpp));
+                    dstRow[px] = *(const uint16_t*)(srcRow + srcX * bpp);
                 }
             }
         }
@@ -448,11 +413,11 @@ static DEKI_FAST_ATTR void BlitScaled_RGB565A8_to_RGB565(
                     if (hasTint) { r = FAST_DIV255(r * tintR); g = FAST_DIV255(g * tintG); b = FAST_DIV255(b * tintB); }
                     if (effectiveA == 255)
                     {
-                        dstRow[px] = ToDisplay565(((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3));
+                        dstRow[px] = ((r >> 3 << 11) | ((g >> 2) << 5) | (b >> 3));
                     }
                     else
                     {
-                        uint16_t bg = FromDisplay565(dstRow[px]);
+                        uint16_t bg = dstRow[px];
                         uint8_t bgR = (bg >> 11) << 3;
                         uint8_t bgG = ((bg >> 5) & 0x3F) << 2;
                         uint8_t bgB = (bg & 0x1F) << 3;
@@ -460,7 +425,7 @@ static DEKI_FAST_ATTR void BlitScaled_RGB565A8_to_RGB565(
                         r = FAST_DIV255(r * effectiveA + bgR * invA);
                         g = FAST_DIV255(g * effectiveA + bgG * invA);
                         b = FAST_DIV255(b * effectiveA + bgB * invA);
-                        dstRow[px] = ToDisplay565(((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3));
+                        dstRow[px] = ((r >> 3 << 11) | ((g >> 2) << 5) | (b >> 3));
                     }
                 }
             }
@@ -492,7 +457,7 @@ static DEKI_FAST_ATTR void BlitScaled_RGB565A8_to_RGB565(
 
             if (!hasTint && effectiveAlpha == 255)
             {
-                dstRow[px] = ToDisplay565(srcRGB);
+                dstRow[px] = srcRGB;
             }
             else
             {
@@ -509,11 +474,11 @@ static DEKI_FAST_ATTR void BlitScaled_RGB565A8_to_RGB565(
 
                 if (effectiveAlpha == 255)
                 {
-                    dstRow[px] = ToDisplay565(((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3));
+                    dstRow[px] = ((r >> 3 << 11) | ((g >> 2) << 5) | (b >> 3));
                 }
                 else
                 {
-                    uint16_t bg = FromDisplay565(dstRow[px]);
+                    uint16_t bg = dstRow[px];
                     uint8_t bgR = (bg >> 11) << 3;
                     uint8_t bgG = ((bg >> 5) & 0x3F) << 2;
                     uint8_t bgB = (bg & 0x1F) << 3;
@@ -522,7 +487,7 @@ static DEKI_FAST_ATTR void BlitScaled_RGB565A8_to_RGB565(
                     r = FAST_DIV255(r * effectiveAlpha + bgR * invA);
                     g = FAST_DIV255(g * effectiveAlpha + bgG * invA);
                     b = FAST_DIV255(b * effectiveAlpha + bgB * invA);
-                    dstRow[px] = ToDisplay565(((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3));
+                    dstRow[px] = ((r >> 3 << 11) | ((g >> 2) << 5) | (b >> 3));
                 }
             }
         }
@@ -539,7 +504,7 @@ static DEKI_FAST_ATTR void BlitScaled_RGB565_to_RGB565(
     const BlitBounds& bounds, bool hasTint, bool hasAlphaTint,
     uint8_t tintR, uint8_t tintG, uint8_t tintB, uint8_t tintA)
 {
-    CACHE_BYTE_SWAP
+
     const uint16_t* srcPixels = (const uint16_t*)source.pixels;
     int32_t srcW = source.width;
     int32_t srcH = source.height;
@@ -550,29 +515,11 @@ static DEKI_FAST_ATTR void BlitScaled_RGB565_to_RGB565(
         if (!hasTint && !hasAlphaTint)
         {
             const int32_t rowPixels = bounds.endX - bounds.startX;
-#ifndef DEKI_EDITOR
-            if (!_doSwap)
+            for (int32_t py = bounds.startY; py < bounds.endY; py++)
             {
-                // Source already in display byte order — bulk memcpy per row
-                for (int32_t py = bounds.startY; py < bounds.endY; py++)
-                {
-                    const uint16_t* srcPtr = srcPixels + (py - destY) * srcW + (bounds.startX - destX);
-                    uint16_t* dstPtr = target16 + py * targetWidth + bounds.startX;
-                    memcpy(dstPtr, srcPtr, rowPixels * sizeof(uint16_t));
-                }
-            }
-            else
-#endif
-            {
-                for (int32_t py = bounds.startY; py < bounds.endY; py++)
-                {
-                    const uint16_t* srcPtr = srcPixels + (py - destY) * srcW + (bounds.startX - destX);
-                    uint16_t* dstRow = target16 + py * targetWidth;
-                    for (int32_t px = bounds.startX; px < bounds.endX; px++)
-                    {
-                        dstRow[px] = ToDisplay565(*srcPtr++);
-                    }
-                }
+                const uint16_t* srcPtr = srcPixels + (py - destY) * srcW + (bounds.startX - destX);
+                uint16_t* dstPtr = target16 + py * targetWidth + bounds.startX;
+                memcpy(dstPtr, srcPtr, rowPixels * sizeof(uint16_t));
             }
         }
         else
@@ -590,7 +537,7 @@ static DEKI_FAST_ATTR void BlitScaled_RGB565_to_RGB565(
                     if (hasTint) { r = FAST_DIV255(r * tintR); g = FAST_DIV255(g * tintG); b = FAST_DIV255(b * tintB); }
                     if (hasAlphaTint && tintA < 255)
                     {
-                        uint16_t bg = FromDisplay565(dstRow[px]);
+                        uint16_t bg = dstRow[px];
                         uint8_t bgR = (bg >> 11) << 3;
                         uint8_t bgG = ((bg >> 5) & 0x3F) << 2;
                         uint8_t bgB = (bg & 0x1F) << 3;
@@ -599,7 +546,7 @@ static DEKI_FAST_ATTR void BlitScaled_RGB565_to_RGB565(
                         g = FAST_DIV255(g * tintA + bgG * invA);
                         b = FAST_DIV255(b * tintA + bgB * invA);
                     }
-                    dstRow[px] = ToDisplay565(((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3));
+                    dstRow[px] = ((r >> 3 << 11) | ((g >> 2) << 5) | (b >> 3));
                 }
             }
         }
@@ -623,7 +570,7 @@ static DEKI_FAST_ATTR void BlitScaled_RGB565_to_RGB565(
             {
                 int32_t srcX = srcX_acc >> 16;
                 srcX_acc += xStep;
-                dstRow[px] = ToDisplay565(srcRow[srcX]);
+                dstRow[px] = srcRow[srcX];
             }
         }
         return;
@@ -655,7 +602,7 @@ static DEKI_FAST_ATTR void BlitScaled_RGB565_to_RGB565(
 
             if (hasAlphaTint && tintA < 255)
             {
-                uint16_t bg = FromDisplay565(dstRow[px]);
+                uint16_t bg = dstRow[px];
                 uint8_t bgR = (bg >> 11) << 3;
                 uint8_t bgG = ((bg >> 5) & 0x3F) << 2;
                 uint8_t bgB = (bg & 0x1F) << 3;
@@ -666,7 +613,7 @@ static DEKI_FAST_ATTR void BlitScaled_RGB565_to_RGB565(
                 b = FAST_DIV255(b * tintA + bgB * invA);
             }
 
-            dstRow[px] = ToDisplay565(((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3));
+            dstRow[px] = ((r >> 3 << 11) | ((g >> 2) << 5) | (b >> 3));
         }
     }
 }
@@ -1184,13 +1131,13 @@ static inline void WriteTargetPixel(uint8_t* target, int32_t x, int32_t y,
                                      int32_t width, DekiColorFormat format,
                                      uint8_t r, uint8_t g, uint8_t b)
 {
-    CACHE_BYTE_SWAP
+
     switch (format)
     {
         case DekiColorFormat::RGB565:
         {
             uint16_t* buf16 = (uint16_t*)target;
-            buf16[y * width + x] = ToDisplay565(((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3));
+            buf16[y * width + x] = ((r >> 3 << 11) | ((g >> 2) << 5) | (b >> 3));
             break;
         }
         case DekiColorFormat::RGB888:

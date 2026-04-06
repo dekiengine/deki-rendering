@@ -193,13 +193,11 @@ protected:
     void SetUp() override
     {
         QuadBlit::ClearClipStack();
-        QuadBlit::SetByteSwap(false);
     }
 
     void TearDown() override
     {
         QuadBlit::ClearClipStack();
-        QuadBlit::SetByteSwap(false);
     }
 
     // Helper: encode RGB565 pixel
@@ -357,15 +355,3 @@ TEST_F(QuadBlitPixelTest, BlitScaled_1x1_To_2x2_Upscale)
     EXPECT_EQ(ReadRGB565(target, W, 2, 0), 0);
 }
 
-// ============================================================================
-// ByteSwap Tests
-// ============================================================================
-
-TEST_F(QuadBlitPixelTest, ByteSwapToggle)
-{
-    EXPECT_FALSE(QuadBlit::GetByteSwap());
-    QuadBlit::SetByteSwap(true);
-    EXPECT_TRUE(QuadBlit::GetByteSwap());
-    QuadBlit::SetByteSwap(false);
-    EXPECT_FALSE(QuadBlit::GetByteSwap());
-}

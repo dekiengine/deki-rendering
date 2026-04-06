@@ -52,9 +52,6 @@ class DekiRenderSystem : public IDekiRenderSystem
 
     int GetBytesPerPixel(DekiColorFormat format);
 
-    // Bulk byte-swap RGB565 framebuffer (render in native order, swap once before present)
-    void ByteSwapFrameBuffer();
-
     // IDekiRenderSystem interface — delegates to the static implementation
     void RenderToBuffer(Prefab* prefab, ICamera* camera,
                         uint8_t* buffer, int32_t width, int32_t height,

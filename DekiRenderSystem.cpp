@@ -5,7 +5,6 @@
 #include "providers/DekiMemoryProvider.h"
 #include "providers/DekiDisplayProvider.h"
 #include "CameraComponent.h"
-#include "QuadBlit.h"
 #include "DekiObject.h"
 #include "Prefab.h"
 
@@ -176,8 +175,6 @@ void DekiRenderSystem::ClearBuffer(uint8_t r, uint8_t g, uint8_t b)
         case DekiColorFormat::RGB565:
         {
             uint16_t rgb565 = ((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3);
-            if (QuadBlit::GetByteSwap())
-                rgb565 = (rgb565 >> 8) | (rgb565 << 8);
             uint32_t pattern = (rgb565 << 16) | rgb565;
             uint32_t* buf32 = (uint32_t*)render_buffer;
             size_t count32 = pixel_count / 2;
@@ -244,8 +241,6 @@ DEKI_FAST_ATTR void DekiRenderSystem::GetPixel(int32_t x, int32_t y, uint8_t* r,
         {
             size_t pixel_index = (y * screen_width + x) * 2;
             uint16_t pixel = *((uint16_t*)(render_buffer + pixel_index));
-            if (QuadBlit::GetByteSwap())
-                pixel = (pixel >> 8) | (pixel << 8);
             *r = ((pixel >> 11) & 0x1F) << 3;  // 5 bits -> 8 bits
             *g = ((pixel >> 5) & 0x3F) << 2;  // 6 bits -> 8 bits
             *b = (pixel & 0x1F) << 3;  // 5 bits -> 8 bits
@@ -293,14 +288,3 @@ int DekiRenderSystem::GetBytesPerPixel(DekiColorFormat format)
     }
 }
 
-DEKI_FAST_ATTR void DekiRenderSystem::ByteSwapFrameBuffer()
-{
-    if (!render_buffer || color_format != DekiColorFormat::RGB565) return;
-    uint32_t* buf = (uint32_t*)render_buffer;
-    size_t count = (screen_width * screen_height) / 2;
-    for (size_t i = 0; i < count; i++)
-    {
-        uint32_t v = buf[i];
-        buf[i] = ((v >> 8) & 0x00FF00FF) | ((v & 0x00FF00FF) << 8);
-    }
-}

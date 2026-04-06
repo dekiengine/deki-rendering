@@ -6,7 +6,6 @@
 #include <gtest/gtest.h>
 #include "DekiRenderSystem.h"
 #include "DekiEngine.h"  // For DekiColorFormat
-#include "QuadBlit.h"
 
 // ============================================================================
 // GetBytesPerPixel Tests
@@ -39,15 +38,9 @@ TEST_F(RenderSystemBPPTest, ARGB8888_Returns4)
 class RenderSystemSetupTest : public ::testing::Test
 {
 protected:
-    void SetUp() override
-    {
-        QuadBlit::SetByteSwap(false);
-    }
+    void SetUp() override {}
 
-    void TearDown() override
-    {
-        QuadBlit::SetByteSwap(false);
-    }
+    void TearDown() override {}
 };
 
 TEST_F(RenderSystemSetupTest, SetupAllocatesBuffer)
@@ -194,63 +187,6 @@ TEST_F(RenderSystemSetupTest, GetPixel_ColorOverload)
     EXPECT_EQ(c.r, 100);
     EXPECT_EQ(c.g, 150);
     EXPECT_EQ(c.b, 200);
-}
-
-// ============================================================================
-// ByteSwapFrameBuffer Tests
-// ============================================================================
-
-TEST_F(RenderSystemSetupTest, ByteSwapFrameBuffer_SwapsRGB565Bytes)
-{
-    DekiRenderSystem rs;
-    rs.Setup(2, 1, DekiColorFormat::RGB565);
-
-    // Write a known pixel directly
-    uint16_t* buf = const_cast<uint16_t*>(
-        reinterpret_cast<const uint16_t*>(rs.GetFrameBuffer()));
-    buf[0] = 0x1234;
-    buf[1] = 0xABCD;
-
-    rs.ByteSwapFrameBuffer();
-
-    EXPECT_EQ(buf[0], 0x3412);
-    EXPECT_EQ(buf[1], 0xCDAB);
-}
-
-TEST_F(RenderSystemSetupTest, ByteSwapFrameBuffer_DoubleSwapRestoresOriginal)
-{
-    DekiRenderSystem rs;
-    rs.Setup(2, 1, DekiColorFormat::RGB565);
-
-    uint16_t* buf = const_cast<uint16_t*>(
-        reinterpret_cast<const uint16_t*>(rs.GetFrameBuffer()));
-    buf[0] = 0x5678;
-    buf[1] = 0x9ABC;
-
-    rs.ByteSwapFrameBuffer();
-    rs.ByteSwapFrameBuffer();
-
-    EXPECT_EQ(buf[0], 0x5678);
-    EXPECT_EQ(buf[1], 0x9ABC);
-}
-
-TEST_F(RenderSystemSetupTest, ByteSwapFrameBuffer_NonRGB565_NoOp)
-{
-    DekiRenderSystem rs;
-    rs.Setup(2, 1, DekiColorFormat::RGB888);
-
-    const uint8_t* buf = rs.GetFrameBuffer();
-    // Write known values
-    uint8_t* mbuf = const_cast<uint8_t*>(buf);
-    mbuf[0] = 0x12; mbuf[1] = 0x34; mbuf[2] = 0x56;
-    mbuf[3] = 0x78; mbuf[4] = 0x9A; mbuf[5] = 0xBC;
-
-    rs.ByteSwapFrameBuffer();
-
-    // Should be unchanged (byte swap only applies to RGB565)
-    EXPECT_EQ(mbuf[0], 0x12);
-    EXPECT_EQ(mbuf[1], 0x34);
-    EXPECT_EQ(mbuf[2], 0x56);
 }
 
 // ============================================================================
