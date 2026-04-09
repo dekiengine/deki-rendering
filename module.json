@@ -2,5 +2,6 @@
   "id": "deki-rendering",
   "displayName": "Rendering",
   "buildDefine": "DEKI_MODULE_RENDERING",
-  "requires": []
+  "requires": [],
+  "has_system_init": true
 }
