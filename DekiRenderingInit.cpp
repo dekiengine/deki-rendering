@@ -29,7 +29,7 @@ void DekiRendering_InitSystem()
     if (s_Renderer)
     {
         s_RenderSystem->SetRenderer(s_Renderer);
-        DEKI_LOG_DEBUG("DekiRendering: Created renderer '%s' (%p)", rendererName, (void*)s_Renderer);
+        DEKI_LOG_INTERNAL("DekiRendering: Created renderer '%s' (%p)", rendererName, (void*)s_Renderer);
     }
     else
     {
@@ -51,7 +51,7 @@ void DekiRendering_InitSystem()
         {
             s_Passes[s_PassCount] = info->factory();
             passReceiver->AddPass(s_Passes[s_PassCount]);
-            DEKI_LOG_DEBUG("DekiRendering: Added pass '%s'", passName);
+            DEKI_LOG_INTERNAL("DekiRendering: Added pass '%s'", passName);
             s_PassCount++;
         }
         else
@@ -68,12 +68,12 @@ void DekiRendering_InitSystem()
         for (auto cb : sortingCallbacks)
             passReceiver->AddSortingCallback(cb);
         if (!sortingCallbacks.empty())
-            DEKI_LOG_DEBUG("DekiRendering: Added %d sorting callbacks", (int)sortingCallbacks.size());
+            DEKI_LOG_INTERNAL("DekiRendering: Added %d sorting callbacks", (int)sortingCallbacks.size());
     }
 
     // 5. Register with engine
     DekiEngine::GetInstance().SetRenderSystem(s_RenderSystem);
-    DEKI_LOG_DEBUG("DekiRendering: Init complete (renderer=%p, %d passes)", (void*)s_Renderer, s_PassCount);
+    DEKI_LOG_INTERNAL("DekiRendering: Init complete (renderer=%p, %d passes)", (void*)s_Renderer, s_PassCount);
 }
 
 void DekiRendering_ShutdownSystem()
