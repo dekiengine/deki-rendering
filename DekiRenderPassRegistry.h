@@ -68,4 +68,15 @@ const RenderPassInfo* Get(const char* name);
  */
 void GetAllNames(std::vector<std::string>& outNames);
 
+/**
+ * @brief Install a callback invoked whenever an autoAttach pass is registered.
+ *
+ * DekiRenderingInit installs this after the active renderer is created so a
+ * module that loads after the rendering system inits (e.g. deki-tilemap, which
+ * loads after deki-rendering) still gets its pass attached. Modules don't need
+ * to know about it.
+ */
+using AutoAttachCallback = std::function<void(const char*, const RenderPassInfo&)>;
+void SetAutoAttachCallback(AutoAttachCallback cb);
+
 } // namespace DekiRenderPassRegistry

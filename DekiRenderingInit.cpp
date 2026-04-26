@@ -72,23 +72,35 @@ void DekiRendering_InitSystem()
     //     (e.g. tilemap) participate without forcing every project to know
     //     module pass names. Projects can still mention an autoAttach pass
     //     explicitly in .rpipeline to control its ordering.
+    auto attachAuto = [passReceiver, attachedNames](const char* name, const RenderPassInfo& info) mutable {
+        if (!passReceiver || !info.factory) return;
+        if (s_PassCount >= MAX_INIT_PASSES) return;
+        if (std::find(attachedNames.begin(), attachedNames.end(), name) != attachedNames.end())
+            return;
+        s_Passes[s_PassCount] = info.factory();
+        passReceiver->AddPass(s_Passes[s_PassCount]);
+        DEKI_LOG_INTERNAL("DekiRendering: Auto-attached pass '%s'", name);
+        s_PassCount++;
+        attachedNames.emplace_back(name);
+    };
+
     if (passReceiver)
     {
         std::vector<std::string> allPassNames;
         DekiRenderPassRegistry::GetAllNames(allPassNames);
         for (const auto& name : allPassNames)
         {
-            if (s_PassCount >= MAX_INIT_PASSES) break;
-            if (std::find(attachedNames.begin(), attachedNames.end(), name) != attachedNames.end())
-                continue;
             const RenderPassInfo* info = DekiRenderPassRegistry::Get(name.c_str());
-            if (!info || !info->autoAttach || !info->factory) continue;
-            s_Passes[s_PassCount] = info->factory();
-            passReceiver->AddPass(s_Passes[s_PassCount]);
-            DEKI_LOG_INTERNAL("DekiRendering: Auto-attached pass '%s'", name.c_str());
-            s_PassCount++;
+            if (!info || !info->autoAttach) continue;
+            attachAuto(name.c_str(), *info);
         }
     }
+
+    // 3c. Install a hook so passes registered after this point (e.g. modules
+    //     that load after deki-rendering inits) still get auto-attached. This
+    //     is the path deki-tilemap takes — its DLL loads after the rendering
+    //     system has already finished its first scan.
+    DekiRenderPassRegistry::SetAutoAttachCallback(attachAuto);
 
     // 4. Add all registered sorting callbacks (always-on, not tied to passes)
     if (passReceiver)
@@ -109,6 +121,10 @@ void DekiRendering_InitSystem()
 void DekiRendering_ShutdownSystem()
 {
     DekiEngine::GetInstance().SetRenderSystem(nullptr);
+
+    // Drop the late-attach hook so a stale lambda doesn't reference a freed
+    // renderer if a module re-registers after shutdown.
+    DekiRenderPassRegistry::SetAutoAttachCallback(nullptr);
 
     for (int i = 0; i < s_PassCount; i++)
     {
