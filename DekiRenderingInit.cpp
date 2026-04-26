@@ -8,6 +8,10 @@
 #include "ProjectSettings.h"
 #include "DekiLogSystem.h"
 
+#include <algorithm>
+#include <string>
+#include <vector>
+
 static DekiRenderSystem* s_RenderSystem = nullptr;
 static DekiRenderer* s_Renderer = nullptr;
 
@@ -43,6 +47,8 @@ void DekiRendering_InitSystem()
     if (s_Renderer && s_Renderer->GetRendererType() == Standard2DRenderer::RendererTypeID)
         passReceiver = static_cast<Standard2DRenderer*>(s_Renderer);
 
+    std::vector<std::string> attachedNames;
+    attachedNames.reserve(static_cast<size_t>(passCount));
     for (int i = 0; i < passCount && passReceiver && s_PassCount < MAX_INIT_PASSES; i++)
     {
         const char* passName = ProjectSettings::GetPassName(i);
@@ -53,10 +59,34 @@ void DekiRendering_InitSystem()
             passReceiver->AddPass(s_Passes[s_PassCount]);
             DEKI_LOG_INTERNAL("DekiRendering: Added pass '%s'", passName);
             s_PassCount++;
+            if (passName) attachedNames.emplace_back(passName);
         }
         else
         {
             DEKI_LOG_WARNING("DekiRendering: No pass registered for '%s'", passName ? passName : "(null)");
+        }
+    }
+
+    // 3b. Auto-attach passes flagged autoAttach=true that the project's
+    //     .rpipeline didn't already list. This lets module-owned passes
+    //     (e.g. tilemap) participate without forcing every project to know
+    //     module pass names. Projects can still mention an autoAttach pass
+    //     explicitly in .rpipeline to control its ordering.
+    if (passReceiver)
+    {
+        std::vector<std::string> allPassNames;
+        DekiRenderPassRegistry::GetAllNames(allPassNames);
+        for (const auto& name : allPassNames)
+        {
+            if (s_PassCount >= MAX_INIT_PASSES) break;
+            if (std::find(attachedNames.begin(), attachedNames.end(), name) != attachedNames.end())
+                continue;
+            const RenderPassInfo* info = DekiRenderPassRegistry::Get(name.c_str());
+            if (!info || !info->autoAttach || !info->factory) continue;
+            s_Passes[s_PassCount] = info->factory();
+            passReceiver->AddPass(s_Passes[s_PassCount]);
+            DEKI_LOG_INTERNAL("DekiRendering: Auto-attached pass '%s'", name.c_str());
+            s_PassCount++;
         }
     }
 

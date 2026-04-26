@@ -36,6 +36,14 @@ using RenderPassFactory = std::function<RenderPass*()>;
 struct RenderPassInfo
 {
     RenderPassFactory factory;           // Creates a new pass instance
+
+    // If true, the rendering init auto-attaches this pass to the active
+    // Standard2DRenderer when it isn't already listed in the project's
+    // .rpipeline. Use for passes that *must* run whenever their owning module
+    // is loaded (e.g. tilemaps) — avoids forcing every project to know module
+    // pass names. Projects can still override by listing the pass explicitly
+    // in .rpipeline to control ordering relative to other passes.
+    bool autoAttach = false;
 };
 
 namespace DekiRenderPassRegistry {
