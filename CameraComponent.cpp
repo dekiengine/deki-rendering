@@ -25,8 +25,20 @@ static struct CameraInterfaceRegistrar {
 // ============================================================================
 
 CameraComponent::CameraComponent()
-    : zoom(1)
 {
+}
+
+float CameraComponent::GetPixelsPerMeter() const
+{
+    if (pixelsPerMeter > 0.0f)
+        return pixelsPerMeter;
+    const float global = DekiEngineSettings::Global().pixelsPerMeter;
+    return global > 0.0f ? global : 1.0f;
+}
+
+void CameraComponent::SetPixelsPerMeter(float ppm)
+{
+    pixelsPerMeter = (ppm > 0.0f) ? ppm : 0.0f;
 }
 
 float CameraComponent::GetPositionX() const
@@ -41,51 +53,55 @@ float CameraComponent::GetPositionY() const
     return owner ? owner->GetWorldY() : 0.0f;
 }
 
-float CameraComponent::GetRenderX() const
-{
-    // Engine is always pixel-perfect - floor camera position
-    return std::floor(GetPositionX());
-}
-
-float CameraComponent::GetRenderY() const
-{
-    // Engine is always pixel-perfect - floor camera position
-    return std::floor(GetPositionY());
-}
-
 float CameraComponent::GetVisibleWidth(int32_t screen_width) const
 {
-    return static_cast<float>(screen_width) / static_cast<float>(zoom);
+    const float ppm = GetPixelsPerMeter();
+    return (ppm > 0.0f) ? (static_cast<float>(screen_width) / ppm) : 0.0f;
 }
 
 float CameraComponent::GetVisibleHeight(int32_t screen_height) const
 {
-    return static_cast<float>(screen_height) / static_cast<float>(zoom);
+    const float ppm = GetPixelsPerMeter();
+    return (ppm > 0.0f) ? (static_cast<float>(screen_height) / ppm) : 0.0f;
 }
 
 void CameraComponent::WorldToScreen(float world_x, float world_y,
                                      int screen_width, int screen_height,
-                                     int& screen_x, int& screen_y) const
+                                     float& screen_x, float& screen_y) const
 {
-    // World: center origin, Y UP (positive Y = up)
+    // World: meters, center origin, Y UP (positive Y = up)
     // Screen: top-left origin, Y down
-    // Camera position is the world point that maps to screen center
-    float rel_x = world_x - GetRenderX();
-    float rel_y = world_y - GetRenderY();
+    // Camera position is the world point that maps to screen center.
+    //
+    // When pixel_snap is on, the camera's own contribution is rounded to
+    // whole pixels (cam_x_px = round(cam_x * ppm) / ppm) so smooth camera
+    // tweens / shake quantize at the camera level. The per-renderer
+    // pixel_snap still applies on top of this.
+    const float ppm = GetPixelsPerMeter();
+    float cam_x = GetPositionX();
+    float cam_y = GetPositionY();
+    if (pixel_snap && ppm > 0.0f)
+    {
+        cam_x = std::round(cam_x * ppm) / ppm;
+        cam_y = std::round(cam_y * ppm) / ppm;
+    }
+    const float rel_x = world_x - cam_x;
+    const float rel_y = world_y - cam_y;
 
-    screen_x = static_cast<int32_t>(std::floor(rel_x * zoom)) + screen_width / 2;
-    screen_y = static_cast<int32_t>(std::floor(-rel_y * zoom)) + screen_height / 2;  // Negate Y: world Y+ is up
+    screen_x = rel_x * ppm + static_cast<float>(screen_width) * 0.5f;
+    screen_y = -rel_y * ppm + static_cast<float>(screen_height) * 0.5f; // Negate Y: world Y+ is up
 }
 
-void CameraComponent::ScreenToWorld(int screen_x, int screen_y,
+void CameraComponent::ScreenToWorld(float screen_x, float screen_y,
                                      int screen_width, int screen_height,
                                      float& world_x, float& world_y) const
 {
-    // Screen: top-left origin, Y down
-    // World: center origin, Y UP (positive Y = up)
-    float rel_x = static_cast<float>(screen_x - screen_width / 2) / static_cast<float>(zoom);
-    float rel_y = static_cast<float>(screen_y - screen_height / 2) / static_cast<float>(zoom);
+    // Inverse of WorldToScreen.
+    const float ppm = GetPixelsPerMeter();
+    const float inv = (ppm > 0.0f) ? (1.0f / ppm) : 0.0f;
+    const float rel_x = (screen_x - static_cast<float>(screen_width) * 0.5f) * inv;
+    const float rel_y = (screen_y - static_cast<float>(screen_height) * 0.5f) * inv;
 
-    world_x = rel_x + GetRenderX();
-    world_y = -rel_y + GetRenderY();  // Negate Y: screen Y down -> world Y up
+    world_x = rel_x + GetPositionX();
+    world_y = -rel_y + GetPositionY(); // Negate Y: screen Y down -> world Y up
 }

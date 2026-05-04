@@ -22,6 +22,34 @@ namespace QuadBlit
 {
 
 // ============================================================================
+// Kernel dispatch table
+// ============================================================================
+// Default-null. Platform modules call RegisterKernel(op, fn) at init to plug in
+// SIMD implementations. The blit dispatcher checks for a non-null entry only
+// when all preconditions hold (format, no scale, no rotation, alignment, no
+// tint where applicable).
+
+static RowKernelFn s_Kernels[(int)KernelOp::Count] = {};
+
+void RegisterKernel(KernelOp op, RowKernelFn fn)
+{
+    if ((int)op < 0 || (int)op >= (int)KernelOp::Count) return;
+    s_Kernels[(int)op] = fn;
+}
+
+RowKernelFn GetKernel(KernelOp op)
+{
+    if ((int)op < 0 || (int)op >= (int)KernelOp::Count) return nullptr;
+    return s_Kernels[(int)op];
+}
+
+// True when both pointers are 16-byte aligned (PIE / cacheline-friendly).
+static inline bool Aligned16(const void* a, const void* b)
+{
+    return ((uintptr_t)a & 0xF) == 0 && ((uintptr_t)b & 0xF) == 0;
+}
+
+// ============================================================================
 // Clip Rect Stack Implementation
 // ============================================================================
 
@@ -104,6 +132,12 @@ Source MakeSource(const uint8_t* pixels, int32_t width, int32_t height,
     src.isRGB565 = isRGB565;
     src.ownsPixels = ownsPixels;
     src.alphaRowSpans = alphaRowSpans;
+    src.stride = 0;
+    src.hasChromaKey = false;
+    src.keyR = 0;
+    src.keyG = 0;
+    src.keyB = 0;
+    src.chromaRowSpans = nullptr;
 
     if (hasAlpha)
         src.alphaOffset = isRGB565 ? 2 : 3;
@@ -111,6 +145,15 @@ Source MakeSource(const uint8_t* pixels, int32_t width, int32_t height,
         src.alphaOffset = 0;
 
     return src;
+}
+
+// Effective bytes-per-row of a Source buffer. Source::stride == 0 means the
+// buffer is tightly packed (one row immediately follows the previous);
+// non-zero stride lets a Source point at a sub-rect of a larger buffer
+// (e.g. a tile inside an atlas) without a copy.
+static inline int32_t SourceStride(const Source& s)
+{
+    return s.stride ? s.stride : s.width * s.bytesPerPixel;
 }
 
 // ============================================================================
@@ -151,7 +194,9 @@ static DEKI_FAST_ATTR void BlitScaled_RGBA8888_to_RGB565(
     const uint8_t* srcPixels = source.pixels;
     int32_t srcW = source.width;
     int32_t srcH = source.height;
-    const int32_t srcStride = srcW * 4;
+    const int32_t srcStride = SourceStride(source);
+    const bool    hasKey = source.hasChromaKey;
+    const uint8_t keyR = source.keyR, keyG = source.keyG, keyB = source.keyB;
 
     // ── 1:1 scale fast path — sequential pointer access ──
     if (destWidth == srcW && destHeight == srcH)
@@ -169,6 +214,8 @@ static DEKI_FAST_ATTR void BlitScaled_RGBA8888_to_RGB565(
                 uint8_t g = srcPtr[1];
                 uint8_t b = srcPtr[2];
                 srcPtr += 4;
+
+                if (hasKey && r == keyR && g == keyG && b == keyB) continue;
 
                 if (hasTint) { r = FAST_DIV255(r * tintR); g = FAST_DIV255(g * tintG); b = FAST_DIV255(b * tintB); }
 
@@ -220,6 +267,8 @@ static DEKI_FAST_ATTR void BlitScaled_RGBA8888_to_RGB565(
             uint8_t g = pixel[1];
             uint8_t b = pixel[2];
 
+            if (hasKey && r == keyR && g == keyG && b == keyB) continue;
+
             if (hasTint)
             {
                 r = FAST_DIV255(r * tintR);
@@ -266,14 +315,16 @@ static DEKI_FAST_ATTR void BlitScaled_RGB565A8_to_RGB565(
     int32_t srcW = source.width;
     int32_t srcH = source.height;
     int32_t bpp = source.bytesPerPixel;
-    const int32_t srcStride = srcW * bpp;
+    const int32_t srcStride = SourceStride(source);
+    const bool    hasKey = source.hasChromaKey;
+    const uint8_t keyR = source.keyR, keyG = source.keyG, keyB = source.keyB;
 
     // ── 1:1 scale fast path — sequential pointer access, best PSRAM cache use ──
     if (destWidth == srcW && destHeight == srcH)
     {
         if (!source.hasAlpha)
         {
-            if (!hasTint && !hasAlphaTint)
+            if (!hasTint && !hasAlphaTint && !hasKey)
             {
                 for (int32_t py = bounds.startY; py < bounds.endY; py++)
                 {
@@ -300,6 +351,7 @@ static DEKI_FAST_ATTR void BlitScaled_RGB565A8_to_RGB565(
                         uint8_t r = (srcRGB >> 11) << 3;
                         uint8_t g = ((srcRGB >> 5) & 0x3F) << 2;
                         uint8_t b = (srcRGB & 0x1F) << 3;
+                        if (hasKey && r == keyR && g == keyG && b == keyB) continue;
                         if (hasTint) { r = FAST_DIV255(r * tintR); g = FAST_DIV255(g * tintG); b = FAST_DIV255(b * tintB); }
                         if (effectiveA == 255)
                         {
@@ -333,8 +385,10 @@ static DEKI_FAST_ATTR void BlitScaled_RGB565A8_to_RGB565(
                 uint16_t* dstRow = target16 + py * targetWidth;
                 int32_t srcStartX = bounds.startX - destX;
 
-                // If we have row span data, split into: left-alpha | opaque-middle | right-alpha
-                if (rowSpans && !hasTint && !hasAlphaTint)
+                // If we have row span data, split into: left-alpha | opaque-middle | right-alpha.
+                // Chroma-key forces the per-pixel path because the "opaque" middle still needs
+                // per-pixel matching against the key.
+                if (rowSpans && !hasTint && !hasAlphaTint && !hasKey)
                 {
                     int16_t opaqueStart = rowSpans[srcY * 2];
                     int16_t opaqueEnd = rowSpans[srcY * 2 + 1];
@@ -391,8 +445,27 @@ static DEKI_FAST_ATTR void BlitScaled_RGB565A8_to_RGB565(
                 }
                 else
                 {
-                    // Fallback: standard per-pixel alpha blend (with tint support)
+                    // Per-pixel alpha blend (with tint and chroma-key support)
                     const uint8_t* srcPtr = rowBase + srcStartX * bpp;
+
+                    // SIMD fast-path: untinted, unkeyed alpha blend with bpp==3
+                    // (RGB565A8). Kernel handles a==0 skip and a==255 short-circuit
+                    // internally. Preconditions: format, scale=1, no rotation, and
+                    // no tint/key already hold; we additionally require 16-byte
+                    // alignment on both source and destination row pointers.
+                    {
+                        RowKernelFn blendKernel = s_Kernels[(int)KernelOp::RGB565A8_Blend_Row];
+                        uint16_t* dstPtrSimd = dstRow + bounds.startX;
+                        if (blendKernel && bpp == 3 && !hasTint && !hasAlphaTint && !hasKey
+                            && Aligned16(srcPtr, dstPtrSimd))
+                        {
+                            blendKernel(srcPtr, (uint8_t*)dstPtrSimd,
+                                        bounds.endX - bounds.startX,
+                                        255, 255, 255, 255);
+                            continue;  // next row
+                        }
+                    }
+
                     for (int32_t px = bounds.startX; px < bounds.endX; px++)
                     {
                         uint8_t a = srcPtr[2];
@@ -403,6 +476,14 @@ static DEKI_FAST_ATTR void BlitScaled_RGB565A8_to_RGB565(
 
                         uint16_t srcRGB = *(const uint16_t*)srcPtr;
                         srcPtr += bpp;
+
+                        if (hasKey)
+                        {
+                            uint8_t kr = (srcRGB >> 11) << 3;
+                            uint8_t kg = ((srcRGB >> 5) & 0x3F) << 2;
+                            uint8_t kb = (srcRGB & 0x1F) << 3;
+                            if (kr == keyR && kg == keyG && kb == keyB) continue;
+                        }
 
                         if (!hasTint && effectiveAlpha == 255)
                         {
@@ -444,7 +525,7 @@ static DEKI_FAST_ATTR void BlitScaled_RGB565A8_to_RGB565(
 
     if (!source.hasAlpha)
     {
-        if (!hasTint && !hasAlphaTint)
+        if (!hasTint && !hasAlphaTint && !hasKey)
         {
             for (int32_t py = bounds.startY; py < bounds.endY; py++)
             {
@@ -477,6 +558,7 @@ static DEKI_FAST_ATTR void BlitScaled_RGB565A8_to_RGB565(
                     uint8_t r = (srcRGB >> 11) << 3;
                     uint8_t g = ((srcRGB >> 5) & 0x3F) << 2;
                     uint8_t b = (srcRGB & 0x1F) << 3;
+                    if (hasKey && r == keyR && g == keyG && b == keyB) continue;
                     if (hasTint) { r = FAST_DIV255(r * tintR); g = FAST_DIV255(g * tintG); b = FAST_DIV255(b * tintB); }
                     if (effectiveA == 255)
                     {
@@ -521,6 +603,14 @@ static DEKI_FAST_ATTR void BlitScaled_RGB565A8_to_RGB565(
             if (effectiveAlpha == 0) continue;
 
             uint16_t srcRGB = *(const uint16_t*)srcPx;
+
+            if (hasKey)
+            {
+                uint8_t kr = (srcRGB >> 11) << 3;
+                uint8_t kg = ((srcRGB >> 5) & 0x3F) << 2;
+                uint8_t kb = (srcRGB & 0x1F) << 3;
+                if (kr == keyR && kg == keyG && kb == keyB) continue;
+            }
 
             if (!hasTint && effectiveAlpha == 255)
             {
@@ -572,28 +662,64 @@ static DEKI_FAST_ATTR void BlitScaled_RGB565_to_RGB565(
     uint8_t tintR, uint8_t tintG, uint8_t tintB, uint8_t tintA)
 {
 
-    const uint16_t* srcPixels = (const uint16_t*)source.pixels;
+    const uint8_t* srcBytes = source.pixels;
     int32_t srcW = source.width;
     int32_t srcH = source.height;
+    const int32_t srcStride = SourceStride(source);
+    const bool    hasKey = source.hasChromaKey;
+    const uint8_t keyR = source.keyR, keyG = source.keyG, keyB = source.keyB;
+    const int16_t* chromaRowSpans = source.chromaRowSpans;
 
     // ── 1:1 scale fast path — sequential pointer access ──
     if (destWidth == srcW && destHeight == srcH)
     {
-        if (!hasTint && !hasAlphaTint)
+        // Row-span fast path: chroma-keyed source with precomputed non-key column ranges.
+        // Inside [start, end): direct memcpy (every pixel is non-key). Outside: skip without read.
+        if (hasKey && chromaRowSpans && !hasTint && !hasAlphaTint)
         {
-            const int32_t rowPixels = bounds.endX - bounds.startX;
+            RowKernelFn copyKernel = s_Kernels[(int)KernelOp::RGB565_Copy_Row];
             for (int32_t py = bounds.startY; py < bounds.endY; py++)
             {
-                const uint16_t* srcPtr = srcPixels + (py - destY) * srcW + (bounds.startX - destX);
+                int32_t srcY = py - destY;
+                int16_t opaqueStart = chromaRowSpans[srcY * 2];
+                int16_t opaqueEnd   = chromaRowSpans[srcY * 2 + 1];
+
+                int32_t srcStartX = bounds.startX - destX;
+                int32_t srcEndX   = bounds.endX   - destX;
+                int32_t clampedStart = (opaqueStart < srcStartX) ? srcStartX : (int32_t)opaqueStart;
+                int32_t clampedEnd   = (opaqueEnd   > srcEndX)   ? srcEndX   : (int32_t)opaqueEnd;
+                if (clampedStart >= clampedEnd) continue;
+
+                const uint16_t* srcPtr = (const uint16_t*)(srcBytes + srcY * srcStride) + clampedStart;
+                uint16_t* dstPtr = target16 + py * targetWidth + (destX + clampedStart);
+                int32_t rowPixels = clampedEnd - clampedStart;
+                if (copyKernel && Aligned16(srcPtr, dstPtr))
+                    copyKernel((const uint8_t*)srcPtr, (uint8_t*)dstPtr, rowPixels, 255, 255, 255, 255);
+                else
+                    memcpy(dstPtr, srcPtr, rowPixels * sizeof(uint16_t));
+            }
+            return;
+        }
+
+        if (!hasTint && !hasAlphaTint && !hasKey)
+        {
+            const int32_t rowPixels = bounds.endX - bounds.startX;
+            RowKernelFn copyKernel = s_Kernels[(int)KernelOp::RGB565_Copy_Row];
+            for (int32_t py = bounds.startY; py < bounds.endY; py++)
+            {
+                const uint16_t* srcPtr = (const uint16_t*)(srcBytes + (py - destY) * srcStride) + (bounds.startX - destX);
                 uint16_t* dstPtr = target16 + py * targetWidth + bounds.startX;
-                memcpy(dstPtr, srcPtr, rowPixels * sizeof(uint16_t));
+                if (copyKernel && Aligned16(srcPtr, dstPtr))
+                    copyKernel((const uint8_t*)srcPtr, (uint8_t*)dstPtr, rowPixels, 255, 255, 255, 255);
+                else
+                    memcpy(dstPtr, srcPtr, rowPixels * sizeof(uint16_t));
             }
         }
         else
         {
             for (int32_t py = bounds.startY; py < bounds.endY; py++)
             {
-                const uint16_t* srcPtr = srcPixels + (py - destY) * srcW + (bounds.startX - destX);
+                const uint16_t* srcPtr = (const uint16_t*)(srcBytes + (py - destY) * srcStride) + (bounds.startX - destX);
                 uint16_t* dstRow = target16 + py * targetWidth;
                 for (int32_t px = bounds.startX; px < bounds.endX; px++)
                 {
@@ -601,6 +727,7 @@ static DEKI_FAST_ATTR void BlitScaled_RGB565_to_RGB565(
                     uint8_t r = (srcRGB >> 11) << 3;
                     uint8_t g = ((srcRGB >> 5) & 0x3F) << 2;
                     uint8_t b = (srcRGB & 0x1F) << 3;
+                    if (hasKey && r == keyR && g == keyG && b == keyB) continue;
                     if (hasTint) { r = FAST_DIV255(r * tintR); g = FAST_DIV255(g * tintG); b = FAST_DIV255(b * tintB); }
                     if (hasAlphaTint && tintA < 255)
                     {
@@ -624,12 +751,12 @@ static DEKI_FAST_ATTR void BlitScaled_RGB565_to_RGB565(
     const uint32_t xStep = ((uint32_t)srcW << 16) / (uint32_t)destWidth;
     const uint32_t yStep = ((uint32_t)srcH << 16) / (uint32_t)destHeight;
 
-    if (!hasTint && !hasAlphaTint)
+    if (!hasTint && !hasAlphaTint && !hasKey)
     {
         for (int32_t py = bounds.startY; py < bounds.endY; py++)
         {
             int32_t srcY = ((uint32_t)(py - destY) * yStep) >> 16;
-            const uint16_t* srcRow = srcPixels + srcY * srcW;
+            const uint16_t* srcRow = (const uint16_t*)(srcBytes + srcY * srcStride);
             uint16_t* dstRow = target16 + py * targetWidth;
 
             uint32_t srcX_acc = (uint32_t)(bounds.startX - destX) * xStep;
@@ -646,7 +773,7 @@ static DEKI_FAST_ATTR void BlitScaled_RGB565_to_RGB565(
     for (int32_t py = bounds.startY; py < bounds.endY; py++)
     {
         int32_t srcY = ((uint32_t)(py - destY) * yStep) >> 16;
-        const uint16_t* srcRow = srcPixels + srcY * srcW;
+        const uint16_t* srcRow = (const uint16_t*)(srcBytes + srcY * srcStride);
         uint16_t* dstRow = target16 + py * targetWidth;
 
         uint32_t srcX_acc = (uint32_t)(bounds.startX - destX) * xStep;
@@ -659,6 +786,8 @@ static DEKI_FAST_ATTR void BlitScaled_RGB565_to_RGB565(
             uint8_t r = (srcRGB >> 11) << 3;
             uint8_t g = ((srcRGB >> 5) & 0x3F) << 2;
             uint8_t b = (srcRGB & 0x1F) << 3;
+
+            if (hasKey && r == keyR && g == keyG && b == keyB) continue;
 
             if (hasTint)
             {
@@ -698,6 +827,9 @@ static DEKI_FAST_ATTR void BlitScaled_RGBA8888_to_ARGB8888(
     const uint8_t* srcPixels = source.pixels;
     int32_t srcW = source.width;
     int32_t srcH = source.height;
+    const int32_t srcStride = SourceStride(source);
+    const bool    hasKey = source.hasChromaKey;
+    const uint8_t keyR = source.keyR, keyG = source.keyG, keyB = source.keyB;
 
     const uint32_t xStep = ((uint32_t)srcW << 16) / (uint32_t)destWidth;
     const uint32_t yStep = ((uint32_t)srcH << 16) / (uint32_t)destHeight;
@@ -705,6 +837,7 @@ static DEKI_FAST_ATTR void BlitScaled_RGBA8888_to_ARGB8888(
     for (int32_t py = bounds.startY; py < bounds.endY; py++)
     {
         int32_t srcY = ((uint32_t)(py - destY) * yStep) >> 16;
+        const uint8_t* srcRow = srcPixels + srcY * srcStride;
         uint32_t* dstRow = target32 + py * targetWidth;
 
         uint32_t srcX_acc = (uint32_t)(bounds.startX - destX) * xStep;
@@ -712,7 +845,7 @@ static DEKI_FAST_ATTR void BlitScaled_RGBA8888_to_ARGB8888(
         {
             int32_t srcX = srcX_acc >> 16;
             srcX_acc += xStep;
-            const uint8_t* pixel = srcPixels + (srcY * srcW + srcX) * 4;
+            const uint8_t* pixel = srcRow + srcX * 4;
 
             uint8_t a = pixel[3];
             if (a == 0) continue;
@@ -720,6 +853,8 @@ static DEKI_FAST_ATTR void BlitScaled_RGBA8888_to_ARGB8888(
             uint8_t r = pixel[0];
             uint8_t g = pixel[1];
             uint8_t b = pixel[2];
+
+            if (hasKey && r == keyR && g == keyG && b == keyB) continue;
 
             if (hasTint)
             {
@@ -765,6 +900,10 @@ static DEKI_FAST_ATTR void BlitScaled_RGB565A8_to_ARGB8888(
     const uint8_t* srcPixels = source.pixels;
     int32_t srcW = source.width;
     int32_t srcH = source.height;
+    const int32_t srcStride = SourceStride(source);
+    const int32_t bpp = source.bytesPerPixel;
+    const bool    hasKey = source.hasChromaKey;
+    const uint8_t keyR = source.keyR, keyG = source.keyG, keyB = source.keyB;
 
     const uint32_t xStep = ((uint32_t)srcW << 16) / (uint32_t)destWidth;
     const uint32_t yStep = ((uint32_t)srcH << 16) / (uint32_t)destHeight;
@@ -772,6 +911,7 @@ static DEKI_FAST_ATTR void BlitScaled_RGB565A8_to_ARGB8888(
     for (int32_t py = bounds.startY; py < bounds.endY; py++)
     {
         int32_t srcY = ((uint32_t)(py - destY) * yStep) >> 16;
+        const uint8_t* srcRow = srcPixels + srcY * srcStride;
         uint32_t* dstRow = target32 + py * targetWidth;
 
         uint32_t srcX_acc = (uint32_t)(bounds.startX - destX) * xStep;
@@ -779,15 +919,17 @@ static DEKI_FAST_ATTR void BlitScaled_RGB565A8_to_ARGB8888(
         {
             int32_t srcX = srcX_acc >> 16;
             srcX_acc += xStep;
-            size_t srcIdx = (srcY * srcW + srcX) * 3;
+            const uint8_t* srcPx = srcRow + srcX * bpp;
 
-            uint8_t a = srcPixels[srcIdx + 2];
+            uint8_t a = srcPx[2];
             if (a == 0) continue;
 
-            uint16_t srcRGB = *(const uint16_t*)(srcPixels + srcIdx);
+            uint16_t srcRGB = *(const uint16_t*)srcPx;
             uint8_t r = (srcRGB >> 11) << 3;
             uint8_t g = ((srcRGB >> 5) & 0x3F) << 2;
             uint8_t b = (srcRGB & 0x1F) << 3;
+
+            if (hasKey && r == keyR && g == keyG && b == keyB) continue;
 
             if (hasTint)
             {
@@ -830,9 +972,12 @@ static DEKI_FAST_ATTR void BlitScaled_RGB565_to_ARGB8888(
     const BlitBounds& bounds, bool hasTint, bool hasAlphaTint,
     uint8_t tintR, uint8_t tintG, uint8_t tintB, uint8_t tintA)
 {
-    const uint16_t* srcPixels = (const uint16_t*)source.pixels;
+    const uint8_t* srcBytes = source.pixels;
     int32_t srcW = source.width;
     int32_t srcH = source.height;
+    const int32_t srcStride = SourceStride(source);
+    const bool    hasKey = source.hasChromaKey;
+    const uint8_t keyR = source.keyR, keyG = source.keyG, keyB = source.keyB;
 
     const uint32_t xStep = ((uint32_t)srcW << 16) / (uint32_t)destWidth;
     const uint32_t yStep = ((uint32_t)srcH << 16) / (uint32_t)destHeight;
@@ -840,7 +985,7 @@ static DEKI_FAST_ATTR void BlitScaled_RGB565_to_ARGB8888(
     for (int32_t py = bounds.startY; py < bounds.endY; py++)
     {
         int32_t srcY = ((uint32_t)(py - destY) * yStep) >> 16;
-        const uint16_t* srcRow = srcPixels + srcY * srcW;
+        const uint16_t* srcRow = (const uint16_t*)(srcBytes + srcY * srcStride);
         uint32_t* dstRow = target32 + py * targetWidth;
 
         uint32_t srcX_acc = (uint32_t)(bounds.startX - destX) * xStep;
@@ -853,6 +998,8 @@ static DEKI_FAST_ATTR void BlitScaled_RGB565_to_ARGB8888(
             uint8_t r = (srcRGB >> 11) << 3;
             uint8_t g = ((srcRGB >> 5) & 0x3F) << 2;
             uint8_t b = (srcRGB & 0x1F) << 3;
+
+            if (hasKey && r == keyR && g == keyG && b == keyB) continue;
 
             if (hasTint)
             {
@@ -892,6 +1039,9 @@ static DEKI_FAST_ATTR void BlitScaled_RGBA8888_to_RGB888(
     const uint8_t* srcPixels = source.pixels;
     int32_t srcW = source.width;
     int32_t srcH = source.height;
+    const int32_t srcStride = SourceStride(source);
+    const bool    hasKey = source.hasChromaKey;
+    const uint8_t keyR = source.keyR, keyG = source.keyG, keyB = source.keyB;
 
     const uint32_t xStep = ((uint32_t)srcW << 16) / (uint32_t)destWidth;
     const uint32_t yStep = ((uint32_t)srcH << 16) / (uint32_t)destHeight;
@@ -899,13 +1049,14 @@ static DEKI_FAST_ATTR void BlitScaled_RGBA8888_to_RGB888(
     for (int32_t py = bounds.startY; py < bounds.endY; py++)
     {
         int32_t srcY = ((uint32_t)(py - destY) * yStep) >> 16;
+        const uint8_t* srcRow = srcPixels + srcY * srcStride;
 
         uint32_t srcX_acc = (uint32_t)(bounds.startX - destX) * xStep;
         for (int32_t px = bounds.startX; px < bounds.endX; px++)
         {
             int32_t srcX = srcX_acc >> 16;
             srcX_acc += xStep;
-            const uint8_t* pixel = srcPixels + (srcY * srcW + srcX) * 4;
+            const uint8_t* pixel = srcRow + srcX * 4;
 
             uint8_t a = pixel[3];
             if (a == 0) continue;
@@ -913,6 +1064,8 @@ static DEKI_FAST_ATTR void BlitScaled_RGBA8888_to_RGB888(
             uint8_t r = pixel[0];
             uint8_t g = pixel[1];
             uint8_t b = pixel[2];
+
+            if (hasKey && r == keyR && g == keyG && b == keyB) continue;
 
             if (hasTint)
             {
@@ -955,6 +1108,10 @@ static DEKI_FAST_ATTR void BlitScaled_RGB565A8_to_RGB888(
     const uint8_t* srcPixels = source.pixels;
     int32_t srcW = source.width;
     int32_t srcH = source.height;
+    const int32_t srcStride = SourceStride(source);
+    const int32_t bpp = source.bytesPerPixel;
+    const bool    hasKey = source.hasChromaKey;
+    const uint8_t keyR = source.keyR, keyG = source.keyG, keyB = source.keyB;
 
     const uint32_t xStep = ((uint32_t)srcW << 16) / (uint32_t)destWidth;
     const uint32_t yStep = ((uint32_t)srcH << 16) / (uint32_t)destHeight;
@@ -962,21 +1119,24 @@ static DEKI_FAST_ATTR void BlitScaled_RGB565A8_to_RGB888(
     for (int32_t py = bounds.startY; py < bounds.endY; py++)
     {
         int32_t srcY = ((uint32_t)(py - destY) * yStep) >> 16;
+        const uint8_t* srcRow = srcPixels + srcY * srcStride;
 
         uint32_t srcX_acc = (uint32_t)(bounds.startX - destX) * xStep;
         for (int32_t px = bounds.startX; px < bounds.endX; px++)
         {
             int32_t srcX = srcX_acc >> 16;
             srcX_acc += xStep;
-            size_t srcIdx = (srcY * srcW + srcX) * 3;
+            const uint8_t* srcPx = srcRow + srcX * bpp;
 
-            uint8_t a = srcPixels[srcIdx + 2];
+            uint8_t a = srcPx[2];
             if (a == 0) continue;
 
-            uint16_t srcRGB = *(const uint16_t*)(srcPixels + srcIdx);
+            uint16_t srcRGB = *(const uint16_t*)srcPx;
             uint8_t r = (srcRGB >> 11) << 3;
             uint8_t g = ((srcRGB >> 5) & 0x3F) << 2;
             uint8_t b = (srcRGB & 0x1F) << 3;
+
+            if (hasKey && r == keyR && g == keyG && b == keyB) continue;
 
             if (hasTint)
             {
@@ -1016,9 +1176,12 @@ static DEKI_FAST_ATTR void BlitScaled_RGB565_to_RGB888(
     const BlitBounds& bounds, bool hasTint, bool hasAlphaTint,
     uint8_t tintR, uint8_t tintG, uint8_t tintB, uint8_t tintA)
 {
-    const uint16_t* srcPixels = (const uint16_t*)source.pixels;
+    const uint8_t* srcBytes = source.pixels;
     int32_t srcW = source.width;
     int32_t srcH = source.height;
+    const int32_t srcStride = SourceStride(source);
+    const bool    hasKey = source.hasChromaKey;
+    const uint8_t keyR = source.keyR, keyG = source.keyG, keyB = source.keyB;
 
     const uint32_t xStep = ((uint32_t)srcW << 16) / (uint32_t)destWidth;
     const uint32_t yStep = ((uint32_t)srcH << 16) / (uint32_t)destHeight;
@@ -1026,7 +1189,7 @@ static DEKI_FAST_ATTR void BlitScaled_RGB565_to_RGB888(
     for (int32_t py = bounds.startY; py < bounds.endY; py++)
     {
         int32_t srcY = ((uint32_t)(py - destY) * yStep) >> 16;
-        const uint16_t* srcRow = srcPixels + srcY * srcW;
+        const uint16_t* srcRow = (const uint16_t*)(srcBytes + srcY * srcStride);
 
         uint32_t srcX_acc = (uint32_t)(bounds.startX - destX) * xStep;
         for (int32_t px = bounds.startX; px < bounds.endX; px++)
@@ -1038,6 +1201,8 @@ static DEKI_FAST_ATTR void BlitScaled_RGB565_to_RGB888(
             uint8_t r = (srcRGB >> 11) << 3;
             uint8_t g = ((srcRGB >> 5) & 0x3F) << 2;
             uint8_t b = (srcRGB & 0x1F) << 3;
+
+            if (hasKey && r == keyR && g == keyG && b == keyB) continue;
 
             if (hasTint)
             {
@@ -1160,9 +1325,8 @@ void BlitScaled(const Source& source,
 static inline void ExtractSourcePixel(const Source& source, int32_t x, int32_t y,
                                        uint8_t& r, uint8_t& g, uint8_t& b, uint8_t& a)
 {
-    size_t pixelIndex = y * source.width + x;
-    size_t byteIndex = pixelIndex * source.bytesPerPixel;
-    const uint8_t* pixel = source.pixels + byteIndex;
+    const int32_t stride = SourceStride(source);
+    const uint8_t* pixel = source.pixels + y * stride + x * source.bytesPerPixel;
 
     if (source.isRGB565)
     {
@@ -1369,6 +1533,10 @@ void Blit(const Source& source,
 
             uint8_t r, g, b, a;
             ExtractSourcePixel(source, srcX, srcY, r, g, b, a);
+
+            if (source.hasChromaKey &&
+                r == source.keyR && g == source.keyG && b == source.keyB)
+                continue;
 
             uint8_t effectiveAlpha = hasAlphaTint ? FAST_DIV255(a * tintA) : a;
             if (effectiveAlpha == 0)

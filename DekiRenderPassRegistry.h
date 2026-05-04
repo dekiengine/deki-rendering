@@ -19,6 +19,10 @@
  *             &MySortingCallback  // or nullptr if no sorting
  *         });
  *     }
+ *     ~MyPassRegistrar() {
+ *         // Required so the registry doesn't outlive this DLL's code.
+ *         DekiRenderPassRegistry::Unregister("mypass");
+ *     }
  * } s_registrar;
  * @endcode
  */
@@ -61,6 +65,16 @@ void Register(const char* name, RenderPassInfo info);
  * @return Pointer to registration info, or nullptr if not found
  */
 const RenderPassInfo* Get(const char* name);
+
+/**
+ * @brief Remove a previously registered render pass
+ *
+ * Modules that register a pass MUST unregister on DLL detach. Otherwise the
+ * registry holds a std::function whose target lives in the unloaded module's
+ * code; destroying that std::function later (when deki-rendering unloads)
+ * jumps to unmapped memory.
+ */
+void Unregister(const char* name);
 
 /**
  * @brief Get names of all registered render passes

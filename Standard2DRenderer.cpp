@@ -94,13 +94,15 @@ void Standard2DRenderer::ExecuteBuiltins(DekiObject* obj, RenderContext& ctx)
     auto* clip = obj->FindInterface<IClipProvider>();
     if (clip)
     {
-        int screenX, screenY;
+        float fScreenX, fScreenY;
         ctx.camera->WorldToScreen(obj->GetWorldX(), obj->GetWorldY(),
-                                   ctx.width, ctx.height, screenX, screenY);
+                                   ctx.width, ctx.height, fScreenX, fScreenY);
+        int32_t screenX = static_cast<int32_t>(std::floor(fScreenX));
+        int32_t screenY = static_cast<int32_t>(std::floor(fScreenY));
 
-        float zoom = static_cast<float>(ctx.camera->GetZoom());
-        float scaledW = clip->GetClipWidth() * zoom * obj->GetWorldScaleX();
-        float scaledH = clip->GetClipHeight() * zoom * obj->GetWorldScaleY();
+        const float effective = ctx.camera->GetPixelsPerMeter();
+        float scaledW = clip->GetClipWidth() * effective * obj->GetWorldScaleX();
+        float scaledH = clip->GetClipHeight() * effective * obj->GetWorldScaleY();
         int32_t left = screenX - static_cast<int32_t>(std::floor(scaledW * 0.5f));
         int32_t top  = screenY - static_cast<int32_t>(std::floor(scaledH * 0.5f));
 
@@ -119,14 +121,38 @@ void Standard2DRenderer::ExecuteBuiltins(DekiObject* obj, RenderContext& ctx)
         if (renderer->RenderContent(obj, source, pivotX, pivotY,
                                      tintR, tintG, tintB, tintA))
         {
-            int screenX, screenY;
+            float fScreenX, fScreenY;
             ctx.camera->WorldToScreen(obj->GetWorldX(), obj->GetWorldY(),
-                                       ctx.width, ctx.height, screenX, screenY);
+                                       ctx.width, ctx.height, fScreenX, fScreenY);
 
             // Temporarily disable clipping if renderer has ignore_clip set
             bool wasClipEnabled = QuadBlit::IsClipEnabled();
             if (renderer->ignore_clip)
                 QuadBlit::SetClipEnabled(false);
+
+            // Apply unit conversion: source pixels -> world meters -> screen pixels.
+            //   screen_px = (source_px / source.pixelsPerMeter) * world_scale * camera.pixelsPerMeter
+            // QuadBlit applies (source_px * scale), so:
+            //   scale = world_scale * camera.pixelsPerMeter / source.pixelsPerMeter
+            //
+            // World coords are always meters; sprite.pixelsPerMeter is always
+            // honored. Match camera and sprite PPM (and project PPM) for 1:1
+            // pixel rendering of source art.
+            const float worldToScreen = ctx.camera->GetPixelsPerMeter();
+            const float spritePPM = (source.pixelsPerMeter > 0.0f) ? source.pixelsPerMeter : 1.0f;
+            const float invSourcePPM = 1.0f / spritePPM;
+            const float drawScaleX = obj->GetWorldScaleX() * worldToScreen * invSourcePPM;
+            const float drawScaleY = obj->GetWorldScaleY() * worldToScreen * invSourcePPM;
+
+            // pixel_snap = true → round to nearest pixel (sharp, sprite-art).
+            // pixel_snap = false → truncate (sub-pixel motion accumulates;
+            // visually smoother under continuous movement, no bilinear yet).
+            const int32_t intScreenX = renderer->pixel_snap
+                ? static_cast<int32_t>(std::lround(fScreenX))
+                : static_cast<int32_t>(fScreenX);
+            const int32_t intScreenY = renderer->pixel_snap
+                ? static_cast<int32_t>(std::lround(fScreenY))
+                : static_cast<int32_t>(fScreenY);
 
             QuadBlit::Blit(
                 source,
@@ -134,10 +160,10 @@ void Standard2DRenderer::ExecuteBuiltins(DekiObject* obj, RenderContext& ctx)
                 ctx.width,
                 ctx.height,
                 ctx.format,
-                screenX,
-                screenY,
-                obj->GetWorldScaleX(),
-                obj->GetWorldScaleY(),
+                intScreenX,
+                intScreenY,
+                drawScaleX,
+                drawScaleY,
                 obj->GetWorldRotation(),
                 pivotX,
                 pivotY,

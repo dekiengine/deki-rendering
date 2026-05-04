@@ -209,7 +209,7 @@ void DekiRenderSystem::ClearBuffer(uint8_t r, uint8_t g, uint8_t b)
             }
             else
             {
-                // Fill using memcpy doubling -- faster than a loop on ESP32-S3
+                // Fill using memcpy doubling -- faster than a loop
                 uint32_t pattern = (rgb565 << 16) | rgb565;
                 size_t total = pixel_count * 2;
                 memcpy(render_buffer, &pattern, 4);

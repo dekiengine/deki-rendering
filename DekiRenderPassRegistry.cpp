@@ -45,6 +45,13 @@ const RenderPassInfo* Get(const char* name)
     return nullptr;
 }
 
+void Unregister(const char* name)
+{
+    if (!name)
+        return;
+    GetRegistry().erase(name);
+}
+
 void GetAllNames(std::vector<std::string>& outNames)
 {
     outNames.clear();

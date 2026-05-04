@@ -84,6 +84,33 @@ namespace QuadBlit
         // Ownership flag - if true, caller should delete[] pixels after blitting
         // Sprites set this to false since they own their own pixel data
         bool ownsPixels;
+
+        // Bytes per row in source memory. 0 means tightly packed
+        // (width * bytesPerPixel). Set non-zero to point Source at a sub-rect
+        // of a larger buffer (e.g. an atlas tile) without copying.
+        int32_t stride = 0;
+
+        // Optional chroma-key transparency. When hasChromaKey is true, blits
+        // skip pixels whose RGB matches (keyR, keyG, keyB). For RGB565 sources
+        // the key must be pre-quantized to 5/6/5 precision (low bits zeroed)
+        // since the source pixels are extracted at that precision.
+        bool    hasChromaKey = false;
+        uint8_t keyR = 0;
+        uint8_t keyG = 0;
+        uint8_t keyB = 0;
+
+        // Optional per-row non-key column spans. Same layout as alphaRowSpans:
+        // packed int16 pairs [opaqueStart, opaqueEnd] per source row. When
+        // present, blits in the 1:1 chroma path skip the per-pixel compare —
+        // pixels in [start, end) are guaranteed non-key (direct write); pixels
+        // outside the range are guaranteed key (skip without reading source).
+        const int16_t* chromaRowSpans = nullptr;
+
+        // Source pixels per world unit. The renderer divides the world→screen
+        // scale by this value so a 32×32 sprite with pixelsPerMeter=16 covers
+        // 2×2 world units instead of 32×32. Default 1 means "treat source
+        // pixels as world units" (legacy pixel mode).
+        float pixelsPerMeter = 1.0f;
     };
 
     /**
@@ -107,7 +134,8 @@ namespace QuadBlit
      * @param screenY Screen Y position (after WorldToScreen)
      * @param scaleX Horizontal scale factor (from world_scale_x)
      * @param scaleY Vertical scale factor (from world_scale_y)
-     * @param rotation Rotation in radians (from world_rotation) - currently unused
+     * @param rotation Rotation in DEGREES (from world_rotation). QuadBlit::Blit
+     *                 converts to radians internally for trig math.
      * @param pivotX Pivot X (0.0 = left, 0.5 = center, 1.0 = right)
      * @param pivotY Pivot Y (0.0 = top, 0.5 = center, 1.0 = bottom)
      * @param tintR Tint color red (255 = no tint)
@@ -148,5 +176,52 @@ namespace QuadBlit
                     uint8_t tintG = 255,
                     uint8_t tintB = 255,
                     uint8_t tintA = 255);
+
+    // ============================================================================
+    // Per-row kernel dispatch
+    // ============================================================================
+    //
+    // Platform modules can register hand-tuned SIMD kernels for specific
+    // format pairs. The blit dispatcher checks preconditions (format, no
+    // rotation, no scale, alignment, no tint) up-front; when they hold AND
+    // a kernel is registered, the SIMD kernel runs. Otherwise the existing
+    // scalar inner loop runs. This is a predicate-gated dispatch, not a
+    // runtime-failure fallback — the choice is deterministic.
+
+    enum class KernelOp : uint8_t
+    {
+        // RGB565 source → RGB565 dest, 1:1, opaque copy. src/dst point at RGB565
+        // pixels (2 bytes each). Used by both the plain opaque copy path and the
+        // opaque-middle of the chroma-key row-span path.
+        RGB565_Copy_Row,
+
+        // RGB565A8 source → RGB565 dest, 1:1 alpha blend. src is 3 bytes/pixel
+        // (RGB565 + 1 byte alpha), dst is 2 bytes/pixel. Kernel handles a==0 skip
+        // and a==255 fast-path internally. Tint and chroma-key MUST be absent
+        // (caller checks; kernel does not).
+        RGB565A8_Blend_Row,
+
+        Count
+    };
+
+    // Per-row kernel signature.
+    //   src, dst       — 16-byte-aligned source/destination row pointers
+    //   pixelCount     — number of pixels to process (NOT bytes)
+    //   tintR/G/B/A    — passed through for kernels that opt to use them; the
+    //                    no-tint kernel slots receive (255,255,255,255)
+    //
+    // Alignment, format, scale=1, rotation=0, and tint-identity (where
+    // applicable) are guaranteed by the caller. The kernel is free to assume
+    // them and use unrolled / SIMD loads.
+    using RowKernelFn = void (*)(const uint8_t* src, uint8_t* dst, int32_t pixelCount,
+                                 uint8_t tintR, uint8_t tintG, uint8_t tintB, uint8_t tintA);
+
+    // Register a kernel for the given op. Pass nullptr to clear.
+    // Typically called once at module init from a platform integration module.
+    void RegisterKernel(KernelOp op, RowKernelFn fn);
+
+    // Returns the registered kernel for the op, or nullptr if none.
+    // Exposed primarily for tests; the dispatcher calls this internally.
+    RowKernelFn GetKernel(KernelOp op);
 
 }

@@ -43,6 +43,17 @@ class RendererComponent : public DekiBehaviour, public ISortableProvider
     DEKI_EXPORT
     bool ignore_clip = false;
 
+    /**
+     * @brief If true, snap final screen position to integer pixels at draw
+     *        time (round-to-nearest). Default true preserves classic
+     *        pixel-art alignment. Set false on renderers that should flow
+     *        sub-pixel smoothly (particles, camera-shake-driven effects).
+     *        Snap is per-renderer so a pixel-art sprite and a smooth
+     *        particle effect can coexist in the same scene.
+     */
+    DEKI_EXPORT
+    bool pixel_snap = true;
+
 #ifdef V_ENGINE_ENABLE_MASK
     // Mask support - minimal memory overhead (2 bytes total)
     MaskRenderMode mask_mode = MaskRenderMode::None;
