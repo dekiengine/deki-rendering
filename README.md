@@ -6,7 +6,7 @@ Part of the [Deki Engine](https://github.com/ATeam-Dekiru/deki-engine) module ec
 
 ## Installation
 
-This module is always included as part of the Deki Engine core.
+Install via the Module Manager inside the Deki Editor.
 
 ## Dependencies
 
