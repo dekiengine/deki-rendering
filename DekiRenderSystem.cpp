@@ -2,8 +2,8 @@
 #include "DekiRenderer.h"
 #include "DekiEngine.h"
 #include "PrefabSystem.h"
-#include "providers/DekiMemoryProvider.h"
-#include "providers/DekiDisplayProvider.h"
+#include "providers/DekiMemory.h"
+#include "providers/DekiDisplay.h"
 #include "CameraComponent.h"
 #include "DekiObject.h"
 #include "Prefab.h"
@@ -25,7 +25,7 @@ DekiRenderSystem::~DekiRenderSystem()
 {
     if (render_buffer && m_OwnsBuffer)
     {
-        DekiMemoryProvider::FreeInternal(render_buffer);
+        DekiMemory::FreeInternal(render_buffer);
     }
     render_buffer = nullptr;
 }
@@ -35,7 +35,7 @@ bool DekiRenderSystem::Setup(int32_t width, int32_t height, DekiColorFormat form
     // Clean up existing buffers if any
     if (render_buffer && m_OwnsBuffer)
     {
-        DekiMemoryProvider::FreeInternal(render_buffer);
+        DekiMemory::FreeInternal(render_buffer);
     }
     render_buffer = nullptr;
     m_OwnsBuffer = true;
@@ -44,7 +44,7 @@ bool DekiRenderSystem::Setup(int32_t width, int32_t height, DekiColorFormat form
     size_t buffer_size = width * height * bytes_per_pixel;
 
     // Try display-provided internal RAM buffer first (avoids memcpy in Present)
-    IDekiDisplay* display = DekiDisplayProvider::GetDisplay();
+    IDekiDisplay* display = DekiDisplay::GetDisplay();
     if (display)
     {
         int32_t dw = 0, dh = 0;
@@ -70,7 +70,7 @@ bool DekiRenderSystem::Setup(int32_t width, int32_t height, DekiColorFormat form
     }
 
     // Allocate in internal RAM for fast random-access rendering
-    render_buffer = (uint8_t*)DekiMemoryProvider::AllocateInternal(buffer_size, "DekiRenderSystem::Setup-framebuffer");
+    render_buffer = (uint8_t*)DekiMemory::AllocateInternal(buffer_size, "DekiRenderSystem::Setup-framebuffer");
     if (!render_buffer)
     {
         return false;
@@ -99,7 +99,7 @@ void DekiRenderSystem::Render(Prefab* current_prefab)
     // (render_index alternates in Present, so the pointer changes)
     if (!m_OwnsBuffer)
     {
-        IDekiDisplay* display = DekiDisplayProvider::GetDisplay();
+        IDekiDisplay* display = DekiDisplay::GetDisplay();
         if (display)
         {
             int32_t dw = 0, dh = 0;
