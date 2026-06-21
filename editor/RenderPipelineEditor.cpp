@@ -13,11 +13,12 @@
 #include "../DekiRendererRegistry.h"
 #include "../DekiRenderPassRegistry.h"
 #include <nlohmann/json.hpp>
-#include "imgui.h"
+#include <deki-editor/EditorUI.h>
 
 #include <vector>
 #include <string>
 #include <cstring>
+#include <cstdio>
 
 using namespace DekiEditor;
 
@@ -68,16 +69,17 @@ public:
             }
         }
 
+        auto& ui = EditorUI::Get();
+
         if (!rendererNames.empty())
         {
-            auto getter = [](void* data, int idx) -> const char* {
-                auto* names = static_cast<std::vector<std::string>*>(data);
-                return (*names)[idx].c_str();
-            };
+            std::vector<const char*> items;
+            items.reserve(rendererNames.size());
+            for (auto& n : rendererNames) items.push_back(n.c_str());
 
             int selected = currentRendererIdx >= 0 ? currentRendererIdx : 0;
-            if (ImGui::Combo("Renderer", &selected, getter, &rendererNames,
-                             static_cast<int>(rendererNames.size())))
+            if (ui.Combo("Renderer", &selected, items.data(),
+                         static_cast<int>(items.size())))
             {
                 data["renderer"] = rendererNames[selected];
                 modified = true;
@@ -85,12 +87,12 @@ public:
         }
         else
         {
-            ImGui::TextDisabled("No renderers registered");
+            ui.TextDisabled("No renderers registered");
         }
 
-        ImGui::Separator();
-        ImGui::Text("Render Passes");
-        ImGui::Spacing();
+        ui.Separator();
+        ui.Text("Render Passes");
+        ui.Spacing();
 
         // --- Pass list ---
         auto& passes = data["passes"];
@@ -104,7 +106,7 @@ public:
         int removeIndex = -1;
         for (int i = 0; i < static_cast<int>(passes.size()); i++)
         {
-            ImGui::PushID(i);
+            ui.PushID(i);
             auto& pass = passes[i];
             if (!pass.is_object())
                 pass = nlohmann::json::object();
@@ -113,10 +115,9 @@ public:
 
             // Collapsible header with built-in close button
             bool passOpen = true;
-            bool open = ImGui::CollapsingHeader(
+            bool open = ui.CollapsingHeader(
                 passType.empty() ? "(select pass type)" : passType.c_str(),
-                &passOpen,
-                ImGuiTreeNodeFlags_DefaultOpen);
+                &passOpen, true);
 
             if (!passOpen)
             {
@@ -126,7 +127,7 @@ public:
 
             if (open)
             {
-                ImGui::Indent();
+                ui.Indent();
 
                 // Pass type dropdown
                 if (!passNames.empty())
@@ -141,14 +142,13 @@ public:
                         }
                     }
 
-                    auto passGetter = [](void* data, int idx) -> const char* {
-                        auto* names = static_cast<std::vector<std::string>*>(data);
-                        return (*names)[idx].c_str();
-                    };
+                    std::vector<const char*> passItems;
+                    passItems.reserve(passNames.size());
+                    for (auto& n : passNames) passItems.push_back(n.c_str());
 
                     int sel = currentPassIdx >= 0 ? currentPassIdx : 0;
-                    if (ImGui::Combo("Pass Type", &sel, passGetter, &passNames,
-                                     static_cast<int>(passNames.size())))
+                    if (ui.Combo("Pass Type", &sel, passItems.data(),
+                                 static_cast<int>(passItems.size())))
                     {
                         pass["type"] = passNames[sel];
                         modified = true;
@@ -156,7 +156,7 @@ public:
                 }
                 else
                 {
-                    ImGui::TextDisabled("No passes registered");
+                    ui.TextDisabled("No passes registered");
                 }
 
                 // Settings display
@@ -166,18 +166,21 @@ public:
                 auto& settings = pass["settings"];
                 if (!settings.empty())
                 {
-                    ImGui::Spacing();
-                    ImGui::TextDisabled("Settings:");
+                    ui.Spacing();
+                    ui.TextDisabled("Settings:");
                     for (auto& [key, val] : settings.items())
                     {
-                        ImGui::BulletText("%s: %s", key.c_str(), val.dump().c_str());
+                        char line[256];
+                        std::snprintf(line, sizeof(line), "%s: %s",
+                                      key.c_str(), val.dump().c_str());
+                        ui.BulletText(line);
                     }
                 }
 
-                ImGui::Unindent();
+                ui.Unindent();
             }
 
-            ImGui::PopID();
+            ui.PopID();
         }
 
         if (removeIndex >= 0)
@@ -187,7 +190,7 @@ public:
         }
 
         // Add pass button
-        if (ImGui::Button("+ Add Pass"))
+        if (ui.Button("+ Add Pass"))
         {
             // Default to first registered pass if available
             std::string defaultType = passNames.empty() ? "" : passNames[0];

@@ -31,6 +31,12 @@ TEST_F(RenderSystemBPPTest, ARGB8888_Returns4)
     EXPECT_EQ(rs.GetBytesPerPixel(DekiColorFormat::ARGB8888), 4);
 }
 
+TEST_F(RenderSystemBPPTest, RGB565A8_Returns3)
+{
+    DekiRenderSystem rs;
+    EXPECT_EQ(rs.GetBytesPerPixel(DekiColorFormat::RGB565A8), 3);
+}
+
 // ============================================================================
 // Setup Tests
 // ============================================================================
@@ -137,6 +143,34 @@ TEST_F(RenderSystemSetupTest, ClearBuffer_ARGB8888)
     EXPECT_EQ(r, 64);
     EXPECT_EQ(g, 128);
     EXPECT_EQ(b, 192);
+}
+
+TEST_F(RenderSystemSetupTest, Setup_RGB565A8)
+{
+    DekiRenderSystem rs;
+    EXPECT_TRUE(rs.Setup(8, 8, DekiColorFormat::RGB565A8));
+
+    EXPECT_EQ(rs.GetScreenWidth(), 8);
+    EXPECT_EQ(rs.GetScreenHeight(), 8);
+    EXPECT_EQ(rs.GetColorFormat(), DekiColorFormat::RGB565A8);
+    EXPECT_NE(rs.GetFrameBuffer(), nullptr);
+}
+
+TEST_F(RenderSystemSetupTest, ClearBuffer_RGB565A8_RoundTripsRGB)
+{
+    DekiRenderSystem rs;
+    rs.Setup(4, 4, DekiColorFormat::RGB565A8);
+
+    // ClearBuffer writes RGB565 + alpha=0xFF per pixel.
+    rs.ClearBuffer(0, 128, 255);
+
+    uint8_t r, g, b;
+    rs.GetPixel(2, 2, &r, &g, &b);
+    // RGB565 quantization: G has 6 bits, B has 5 bits.
+    EXPECT_LE(r, 8);
+    EXPECT_GE(g, 124);  // 128 → 0x80, top 6 bits = 0x80 → back to ~128
+    EXPECT_LE(g, 132);
+    EXPECT_GE(b, 247);  // 255 → 31<<3 = 248
 }
 
 // ============================================================================

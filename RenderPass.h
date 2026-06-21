@@ -33,7 +33,25 @@ public:
     virtual ~RenderPass() = default;
 
     /**
-     * @brief Called per-object before children are rendered
+     * @brief Called once per frame, before any object renders.
+     *
+     * Pass may mutate ctx (e.g. swap ctx.buffer to a scratch buffer) to
+     * install a default render target for the whole frame. The mutated
+     * ctx is then propagated to every subsequent per-object hook and to
+     * the built-in render via Standard2DRenderer's frame-scoped context.
+     */
+    virtual void BeginFrame(RenderContext& ctx) {}
+
+    /**
+     * @brief Called per-object BEFORE built-in render (sprite blit, clip push)
+     *
+     * Use this to redirect a single object's blit by mutating ctx.buffer
+     * (and width/height/format if needed). Restore in PostExecute.
+     */
+    virtual void PreExecute(DekiObject* obj, RenderContext& ctx) {}
+
+    /**
+     * @brief Called per-object before children are rendered (after built-in render)
      * @param obj The current object being rendered
      * @param ctx Render context with camera, buffer, and format info
      */
@@ -45,6 +63,15 @@ public:
      * @param ctx Render context with camera, buffer, and format info
      */
     virtual void PostExecute(DekiObject* obj, RenderContext& ctx) {}
+
+    /**
+     * @brief Called once per frame, after all objects have rendered.
+     *
+     * Pass may run a screen-space composite by reading from scratch
+     * buffers it filled during the frame and writing into the original
+     * framebuffer (saved in BeginFrame).
+     */
+    virtual void EndFrame(RenderContext& ctx) {}
 };
 
 /**

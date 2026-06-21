@@ -1,12 +1,15 @@
 #include "DekiRenderSystem.h"
 #include "DekiRenderer.h"
 #include "DekiEngine.h"
+#include "DekiLogSystem.h"
 #include "PrefabSystem.h"
 #include "providers/DekiMemory.h"
-#include "providers/DekiDisplay.h"
+#include "providers/IDekiDisplay.h"
 #include "CameraComponent.h"
 #include "DekiObject.h"
 #include "Prefab.h"
+#include "RenderingProjectSettings.h"
+#include "reflection/SettingsRegistry.h"
 
 #include <cstdint>
 #include <cstdlib>
@@ -32,6 +35,21 @@ DekiRenderSystem::~DekiRenderSystem()
 
 bool DekiRenderSystem::Setup(int32_t width, int32_t height, DekiColorFormat format)
 {
+    // Read project-wide rendering settings. Backing implementations for the
+    // perf toggles (half-width framebuffer, interlaced, dirty-tile tracking)
+    // ship as separate follow-ups; until then we just log non-default values
+    // so the user can verify the registry is being hydrated correctly.
+    if (auto* rs = DekiSettingsRegistry::Instance().Get<RenderingProjectSettings>())
+    {
+        if (rs->half_width_framebuffer || rs->interlaced_60hz || rs->dirty_tile_tracking)
+        {
+            DEKI_LOG(LogLevel::Info,
+                     "[Rendering] settings: half_width=%d interlaced=%d dirty_tracking=%d tile_size=%d (impls pending)",
+                     (int)rs->half_width_framebuffer, (int)rs->interlaced_60hz,
+                     (int)rs->dirty_tile_tracking, rs->dirty_tile_size);
+        }
+    }
+
     // Clean up existing buffers if any
     if (render_buffer && m_OwnsBuffer)
     {
@@ -44,7 +62,7 @@ bool DekiRenderSystem::Setup(int32_t width, int32_t height, DekiColorFormat form
     size_t buffer_size = width * height * bytes_per_pixel;
 
     // Try display-provided internal RAM buffer first (avoids memcpy in Present)
-    IDekiDisplay* display = DekiDisplay::GetDisplay();
+    IDekiDisplay* display = DekiEngine::GetInstance().GetDisplay();
     if (display)
     {
         int32_t dw = 0, dh = 0;
@@ -99,7 +117,7 @@ void DekiRenderSystem::Render(Prefab* current_prefab)
     // (render_index alternates in Present, so the pointer changes)
     if (!m_OwnsBuffer)
     {
-        IDekiDisplay* display = DekiDisplay::GetDisplay();
+        IDekiDisplay* display = DekiEngine::GetInstance().GetDisplay();
         if (display)
         {
             int32_t dw = 0, dh = 0;
@@ -242,6 +260,20 @@ void DekiRenderSystem::ClearBuffer(uint8_t r, uint8_t g, uint8_t b)
             }
             break;
         }
+        case DekiColorFormat::RGB565A8:
+        {
+            uint16_t rgb565 = ((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3);
+            uint8_t lo = uint8_t(rgb565 & 0xFF);
+            uint8_t hi = uint8_t((rgb565 >> 8) & 0xFF);
+            for (size_t i = 0; i < pixel_count; i++)
+            {
+                size_t idx = i * 3;
+                render_buffer[idx]     = lo;
+                render_buffer[idx + 1] = hi;
+                render_buffer[idx + 2] = 0xFF;  // opaque
+            }
+            break;
+        }
     }
 }
 
@@ -296,6 +328,15 @@ DEKI_FAST_ATTR void DekiRenderSystem::GetPixel(int32_t x, int32_t y, uint8_t* r,
             *b = pixel & 0xFF;
             break;
         }
+        case DekiColorFormat::RGB565A8:
+        {
+            size_t pixel_index = (y * screen_width + x) * 3;
+            uint16_t pixel = *((uint16_t*)(render_buffer + pixel_index));
+            *r = ((pixel >> 11) & 0x1F) << 3;
+            *g = ((pixel >> 5) & 0x3F) << 2;
+            *b = (pixel & 0x1F) << 3;
+            break;
+        }
     }
 }
 
@@ -316,8 +357,9 @@ int DekiRenderSystem::GetBytesPerPixel(DekiColorFormat format)
             return 3;
         case DekiColorFormat::ARGB8888:
             return 4;
-        default:
-            return 2;
+        case DekiColorFormat::RGB565A8:
+            return 3;
     }
+    return 2;
 }
 

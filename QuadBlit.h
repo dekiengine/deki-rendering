@@ -134,8 +134,7 @@ namespace QuadBlit
      * @param screenY Screen Y position (after WorldToScreen)
      * @param scaleX Horizontal scale factor (from world_scale_x)
      * @param scaleY Vertical scale factor (from world_scale_y)
-     * @param rotation Rotation in DEGREES (from world_rotation). QuadBlit::Blit
-     *                 converts to radians internally for trig math.
+     * @param rotation Rotation in radians (from world_rotation; engine convention).
      * @param pivotX Pivot X (0.0 = left, 0.5 = center, 1.0 = right)
      * @param pivotY Pivot Y (0.0 = top, 0.5 = center, 1.0 = bottom)
      * @param tintR Tint color red (255 = no tint)
@@ -158,10 +157,22 @@ namespace QuadBlit
               uint8_t tintR = 255,
               uint8_t tintG = 255,
               uint8_t tintB = 255,
-              uint8_t tintA = 255);
+              uint8_t tintA = 255,
+              bool useOrderedDither = false);
 
     /**
      * @brief Simplified blit without rotation (faster path)
+     *
+     * @param useOrderedDither When true and the source has per-pixel alpha,
+     *        partial-alpha pixels are output via 8x8 Bayer-matrix ordered
+     *        dithering instead of standard alpha blending. The dither path
+     *        skips the destination-read step (no read-modify-write per pixel)
+     *        and does no per-channel blend math, so it's substantially faster
+     *        on PSRAM-bound targets. Visible tradeoff: a fixed stippling
+     *        pattern at any non-fully-opaque alpha. Solid (a==0 or a==255)
+     *        pixels are unaffected. Source has no alpha → flag is a no-op.
+     *        See https://en.wikipedia.org/wiki/Ordered_dithering for the
+     *        algorithm.
      */
     void BlitScaled(const Source& source,
                     uint8_t* target,
@@ -175,7 +186,8 @@ namespace QuadBlit
                     uint8_t tintR = 255,
                     uint8_t tintG = 255,
                     uint8_t tintB = 255,
-                    uint8_t tintA = 255);
+                    uint8_t tintA = 255,
+                    bool useOrderedDither = false);
 
     // ============================================================================
     // Per-row kernel dispatch
@@ -200,6 +212,23 @@ namespace QuadBlit
         // and a==255 fast-path internally. Tint and chroma-key MUST be absent
         // (caller checks; kernel does not).
         RGB565A8_Blend_Row,
+
+        // RGB565 source → RGB565A8 dest, 1:1, opaque expand. src is 2 bytes/pixel,
+        // dst is 3 bytes/pixel laid out as [lo, hi, alpha]. Output alpha is set
+        // to 0xFF for every pixel. Tint and chroma-key MUST be absent.
+        RGB565_to_RGB565A8_Row,
+
+        // RGB565A8 source → RGB565A8 dest, 1:1, opaque copy. Both src and dst are
+        // 3 bytes/pixel. Caller guarantees the entire row is opaque (alpha == 255
+        // for every pixel) — the kernel may skip per-pixel alpha checks. Effectively
+        // a `memcpy(dst, src, count*3)`. Tint and chroma-key MUST be absent.
+        RGB565A8_Copy_Row,
+
+        // RGB565A8 source → RGB565A8 dest, 1:1, alpha blend with src-over alpha
+        // union (out.a = src.a + dst.a * (255 - src.a) / 255). Both src and dst
+        // are 3 bytes/pixel. Kernel handles a==0 skip and a==255 fast-path
+        // internally. Tint and chroma-key MUST be absent.
+        RGB565A8_Blend_Row_Dest_RGB565A8,
 
         Count
     };

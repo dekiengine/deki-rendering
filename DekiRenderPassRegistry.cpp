@@ -2,6 +2,10 @@
 #include <unordered_map>
 #include <string>
 
+// Forward-declared from DekiRenderingInit.h — kept here to avoid pulling the
+// init header into this registry's public surface.
+void DekiRendering_DetachPass(const char* name);
+
 namespace DekiRenderPassRegistry {
 
 static std::unordered_map<std::string, RenderPassInfo>& GetRegistry()
@@ -49,6 +53,12 @@ void Unregister(const char* name)
 {
     if (!name)
         return;
+    // Tear down the live pass instance before removing the factory. The
+    // instance's vtable lives in the caller's DLL, which is typically about
+    // to unload (the static destructor that called us runs during DLL detach).
+    // Without this, deki-rendering's later shutdown deletes the pass through
+    // a freed vtable.
+    DekiRendering_DetachPass(name);
     GetRegistry().erase(name);
 }
 

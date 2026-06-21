@@ -10,6 +10,7 @@ build/
 .vs/
 .vscode/
 .claude/
+.cache/
 CMakeFiles/
 cmake-build-*/
 

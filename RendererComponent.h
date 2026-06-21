@@ -23,6 +23,22 @@ enum class MaskRenderMode : uint8_t
 #endif
 
 /**
+ * @brief How partial-alpha pixels are rendered.
+ *
+ * Blend         = standard alpha blend (default; smooth, slower).
+ * OrderedDither = ordered-dither / screen-door (faster, visible stippling).
+ *
+ * NOTE: OrderedDither requires the dither blit paths shipped by the perf
+ * follow-up (item 2.1). Until those land, OrderedDither falls through to
+ * Blend with a one-time warning so existing scenes aren't broken.
+ */
+enum class AlphaMode : uint8_t
+{
+    Blend = 0,
+    OrderedDither = 1,
+};
+
+/**
  * @brief Abstract base class for all renderable components (e.g., sprites, particles)
  *
  * Extends DekiBehaviour to provide lifecycle methods (Start, Update, PreRender)
@@ -53,6 +69,10 @@ class RendererComponent : public DekiBehaviour, public ISortableProvider
      */
     DEKI_EXPORT
     bool pixel_snap = true;
+
+    DEKI_TOOLTIP("How partial-alpha pixels are rendered. Blend = smooth alpha blend (slower, no artifacts). OrderedDither = stippling pattern (much faster, visible dither — best for fades and retro pixel art). NOTE: OrderedDither falls back to Blend until the dither blit paths land.")
+    DEKI_EXPORT
+    AlphaMode alpha_mode = AlphaMode::Blend;
 
 #ifdef V_ENGINE_ENABLE_MASK
     // Mask support - minimal memory overhead (2 bytes total)

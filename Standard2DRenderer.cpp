@@ -115,6 +115,8 @@ void Standard2DRenderer::ExecuteBuiltins(DekiObject* obj, RenderContext& ctx)
     auto* renderer = obj->GetComponent<RendererComponent>();
     if (renderer)
     {
+        const bool useOrderedDither = (renderer->alpha_mode == AlphaMode::OrderedDither);
+
         QuadBlit::Source source;
         float pivotX, pivotY;
         uint8_t tintR, tintG, tintB, tintA;
@@ -170,7 +172,8 @@ void Standard2DRenderer::ExecuteBuiltins(DekiObject* obj, RenderContext& ctx)
                 tintR,
                 tintG,
                 tintB,
-                tintA
+                tintA,
+                useOrderedDither
             );
 
             // Restore clip state
@@ -232,6 +235,13 @@ void Standard2DRenderer::Render(Prefab* prefab, const RenderContext& ctx)
 
     QuadBlit::ClearClipStack();
 
+    // Frame-scoped mutable context. Passes can swap frameCtx.buffer in
+    // BeginFrame to install a default render target for the whole frame;
+    // every RenderObject below uses frameCtx, not the original ctx.
+    RenderContext frameCtx = ctx;
+    for (int p = 0; p < m_PassCount; p++)
+        m_Passes[p]->BeginFrame(frameCtx);
+
     // Collect and sort root objects
     std::pair<DekiObject*, int> sortableItems[64];
     int sortableCount = 0;
@@ -250,7 +260,11 @@ void Standard2DRenderer::Render(Prefab* prefab, const RenderContext& ctx)
 
     // Render in sorted order
     for (int i = 0; i < sortableCount; i++)
-        RenderObject(sortableItems[i].first, ctx);
+        RenderObject(sortableItems[i].first, frameCtx);
+
+    // Post-frame composites (e.g. screen-space overlays).
+    for (int p = m_PassCount - 1; p >= 0; p--)
+        m_Passes[p]->EndFrame(frameCtx);
 }
 
 void Standard2DRenderer::RenderObject(DekiObject* obj, const RenderContext& ctx)
@@ -260,14 +274,19 @@ void Standard2DRenderer::RenderObject(DekiObject* obj, const RenderContext& ctx)
 
     RenderContext objCtx = ctx;
 
-    // Phase 1: Execute built-in handling (sprite blit)
+    // Phase 1: Pre-execute custom passes (may redirect ctx.buffer for this object)
+    for (int p = 0; p < m_PassCount; p++)
+        m_Passes[p]->PreExecute(obj, objCtx);
+
+    // Phase 2: Execute built-in handling (sprite blit) — uses any ctx redirect from PreExecute
     ExecuteBuiltins(obj, objCtx);
 
-    // Phase 2: Execute custom passes (clip push, etc.)
+    // Phase 3: Execute custom passes (clip push, etc.)
     for (int p = 0; p < m_PassCount; p++)
         m_Passes[p]->Execute(obj, objCtx);
 
-    // Phase 3: Recurse into sorted children
+    // Phase 4: Recurse into sorted children — uses objCtx so children inherit any
+    // buffer redirect applied by this object's PreExecute / Execute hooks.
     std::pair<DekiObject*, int> childItems[64];
     int childCount = 0;
     for (auto* child : obj->GetChildren())
@@ -277,12 +296,12 @@ void Standard2DRenderer::RenderObject(DekiObject* obj, const RenderContext& ctx)
         [](const auto& a, const auto& b) { return a.second < b.second; });
 
     for (int i = 0; i < childCount; i++)
-        RenderObject(childItems[i].first, ctx);
+        RenderObject(childItems[i].first, objCtx);
 
-    // Phase 4: Post-execute custom passes (clip pop, reverse order)
+    // Phase 5: Post-execute custom passes (clip pop, reverse order)
     for (int p = m_PassCount - 1; p >= 0; p--)
         m_Passes[p]->PostExecute(obj, objCtx);
 
-    // Phase 5: Post-execute built-ins
+    // Phase 6: Post-execute built-ins
     PostExecuteBuiltins(obj, objCtx);
 }

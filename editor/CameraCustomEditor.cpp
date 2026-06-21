@@ -4,8 +4,8 @@
 #include <deki-editor/CustomEditor.h>
 #include <deki-editor/PrefabView.h>
 #include "../CameraComponent.h"
-#include "imgui.h"
 #include <cmath>
+#include <cstdint>
 
 namespace DekiEditor
 {
@@ -35,9 +35,6 @@ public:
     void OnDrawGizmos(DekiComponent* comp) override
     {
         auto& view = PrefabView::Get();
-        ImDrawList* dl = view.GetDrawList();
-        if (!dl)
-            return;
 
         float w = view.GetDisplayWidth();
         float h = view.GetDisplayHeight();
@@ -52,12 +49,11 @@ public:
         float cx = view.GetScreenX();
         float cy = view.GetScreenY();
 
-        ImU32 color = view.IsCurrentObjectSelected()
-            ? IM_COL32(255, 165, 0, 255)
-            : IM_COL32(255, 165, 0, 180);
+        uint32_t color = view.IsCurrentObjectSelected()
+            ? PrefabView::Rgba(255, 165, 0, 255)
+            : PrefabView::Rgba(255, 165, 0, 180);
 
-        dl->AddRect(ImVec2(cx - halfW, cy - halfH), ImVec2(cx + halfW, cy + halfH),
-                    color, 0.0f, 0, 1.0f);
+        view.DrawRect(cx - halfW, cy - halfH, cx + halfW, cy + halfH, color, 1.0f);
     }
 };
 

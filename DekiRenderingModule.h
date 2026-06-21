@@ -33,7 +33,6 @@ struct DekiComponentMeta;
 
 extern "C" {
 
-DEKI_RENDERING_API void DekiRendering_SetImGuiContext(void* ctx);
 DEKI_RENDERING_API int DekiRendering_EnsureRegistered(void);
 
 } // extern "C"

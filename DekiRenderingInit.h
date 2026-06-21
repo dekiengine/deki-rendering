@@ -17,9 +17,10 @@ void DekiRendering_ShutdownSystem();
 /**
  * @brief Detach an autoAttached render pass by registry name.
  *
- * Called by a module's DekiPlugin_Shutdown so its pass instance is removed
- * from the active renderer (and deleted) BEFORE the module's DLL unloads —
- * otherwise the renderer keeps invoking Execute() on a vtable that no longer
- * exists. Safe to call when no matching pass is attached.
+ * Removes the pass instance from the active renderer and deletes it. Most
+ * callers should not invoke this directly — DekiRenderPassRegistry::Unregister
+ * already calls this so a module's static destructor cleans up correctly on
+ * DLL detach. Exposed for the rare case of detaching without unregistering
+ * the factory. Safe to call when no matching pass is attached.
  */
 void DekiRendering_DetachPass(const char* name);

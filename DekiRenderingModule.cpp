@@ -20,8 +20,6 @@
 
 #ifdef DEKI_EDITOR
 
-#include "imgui.h"
-
 #ifndef DEKI_PLUGIN_EXPORTS
 // Auto-generated registration helpers (standalone DLL only)
 extern void DekiRendering_RegisterComponents();
@@ -31,11 +29,6 @@ extern const DekiComponentMeta* DekiRendering_GetAutoComponentMeta(int index);
 static bool s_Registered = false;
 
 extern "C" {
-
-DEKI_RENDERING_API void DekiRendering_SetImGuiContext(void* ctx)
-{
-    ImGui::SetCurrentContext(static_cast<ImGuiContext*>(ctx));
-}
 
 DEKI_RENDERING_API int DekiRendering_EnsureRegistered(void)
 {
@@ -92,11 +85,6 @@ DEKI_PLUGIN_API void DekiPlugin_Shutdown(void)
     // Shutdown the rendering system (shared with non-editor builds)
     DekiRendering_ShutdownSystem();
     s_Registered = false;
-}
-
-DEKI_PLUGIN_API void DekiPlugin_SetImGuiContext(void* ctx)
-{
-    ImGui::SetCurrentContext(static_cast<ImGuiContext*>(ctx));
 }
 
 DEKI_PLUGIN_API int DekiPlugin_GetComponentCount(void)
