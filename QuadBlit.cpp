@@ -3,18 +3,12 @@
 #include <algorithm>
 #include <cstring>
 
-#ifndef DEKI_EDITOR
+// DekiColorFormat comes from the engine header. The editor build used to re-declare it
+// locally instead of including this; that is a second definition of the same type, which
+// is a redefinition error the moment this file shares a translation unit with one that
+// includes DekiEngine.h (unity build) — and its sibling RendererComponent.cpp already
+// includes it in editor mode.
 #include "DekiEngine.h"
-#else
-// Editor mode: define DekiColorFormat locally
-enum class DekiColorFormat
-{
-    RGB565 = 0,
-    RGB888 = 1,
-    ARGB8888 = 2,
-    RGB565A8 = 3
-};
-#endif
 
 // Fast alpha blend approximation: (a * b + 128) >> 8 instead of (a * b) / 255
 #define FAST_DIV255(x) (((x) + 128) >> 8)
@@ -1645,6 +1639,9 @@ static inline void ExtractSourcePixel(const Source& source, int32_t x, int32_t y
 static inline void WriteTargetPixel(uint8_t* target, int32_t x, int32_t y,
                                      int32_t width, DekiColorFormat format,
                                      uint8_t r, uint8_t g, uint8_t b);
+static inline void GetTargetPixel(const uint8_t* target, int32_t x, int32_t y,
+                                   int32_t width, DekiColorFormat format,
+                                   uint8_t& r, uint8_t& g, uint8_t& b);
 
 // ============================================================================
 // Ordered-dither alpha (8×8 Bayer matrix, https://en.wikipedia.org/wiki/Ordered_dithering)
@@ -1821,6 +1818,69 @@ static DEKI_FAST_ATTR void BlitScaledDithered_Generic(
 }
 
 // ============================================================================
+// Generic alpha-blend path — non-RGB565 / non-RGBA8888 sources (ALPHA8, RGB888)
+// ============================================================================
+// Slower than the specialized kernels (per-pixel Extract / blend / Write, same
+// approach as the rotation path), but stride-correct for any bytesPerPixel — so
+// an ALPHA8 (1bpp font/icon atlas) or RGB888 (3bpp) texture drawn by a
+// SpriteComponent no longer over-reads through the 4bpp RGBA8888 kernel.
+
+static DEKI_FAST_ATTR void BlitScaled_Generic(
+    const Source& source, uint8_t* target, int32_t targetWidth, int32_t /*targetHeight*/,
+    DekiColorFormat targetFormat,
+    int32_t destX, int32_t destY, int32_t destWidth, int32_t destHeight,
+    const BlitBounds& bounds, bool hasTint, bool hasAlphaTint,
+    uint8_t tintR, uint8_t tintG, uint8_t tintB, uint8_t tintA)
+{
+    const int32_t srcW = source.width;
+    const int32_t srcH = source.height;
+    const bool    hasKey = source.hasChromaKey;
+    const uint8_t keyR = source.keyR, keyG = source.keyG, keyB = source.keyB;
+
+    const uint32_t xStep = (destWidth == srcW)  ? 0 : ((uint32_t)srcW << 16) / (uint32_t)destWidth;
+    const uint32_t yStep = (destHeight == srcH) ? 0 : ((uint32_t)srcH << 16) / (uint32_t)destHeight;
+
+    for (int32_t py = bounds.startY; py < bounds.endY; py++)
+    {
+        int32_t srcY = (yStep == 0) ? (py - destY)
+                                    : (int32_t)(((uint32_t)(py - destY) * yStep) >> 16);
+        for (int32_t px = bounds.startX; px < bounds.endX; px++)
+        {
+            int32_t srcX = (xStep == 0) ? (px - destX)
+                                        : (int32_t)(((uint32_t)(px - destX) * xStep) >> 16);
+
+            uint8_t r, g, b, a;
+            ExtractSourcePixel(source, srcX, srcY, r, g, b, a);
+            if (a == 0) continue;
+
+            if (hasKey && r == keyR && g == keyG && b == keyB) continue;
+
+            if (hasTint)
+            {
+                r = FAST_DIV255(r * tintR);
+                g = FAST_DIV255(g * tintG);
+                b = FAST_DIV255(b * tintB);
+            }
+
+            uint8_t effA = hasAlphaTint ? FAST_DIV255((uint16_t)a * (uint16_t)tintA) : a;
+            if (effA == 0) continue;
+
+            if (effA != 255)
+            {
+                uint8_t bgR, bgG, bgB;
+                GetTargetPixel(target, px, py, targetWidth, targetFormat, bgR, bgG, bgB);
+                uint8_t invA = 255 - effA;
+                r = FAST_DIV255(r * effA + bgR * invA);
+                g = FAST_DIV255(g * effA + bgG * invA);
+                b = FAST_DIV255(b * effA + bgB * invA);
+            }
+
+            WriteTargetPixel(target, px, py, targetWidth, targetFormat, r, g, b);
+        }
+    }
+}
+
+// ============================================================================
 // BlitScaled dispatcher — selects specialized path based on formats
 // ============================================================================
 
@@ -1894,10 +1954,15 @@ void BlitScaled(const Source& source,
                 else
                     BlitScaled_RGB565_to_RGB565(source, target16, targetWidth, destX, destY, destWidth, destHeight, bounds, hasTint, hasAlphaTint, tintR, tintG, tintB, tintA);
             }
+            else if (source.bytesPerPixel == 4)
+            {
+                // RGBA8888 (e.g. TextComponent)
+                BlitScaled_RGBA8888_to_RGB565(source, target16, targetWidth, destX, destY, destWidth, destHeight, bounds, hasTint, hasAlphaTint, tintR, tintG, tintB, tintA);
+            }
             else
             {
-                // RGBA8888 (TextComponent) or any 4bpp source
-                BlitScaled_RGBA8888_to_RGB565(source, target16, targetWidth, destX, destY, destWidth, destHeight, bounds, hasTint, hasAlphaTint, tintR, tintG, tintB, tintA);
+                // ALPHA8 (1bpp) / RGB888 (3bpp): stride-correct generic blend
+                BlitScaled_Generic(source, target, targetWidth, targetHeight, targetFormat, destX, destY, destWidth, destHeight, bounds, hasTint, hasAlphaTint, tintR, tintG, tintB, tintA);
             }
             break;
         }
@@ -1911,9 +1976,14 @@ void BlitScaled(const Source& source,
                 else
                     BlitScaled_RGB565_to_ARGB8888(source, target32, targetWidth, destX, destY, destWidth, destHeight, bounds, hasTint, hasAlphaTint, tintR, tintG, tintB, tintA);
             }
-            else
+            else if (source.bytesPerPixel == 4)
             {
                 BlitScaled_RGBA8888_to_ARGB8888(source, target32, targetWidth, destX, destY, destWidth, destHeight, bounds, hasTint, hasAlphaTint, tintR, tintG, tintB, tintA);
+            }
+            else
+            {
+                // ALPHA8 (1bpp) / RGB888 (3bpp): stride-correct generic blend
+                BlitScaled_Generic(source, target, targetWidth, targetHeight, targetFormat, destX, destY, destWidth, destHeight, bounds, hasTint, hasAlphaTint, tintR, tintG, tintB, tintA);
             }
             break;
         }
@@ -1926,9 +1996,14 @@ void BlitScaled(const Source& source,
                 else
                     BlitScaled_RGB565_to_RGB888(source, target, targetWidth, destX, destY, destWidth, destHeight, bounds, hasTint, hasAlphaTint, tintR, tintG, tintB, tintA);
             }
-            else
+            else if (source.bytesPerPixel == 4)
             {
                 BlitScaled_RGBA8888_to_RGB888(source, target, targetWidth, destX, destY, destWidth, destHeight, bounds, hasTint, hasAlphaTint, tintR, tintG, tintB, tintA);
+            }
+            else
+            {
+                // ALPHA8 (1bpp) / RGB888 (3bpp): stride-correct generic blend
+                BlitScaled_Generic(source, target, targetWidth, targetHeight, targetFormat, destX, destY, destWidth, destHeight, bounds, hasTint, hasAlphaTint, tintR, tintG, tintB, tintA);
             }
             break;
         }
@@ -1941,9 +2016,14 @@ void BlitScaled(const Source& source,
                 else
                     BlitScaled_RGB565_to_RGB565A8(source, target, targetWidth, destX, destY, destWidth, destHeight, bounds, hasTint, hasAlphaTint, tintR, tintG, tintB, tintA);
             }
-            else
+            else if (source.bytesPerPixel == 4)
             {
                 BlitScaled_RGBA8888_to_RGB565A8(source, target, targetWidth, destX, destY, destWidth, destHeight, bounds, hasTint, hasAlphaTint, tintR, tintG, tintB, tintA);
+            }
+            else
+            {
+                // ALPHA8 (1bpp) / RGB888 (3bpp): stride-correct generic blend
+                BlitScaled_Generic(source, target, targetWidth, targetHeight, targetFormat, destX, destY, destWidth, destHeight, bounds, hasTint, hasAlphaTint, tintR, tintG, tintB, tintA);
             }
             break;
         }
@@ -1982,6 +2062,14 @@ static inline void ExtractSourcePixel(const Source& source, int32_t x, int32_t y
         g = pixel[1];
         b = pixel[2];
         a = 255;
+    }
+    else if (source.bytesPerPixel == 1)
+    {
+        // ALPHA8: alpha-only coverage (e.g. a font/icon atlas drawn as a sprite).
+        // RGB comes from the tint downstream (white when untinted), so the atlas
+        // acts as a tint-colored alpha mask instead of solid black.
+        r = g = b = 255;
+        a = pixel[0];
     }
     else
     {

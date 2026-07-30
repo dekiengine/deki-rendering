@@ -27,6 +27,7 @@ class CameraComponent : public DekiComponent, public ICamera
 {
 public:
     DEKI_COMPONENT(CameraComponent, DekiComponent, "Core", "146999a7-398f-4e52-a7c7-1e6a78bfb9c4", "")
+    DEKI_DESCRIPTION("The view: clear color, zoom (pixels per meter) and pixel snap.")
 
     DEKI_EXPORT
     deki::Color clear_color = deki::Color(49, 77, 121);  // Background clear color
