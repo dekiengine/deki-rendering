@@ -49,9 +49,13 @@ public:
         float cx = view.GetScreenX();
         float cy = view.GetScreenY();
 
+        // Deki accent (#3ac3ff, oklch(0.78 0.16 240)) — the same value as
+        // EditorTheme's Palette::Accent, spelled out here because a module DLL
+        // does not pull in the editor's ImGui theme header. Selected draws it
+        // opaque, unselected at 70%.
         uint32_t color = view.IsCurrentObjectSelected()
-            ? PrefabView::Rgba(255, 165, 0, 255)
-            : PrefabView::Rgba(255, 165, 0, 180);
+            ? PrefabView::Rgba(58, 195, 255, 255)
+            : PrefabView::Rgba(58, 195, 255, 180);
 
         view.DrawRect(cx - halfW, cy - halfH, cx + halfW, cy + halfH, color, 1.0f);
     }
