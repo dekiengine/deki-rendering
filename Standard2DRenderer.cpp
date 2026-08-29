@@ -3,12 +3,12 @@
 #include "IClipProvider.h"
 #include "ISortableProvider.h"
 #include "DekiEngine.h"
-#include "PrefabSystem.h"
+#include "SceneSystem.h"
 #include "CameraComponent.h"
 #include "RendererComponent.h"
 #include "QuadBlit.h"
 #include "DekiObject.h"
-#include "Prefab.h"
+#include "Scene.h"
 #include "DekiLogSystem.h"
 
 #include <algorithm>
@@ -228,9 +228,9 @@ void Standard2DRenderer::CollectSortableItems(DekiObject* obj,
 
 // --- Main render loop ---
 
-void Standard2DRenderer::Render(Prefab* prefab, const RenderContext& ctx)
+void Standard2DRenderer::Render(Scene* scene, const RenderContext& ctx)
 {
-    if (!prefab || !ctx.camera || !ctx.buffer)
+    if (!scene || !ctx.camera || !ctx.buffer)
         return;
 
     QuadBlit::ClearClipStack();
@@ -246,11 +246,11 @@ void Standard2DRenderer::Render(Prefab* prefab, const RenderContext& ctx)
     std::pair<DekiObject*, int> sortableItems[64];
     int sortableCount = 0;
 
-    for (DekiObject* obj : prefab->GetObjects())
+    for (DekiObject* obj : scene->GetObjects())
         CollectSortableItems(obj, sortableItems, sortableCount, 64);
 
     // Also collect persistent objects
-    const auto& persistentObjects = DekiEngine::GetInstance().GetPrefabSystem().GetPersistentObjects();
+    const auto& persistentObjects = DekiEngine::GetInstance().GetSceneSystem().GetPersistentObjects();
     for (DekiObject* obj : persistentObjects)
         CollectSortableItems(obj, sortableItems, sortableCount, 64);
 

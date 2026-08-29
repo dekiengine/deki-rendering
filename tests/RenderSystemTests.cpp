@@ -238,7 +238,7 @@ TEST_F(RenderSystemSetupTest, SetRenderer_GetRenderer)
     EXPECT_EQ(rs.GetRenderer(), nullptr);
 }
 
-TEST_F(RenderSystemSetupTest, RenderWithNullPrefab_NoOp)
+TEST_F(RenderSystemSetupTest, RenderWithNullScene_NoOp)
 {
     DekiRenderSystem rs;
     rs.Setup(4, 4, DekiColorFormat::RGB565);
@@ -254,6 +254,6 @@ TEST_F(RenderSystemSetupTest, RenderWithNoRenderer_NoOp)
     rs.SetRenderer(nullptr);
 
     // Should not crash (no renderer set)
-    // Note: We can't pass a real Prefab easily, but nullptr covers the null check
+    // Note: We can't pass a real Scene easily, but nullptr covers the null check
     rs.Render(nullptr);
 }

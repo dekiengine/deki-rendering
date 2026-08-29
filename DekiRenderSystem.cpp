@@ -2,12 +2,12 @@
 #include "DekiRenderer.h"
 #include "DekiEngine.h"
 #include "DekiLogSystem.h"
-#include "PrefabSystem.h"
+#include "SceneSystem.h"
 #include "providers/DekiMemory.h"
 #include "providers/IDekiDisplay.h"
 #include "CameraComponent.h"
 #include "DekiObject.h"
-#include "Prefab.h"
+#include "Scene.h"
 #include "RenderingProjectSettings.h"
 #include "reflection/SettingsRegistry.h"
 
@@ -101,14 +101,14 @@ bool DekiRenderSystem::Setup(int32_t width, int32_t height, DekiColorFormat form
     // Reset first render flag and camera cache
     m_IsFirstRender = true;
     m_CachedCamera = nullptr;
-    m_CachedCameraPrefab = nullptr;
+    m_CachedCameraScene = nullptr;
 
     return true;
 }
 
-void DekiRenderSystem::Render(Prefab* current_prefab)
+void DekiRenderSystem::Render(Scene* current_scene)
 {
-    if (!current_prefab || !m_Renderer)
+    if (!current_scene || !m_Renderer)
     {
         return;
     }
@@ -132,16 +132,16 @@ void DekiRenderSystem::Render(Prefab* current_prefab)
         return;
     }
 
-    // Use cached camera when prefab hasn't changed; re-search on first frame or prefab switch
-    if (m_CachedCameraPrefab != current_prefab)
+    // Use cached camera when scene hasn't changed; re-search on first frame or scene switch
+    if (m_CachedCameraScene != current_scene)
     {
         m_CachedCamera = nullptr;
-        m_CachedCameraPrefab = current_prefab;
+        m_CachedCameraScene = current_scene;
     }
 
     if (!m_CachedCamera)
     {
-        // Search recursively through prefab objects
+        // Search recursively through scene objects
         std::function<CameraComponent*(DekiObject*)> findCamera = [&](DekiObject* obj) -> CameraComponent* {
             CameraComponent* cam = obj->GetComponent<CameraComponent>();
             if (cam) return cam;
@@ -152,7 +152,7 @@ void DekiRenderSystem::Render(Prefab* current_prefab)
             }
             return nullptr;
         };
-        for (DekiObject* obj : current_prefab->GetObjects())
+        for (DekiObject* obj : current_scene->GetObjects())
         {
             m_CachedCamera = findCamera(obj);
             if (m_CachedCamera) break;
@@ -161,7 +161,7 @@ void DekiRenderSystem::Render(Prefab* current_prefab)
         // Fall back to Persistent objects
         if (!m_CachedCamera)
         {
-            const auto& persistentObjects = DekiEngine::GetInstance().GetPrefabSystem().GetPersistentObjects();
+            const auto& persistentObjects = DekiEngine::GetInstance().GetSceneSystem().GetPersistentObjects();
             for (DekiObject* obj : persistentObjects)
             {
                 m_CachedCamera = obj->GetComponent<CameraComponent>();
@@ -183,21 +183,21 @@ void DekiRenderSystem::Render(Prefab* current_prefab)
 
     // Delegate to the active renderer
     RenderContext ctx{camera, render_buffer, screen_width, screen_height, color_format};
-    m_Renderer->Render(current_prefab, ctx);
+    m_Renderer->Render(current_scene, ctx);
 }
 
-void DekiRenderSystem::RenderToBuffer(Prefab* prefab, ICamera* camera,
+void DekiRenderSystem::RenderToBuffer(Scene* scene, ICamera* camera,
                                        uint8_t* buffer, int32_t width, int32_t height,
                                        DekiColorFormat format)
 {
-    RenderToBufferStatic(prefab, camera, buffer, width, height, format);
+    RenderToBufferStatic(scene, camera, buffer, width, height, format);
 }
 
-void DekiRenderSystem::RenderToBufferStatic(Prefab* prefab, ICamera* camera,
+void DekiRenderSystem::RenderToBufferStatic(Scene* scene, ICamera* camera,
                                              uint8_t* buffer, int32_t width, int32_t height,
                                              DekiColorFormat format)
 {
-    if (!prefab || !camera || !buffer)
+    if (!scene || !camera || !buffer)
         return;
 
     // Get the renderer from the engine's render system
@@ -208,7 +208,7 @@ void DekiRenderSystem::RenderToBufferStatic(Prefab* prefab, ICamera* camera,
     // RenderContext uses CameraComponent* internally — safe cast since
     // the rendering module owns CameraComponent and knows the concrete type
     RenderContext ctx{static_cast<CameraComponent*>(camera), buffer, width, height, format};
-    renderer->Render(prefab, ctx);
+    renderer->Render(scene, ctx);
 }
 
 void DekiRenderSystem::ClearBuffer(uint8_t r, uint8_t g, uint8_t b)

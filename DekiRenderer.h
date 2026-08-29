@@ -4,7 +4,7 @@
 #include "DekiEngine.h"
 
 // Forward declarations
-class Prefab;
+class Scene;
 class CameraComponent;
 
 /**
@@ -34,7 +34,7 @@ struct RenderContext
  * Usage:
  * @code
  * class MyRenderer : public DekiRenderer {
- *     void Render(Prefab* prefab, const RenderContext& ctx) override {
+ *     void Render(Scene* scene, const RenderContext& ctx) override {
  *         // Custom rendering logic
  *     }
  * };
@@ -54,9 +54,9 @@ public:
     virtual uint32_t GetRendererType() const = 0;
 
     /**
-     * @brief Render a prefab to a buffer
-     * @param prefab The prefab to render
+     * @brief Render a scene to a buffer
+     * @param scene The scene to render
      * @param ctx Render context with camera, buffer, and format info
      */
-    virtual void Render(Prefab* prefab, const RenderContext& ctx) = 0;
+    virtual void Render(Scene* scene, const RenderContext& ctx) = 0;
 };

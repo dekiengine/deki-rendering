@@ -12,7 +12,7 @@ class DekiObject;
 /**
  * @brief Standard 2D renderer with built-in support for sprites, clipping, and sorting groups
  *
- * This is the default renderer for 2D prefabs. It handles:
+ * This is the default renderer for 2D scenes. It handles:
  * - RendererComponent: blits content via QuadBlit
  * - ClipComponent: pushes/pops clip rects around children
  * - SortingGroupComponent: groups children for sorting
@@ -30,7 +30,7 @@ public:
     static constexpr uint32_t RendererTypeID = 0x53324452; // "S2DR"
     uint32_t GetRendererType() const override { return RendererTypeID; }
 
-    void Render(Prefab* prefab, const RenderContext& ctx) override;
+    void Render(Scene* scene, const RenderContext& ctx) override;
 
     /**
      * @brief Add a custom render pass

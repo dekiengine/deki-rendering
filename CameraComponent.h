@@ -8,7 +8,7 @@
 #include "Color.h"
 
 /**
- * @brief 2D Camera component for prefab rendering.
+ * @brief 2D Camera component for scene rendering.
  *
  * The camera owns viewport-related state: clear color, pixels-per-meter
  * (controls zoom), and optional pixel snap. Internal world coords are

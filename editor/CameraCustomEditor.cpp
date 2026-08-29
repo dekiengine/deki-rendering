@@ -2,7 +2,7 @@
 
 #include <deki-editor/EditorRegistry.h>
 #include <deki-editor/CustomEditor.h>
-#include <deki-editor/PrefabView.h>
+#include <deki-editor/SceneView.h>
 #include "../CameraComponent.h"
 #include <cmath>
 #include <cstdint>
@@ -22,8 +22,8 @@ public:
         // gizmo is the project render-target resolution; it's drawn at 1
         // screen pixel per buffer pixel * editor zoom by both
         // DrawComponentOutlines and OnDrawGizmos.
-        int targetW = PrefabView::Get().GetTargetWidth();
-        int targetH = PrefabView::Get().GetTargetHeight();
+        int targetW = SceneView::Get().GetTargetWidth();
+        int targetH = SceneView::Get().GetTargetHeight();
         if (targetW <= 0 || targetH <= 0)
             return false;
 
@@ -34,7 +34,7 @@ public:
 
     void OnDrawGizmos(DekiComponent* comp) override
     {
-        auto& view = PrefabView::Get();
+        auto& view = SceneView::Get();
 
         float w = view.GetDisplayWidth();
         float h = view.GetDisplayHeight();
@@ -54,8 +54,8 @@ public:
         // does not pull in the editor's ImGui theme header. Selected draws it
         // opaque, unselected at 70%.
         uint32_t color = view.IsCurrentObjectSelected()
-            ? PrefabView::Rgba(58, 195, 255, 255)
-            : PrefabView::Rgba(58, 195, 255, 180);
+            ? SceneView::Rgba(58, 195, 255, 255)
+            : SceneView::Rgba(58, 195, 255, 180);
 
         view.DrawRect(cx - halfW, cy - halfH, cx + halfW, cy + halfH, color, 1.0f);
     }
