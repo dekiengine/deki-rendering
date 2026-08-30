@@ -57,7 +57,7 @@ class RendererComponent : public DekiBehaviour, public ISortableProvider
 
     /** @brief If true, this renderer ignores parent ClipComponent bounds */
     DEKI_EXPORT
-    bool ignore_clip = false;
+    bool ignoreClip = false;
 
     /**
      * @brief If true, snap final screen position to integer pixels at draw
@@ -68,11 +68,11 @@ class RendererComponent : public DekiBehaviour, public ISortableProvider
      *        particle effect can coexist in the same scene.
      */
     DEKI_EXPORT
-    bool pixel_snap = true;
+    bool pixelSnap = true;
 
     DEKI_TOOLTIP("How partial-alpha pixels are rendered. Blend = smooth alpha blend (slower, no artifacts). OrderedDither = stippling pattern (much faster, visible dither — best for fades and retro pixel art). NOTE: OrderedDither falls back to Blend until the dither blit paths land.")
     DEKI_EXPORT
-    AlphaMode alpha_mode = AlphaMode::Blend;
+    AlphaMode alphaMode = AlphaMode::Blend;
 
 #ifdef V_ENGINE_ENABLE_MASK
     // Mask support - minimal memory overhead (2 bytes total)

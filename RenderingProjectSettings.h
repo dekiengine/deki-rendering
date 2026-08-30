@@ -22,21 +22,21 @@ public:
 
     DEKI_TOOLTIP("Render at half horizontal resolution and double-up at present time. Halves blit cost and framebuffer memory but pixel art looks 2:1-stretched horizontally.")
     DEKI_EXPORT
-    bool half_width_framebuffer = false;
+    bool halfWidthFramebuffer = false;
 
     DEKI_TOOLTIP("Render odd scanlines one frame, even the next, at 60Hz. Halves per-frame work but produces visible combing on vertical motion.")
     DEKI_EXPORT
-    bool interlaced_60hz = false;
+    bool interlaced60hz = false;
 
     DEKI_TOOLTIP("Track dirty tiles and only push changed tiles to the display. Big win for UI scenes; small cost for fully-animating ones. Requires display backend support for partial updates.")
     DEKI_EXPORT
-    bool dirty_tile_tracking = false;
+    bool dirtyTileTracking = false;
 
-    DEKI_TOOLTIP("Pixel size of dirty-tracking tiles when dirty_tile_tracking is enabled. Smaller = finer-grained updates but more bookkeeping.")
+    DEKI_TOOLTIP("Pixel size of dirty-tracking tiles when dirtyTileTracking is enabled. Smaller = finer-grained updates but more bookkeeping.")
     DEKI_RANGE(8, 64)
-    DEKI_VISIBLE_WHEN(dirty_tile_tracking, 1)
+    DEKI_VISIBLE_WHEN(dirtyTileTracking, 1)
     DEKI_EXPORT
-    int32_t dirty_tile_size = 32;
+    int32_t dirtyTileSize = 32;
 };
 
 #include "generated/RenderingProjectSettings.gen.h"

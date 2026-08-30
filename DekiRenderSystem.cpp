@@ -41,12 +41,12 @@ bool DekiRenderSystem::Setup(int32_t width, int32_t height, DekiColorFormat form
     // so the user can verify the registry is being hydrated correctly.
     if (auto* rs = DekiSettingsRegistry::Instance().Get<RenderingProjectSettings>())
     {
-        if (rs->half_width_framebuffer || rs->interlaced_60hz || rs->dirty_tile_tracking)
+        if (rs->halfWidthFramebuffer || rs->interlaced60hz || rs->dirtyTileTracking)
         {
             DEKI_LOG(LogLevel::Info,
                      "[Rendering] settings: half_width=%d interlaced=%d dirty_tracking=%d tile_size=%d (impls pending)",
-                     (int)rs->half_width_framebuffer, (int)rs->interlaced_60hz,
-                     (int)rs->dirty_tile_tracking, rs->dirty_tile_size);
+                     (int)rs->halfWidthFramebuffer, (int)rs->interlaced60hz,
+                     (int)rs->dirtyTileTracking, rs->dirtyTileSize);
         }
     }
 
@@ -179,7 +179,7 @@ void DekiRenderSystem::Render(Scene* current_scene)
     CameraComponent* camera = m_CachedCamera;
 
     // Always clear the entire buffer before rendering
-    ClearBuffer(camera->clear_color);
+    ClearBuffer(camera->clearColor);
 
     // Delegate to the active renderer
     RenderContext ctx{camera, render_buffer, screen_width, screen_height, color_format};

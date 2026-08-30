@@ -73,14 +73,14 @@ void CameraComponent::WorldToScreen(float world_x, float world_y,
     // Screen: top-left origin, Y down
     // Camera position is the world point that maps to screen center.
     //
-    // When pixel_snap is on, the camera's own contribution is rounded to
+    // When pixelSnap is on, the camera's own contribution is rounded to
     // whole pixels (cam_x_px = round(cam_x * ppm) / ppm) so smooth camera
     // tweens / shake quantize at the camera level. The per-renderer
-    // pixel_snap still applies on top of this.
+    // pixelSnap still applies on top of this.
     const float ppm = GetPixelsPerMeter();
     float cam_x = GetPositionX();
     float cam_y = GetPositionY();
-    if (pixel_snap && ppm > 0.0f)
+    if (pixelSnap && ppm > 0.0f)
     {
         cam_x = std::round(cam_x * ppm) / ppm;
         cam_y = std::round(cam_y * ppm) / ppm;

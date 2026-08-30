@@ -30,7 +30,7 @@ public:
     DEKI_DESCRIPTION("The view: clear color, zoom (pixels per meter) and pixel snap.")
 
     DEKI_EXPORT
-    deki::Color clear_color = deki::Color(49, 77, 121);  // Background clear color
+    deki::Color clearColor = deki::Color(49, 77, 121);  // Background clear color
 
     // Framebuffer pixels per world meter. 0 = inherit project default.
     DEKI_EXPORT
@@ -38,9 +38,9 @@ public:
 
     // Pixel-perfect rendering. When true, the camera's contribution is
     // rounded to whole logical pixels (suppresses sub-pixel camera shake);
-    // per-renderer pixel_snap still applies on top of this.
+    // per-renderer pixelSnap still applies on top of this.
     DEKI_EXPORT
-    bool pixel_snap = false;
+    bool pixelSnap = false;
 
     // Projection mode (forward-compat hook). Hidden in inspector — only
     // Orthographic is meaningful for the 2D software renderer today.
@@ -59,8 +59,8 @@ public:
     void SetProjectionMode(ProjectionMode mode) override { projection_mode = mode; }
 
     // ICamera: Clear color
-    void GetClearColor(uint8_t& r, uint8_t& g, uint8_t& b) const override { r = clear_color.r; g = clear_color.g; b = clear_color.b; }
-    void SetClearColor(uint8_t r, uint8_t g, uint8_t b) override { clear_color.r = r; clear_color.g = g; clear_color.b = b; }
+    void GetClearColor(uint8_t& r, uint8_t& g, uint8_t& b) const override { r = clearColor.r; g = clearColor.g; b = clearColor.b; }
+    void SetClearColor(uint8_t r, uint8_t g, uint8_t b) override { clearColor.r = r; clearColor.g = g; clearColor.b = b; }
 
     // Camera world position (meters), from owner DekiObject transform
     float GetPositionX() const;

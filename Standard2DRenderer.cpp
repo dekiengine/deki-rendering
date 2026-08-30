@@ -115,7 +115,7 @@ void Standard2DRenderer::ExecuteBuiltins(DekiObject* obj, RenderContext& ctx)
     auto* renderer = obj->GetComponent<RendererComponent>();
     if (renderer)
     {
-        const bool useOrderedDither = (renderer->alpha_mode == AlphaMode::OrderedDither);
+        const bool useOrderedDither = (renderer->alphaMode == AlphaMode::OrderedDither);
 
         QuadBlit::Source source;
         float pivotX, pivotY;
@@ -127,9 +127,9 @@ void Standard2DRenderer::ExecuteBuiltins(DekiObject* obj, RenderContext& ctx)
             ctx.camera->WorldToScreen(obj->GetWorldX(), obj->GetWorldY(),
                                        ctx.width, ctx.height, fScreenX, fScreenY);
 
-            // Temporarily disable clipping if renderer has ignore_clip set
+            // Temporarily disable clipping if renderer has ignoreClip set
             bool wasClipEnabled = QuadBlit::IsClipEnabled();
-            if (renderer->ignore_clip)
+            if (renderer->ignoreClip)
                 QuadBlit::SetClipEnabled(false);
 
             // Apply unit conversion: source pixels -> world meters -> screen pixels.
@@ -146,13 +146,13 @@ void Standard2DRenderer::ExecuteBuiltins(DekiObject* obj, RenderContext& ctx)
             const float drawScaleX = obj->GetWorldScaleX() * worldToScreen * invSourcePPM;
             const float drawScaleY = obj->GetWorldScaleY() * worldToScreen * invSourcePPM;
 
-            // pixel_snap = true → round to nearest pixel (sharp, sprite-art).
-            // pixel_snap = false → truncate (sub-pixel motion accumulates;
+            // pixelSnap = true → round to nearest pixel (sharp, sprite-art).
+            // pixelSnap = false → truncate (sub-pixel motion accumulates;
             // visually smoother under continuous movement, no bilinear yet).
-            const int32_t intScreenX = renderer->pixel_snap
+            const int32_t intScreenX = renderer->pixelSnap
                 ? static_cast<int32_t>(std::lround(fScreenX))
                 : static_cast<int32_t>(fScreenX);
-            const int32_t intScreenY = renderer->pixel_snap
+            const int32_t intScreenY = renderer->pixelSnap
                 ? static_cast<int32_t>(std::lround(fScreenY))
                 : static_cast<int32_t>(fScreenY);
 
@@ -177,7 +177,7 @@ void Standard2DRenderer::ExecuteBuiltins(DekiObject* obj, RenderContext& ctx)
             );
 
             // Restore clip state
-            if (renderer->ignore_clip)
+            if (renderer->ignoreClip)
                 QuadBlit::SetClipEnabled(wasClipEnabled);
 
             // Free intermediate buffer if we own it
