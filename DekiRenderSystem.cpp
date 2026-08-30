@@ -17,20 +17,20 @@
 #include <functional>
 
 DekiRenderSystem::DekiRenderSystem()
-: render_buffer(nullptr)
-, screen_width(0)
-, screen_height(0)
-, color_format(DekiColorFormat::RGB565)
+: m_RenderBuffer(nullptr)
+, m_ScreenWidth(0)
+, m_ScreenHeight(0)
+, m_ColorFormat(DekiColorFormat::RGB565)
 {
 }
 
 DekiRenderSystem::~DekiRenderSystem()
 {
-    if (render_buffer && m_OwnsBuffer)
+    if (m_RenderBuffer && m_OwnsBuffer)
     {
-        DekiMemory::FreeInternal(render_buffer);
+        DekiMemory::FreeInternal(m_RenderBuffer);
     }
-    render_buffer = nullptr;
+    m_RenderBuffer = nullptr;
 }
 
 bool DekiRenderSystem::Setup(int32_t width, int32_t height, DekiColorFormat format)
@@ -51,11 +51,11 @@ bool DekiRenderSystem::Setup(int32_t width, int32_t height, DekiColorFormat form
     }
 
     // Clean up existing buffers if any
-    if (render_buffer && m_OwnsBuffer)
+    if (m_RenderBuffer && m_OwnsBuffer)
     {
-        DekiMemory::FreeInternal(render_buffer);
+        DekiMemory::FreeInternal(m_RenderBuffer);
     }
-    render_buffer = nullptr;
+    m_RenderBuffer = nullptr;
     m_OwnsBuffer = true;
 
     int bytes_per_pixel = GetBytesPerPixel(format);
@@ -69,11 +69,11 @@ bool DekiRenderSystem::Setup(int32_t width, int32_t height, DekiColorFormat form
         uint8_t* directBuf = display->GetRenderBuffer(&dw, &dh);
         if (directBuf && dw == width && dh == height)
         {
-            render_buffer = directBuf;
+            m_RenderBuffer = directBuf;
             m_OwnsBuffer = false;
-            screen_width = width;
-            screen_height = height;
-            color_format = format;
+            m_ScreenWidth = width;
+            m_ScreenHeight = height;
+            m_ColorFormat = format;
             m_IsFirstRender = true;
             return true;
         }
@@ -81,22 +81,22 @@ bool DekiRenderSystem::Setup(int32_t width, int32_t height, DekiColorFormat form
     else
     {
         // No display yet — defer allocation until display is available
-        screen_width = width;
-        screen_height = height;
-        color_format = format;
+        m_ScreenWidth = width;
+        m_ScreenHeight = height;
+        m_ColorFormat = format;
         return true;
     }
 
     // Allocate in internal RAM for fast random-access rendering
-    render_buffer = (uint8_t*)DekiMemory::AllocateInternal(buffer_size, "DekiRenderSystem::Setup-framebuffer");
-    if (!render_buffer)
+    m_RenderBuffer = (uint8_t*)DekiMemory::AllocateInternal(buffer_size, "DekiRenderSystem::Setup-framebuffer");
+    if (!m_RenderBuffer)
     {
         return false;
     }
 
-    screen_width = width;
-    screen_height = height;
-    color_format = format;
+    m_ScreenWidth = width;
+    m_ScreenHeight = height;
+    m_ColorFormat = format;
 
     // Reset first render flag and camera cache
     m_IsFirstRender = true;
@@ -123,11 +123,11 @@ void DekiRenderSystem::Render(Scene* current_scene)
             int32_t dw = 0, dh = 0;
             uint8_t* buf = display->GetRenderBuffer(&dw, &dh);
             if (buf)
-                render_buffer = buf;
+                m_RenderBuffer = buf;
         }
     }
 
-    if (!render_buffer)
+    if (!m_RenderBuffer)
     {
         return;
     }
@@ -182,7 +182,7 @@ void DekiRenderSystem::Render(Scene* current_scene)
     ClearBuffer(camera->clearColor);
 
     // Delegate to the active renderer
-    RenderContext ctx{camera, render_buffer, screen_width, screen_height, color_format};
+    RenderContext ctx{camera, m_RenderBuffer, m_ScreenWidth, m_ScreenHeight, m_ColorFormat};
     m_Renderer->Render(current_scene, ctx);
 }
 
@@ -213,9 +213,9 @@ void DekiRenderSystem::RenderToBufferStatic(Scene* scene, ICamera* camera,
 
 void DekiRenderSystem::ClearBuffer(uint8_t r, uint8_t g, uint8_t b)
 {
-    if (!render_buffer) return;
-    size_t pixel_count = screen_width * screen_height;
-    switch (color_format)
+    if (!m_RenderBuffer) return;
+    size_t pixel_count = m_ScreenWidth * m_ScreenHeight;
+    switch (m_ColorFormat)
     {
         case DekiColorFormat::RGB565:
         {
@@ -223,18 +223,18 @@ void DekiRenderSystem::ClearBuffer(uint8_t r, uint8_t g, uint8_t b)
             // memset works when both bytes of the RGB565 value are the same
             if ((rgb565 >> 8) == (rgb565 & 0xFF))
             {
-                memset(render_buffer, rgb565 & 0xFF, pixel_count * 2);
+                memset(m_RenderBuffer, rgb565 & 0xFF, pixel_count * 2);
             }
             else
             {
                 // Fill using memcpy doubling -- faster than a loop
                 uint32_t pattern = (rgb565 << 16) | rgb565;
                 size_t total = pixel_count * 2;
-                memcpy(render_buffer, &pattern, 4);
+                memcpy(m_RenderBuffer, &pattern, 4);
                 for (size_t written = 4; written < total; written *= 2)
                 {
                     size_t chunk = (written * 2 <= total) ? written : total - written;
-                    memcpy(render_buffer + written, render_buffer, chunk);
+                    memcpy(m_RenderBuffer + written, m_RenderBuffer, chunk);
                 }
             }
             break;
@@ -244,16 +244,16 @@ void DekiRenderSystem::ClearBuffer(uint8_t r, uint8_t g, uint8_t b)
             for (size_t i = 0; i < pixel_count; i++)
             {
                 size_t index = i * 3;
-                render_buffer[index] = r;
-                render_buffer[index + 1] = g;
-                render_buffer[index + 2] = b;
+                m_RenderBuffer[index] = r;
+                m_RenderBuffer[index + 1] = g;
+                m_RenderBuffer[index + 2] = b;
             }
             break;
         }
         case DekiColorFormat::ARGB8888:
         {
             uint32_t argb8888 = (0xFF << 24) | (r << 16) | (g << 8) | b;
-            uint32_t* buffer32 = (uint32_t*)render_buffer;
+            uint32_t* buffer32 = (uint32_t*)m_RenderBuffer;
             for (size_t i = 0; i < pixel_count; i++)
             {
                 buffer32[i] = argb8888;
@@ -268,9 +268,9 @@ void DekiRenderSystem::ClearBuffer(uint8_t r, uint8_t g, uint8_t b)
             for (size_t i = 0; i < pixel_count; i++)
             {
                 size_t idx = i * 3;
-                render_buffer[idx]     = lo;
-                render_buffer[idx + 1] = hi;
-                render_buffer[idx + 2] = 0xFF;  // opaque
+                m_RenderBuffer[idx]     = lo;
+                m_RenderBuffer[idx + 1] = hi;
+                m_RenderBuffer[idx + 2] = 0xFF;  // opaque
             }
             break;
         }
@@ -284,7 +284,7 @@ void DekiRenderSystem::ClearBuffer(const deki::Color& color)
 
 DEKI_FAST_ATTR void DekiRenderSystem::GetPixel(int32_t x, int32_t y, uint8_t* r, uint8_t* g, uint8_t* b) const
 {
-    if (!render_buffer || !r || !g || !b)
+    if (!m_RenderBuffer || !r || !g || !b)
     {
         if (r) *r = 0;
         if (g) *g = 0;
@@ -293,19 +293,19 @@ DEKI_FAST_ATTR void DekiRenderSystem::GetPixel(int32_t x, int32_t y, uint8_t* r,
     }
 
     // Bounds check
-    if (x < 0 || x >= screen_width || y < 0 || y >= screen_height)
+    if (x < 0 || x >= m_ScreenWidth || y < 0 || y >= m_ScreenHeight)
     {
         *r = *g = *b = 0;
         return;
     }
 
     // Get pixel from render buffer based on format
-    switch (color_format)
+    switch (m_ColorFormat)
     {
         case DekiColorFormat::RGB565:
         {
-            size_t pixel_index = (y * screen_width + x) * 2;
-            uint16_t pixel = *((uint16_t*)(render_buffer + pixel_index));
+            size_t pixel_index = (y * m_ScreenWidth + x) * 2;
+            uint16_t pixel = *((uint16_t*)(m_RenderBuffer + pixel_index));
             *r = ((pixel >> 11) & 0x1F) << 3;  // 5 bits -> 8 bits
             *g = ((pixel >> 5) & 0x3F) << 2;  // 6 bits -> 8 bits
             *b = (pixel & 0x1F) << 3;  // 5 bits -> 8 bits
@@ -313,16 +313,16 @@ DEKI_FAST_ATTR void DekiRenderSystem::GetPixel(int32_t x, int32_t y, uint8_t* r,
         }
         case DekiColorFormat::RGB888:
         {
-            size_t pixel_index = (y * screen_width + x) * 3;
-            *r = render_buffer[pixel_index];
-            *g = render_buffer[pixel_index + 1];
-            *b = render_buffer[pixel_index + 2];
+            size_t pixel_index = (y * m_ScreenWidth + x) * 3;
+            *r = m_RenderBuffer[pixel_index];
+            *g = m_RenderBuffer[pixel_index + 1];
+            *b = m_RenderBuffer[pixel_index + 2];
             break;
         }
         case DekiColorFormat::ARGB8888:
         {
-            size_t pixel_index = (y * screen_width + x) * 4;
-            uint32_t pixel = *((uint32_t*)(render_buffer + pixel_index));
+            size_t pixel_index = (y * m_ScreenWidth + x) * 4;
+            uint32_t pixel = *((uint32_t*)(m_RenderBuffer + pixel_index));
             *r = (pixel >> 16) & 0xFF;
             *g = (pixel >> 8) & 0xFF;
             *b = pixel & 0xFF;
@@ -330,8 +330,8 @@ DEKI_FAST_ATTR void DekiRenderSystem::GetPixel(int32_t x, int32_t y, uint8_t* r,
         }
         case DekiColorFormat::RGB565A8:
         {
-            size_t pixel_index = (y * screen_width + x) * 3;
-            uint16_t pixel = *((uint16_t*)(render_buffer + pixel_index));
+            size_t pixel_index = (y * m_ScreenWidth + x) * 3;
+            uint16_t pixel = *((uint16_t*)(m_RenderBuffer + pixel_index));
             *r = ((pixel >> 11) & 0x1F) << 3;
             *g = ((pixel >> 5) & 0x3F) << 2;
             *b = (pixel & 0x1F) << 3;

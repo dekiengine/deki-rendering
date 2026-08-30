@@ -44,7 +44,7 @@ public:
 
     // Projection mode (forward-compat hook). Hidden in inspector — only
     // Orthographic is meaningful for the 2D software renderer today.
-    ProjectionMode projection_mode = ProjectionMode::Orthographic;
+    ProjectionMode projectionMode = ProjectionMode::Orthographic;
 
     CameraComponent();
     virtual ~CameraComponent() = default;
@@ -55,8 +55,8 @@ public:
     void SetPixelsPerMeter(float ppm) override;
 
     // ICamera: Projection mode (forward-compat hook).
-    ProjectionMode GetProjectionMode() const override { return projection_mode; }
-    void SetProjectionMode(ProjectionMode mode) override { projection_mode = mode; }
+    ProjectionMode GetProjectionMode() const override { return projectionMode; }
+    void SetProjectionMode(ProjectionMode mode) override { projectionMode = mode; }
 
     // ICamera: Clear color
     void GetClearColor(uint8_t& r, uint8_t& g, uint8_t& b) const override { r = clearColor.r; g = clearColor.g; b = clearColor.b; }
@@ -67,16 +67,16 @@ public:
     float GetPositionY() const;
 
     // Visible world size (meters) for a given screen size in pixels.
-    float GetVisibleWidth(int32_t screen_width) const;
-    float GetVisibleHeight(int32_t screen_height) const;
+    float GetVisibleWidth(int32_t m_ScreenWidth) const;
+    float GetVisibleHeight(int32_t m_ScreenHeight) const;
 
     // ICamera: Coordinate conversion (float in, float out)
     void WorldToScreen(float world_x, float world_y,
-                       int screen_width, int screen_height,
+                       int m_ScreenWidth, int m_ScreenHeight,
                        float& screen_x, float& screen_y) const override;
 
     void ScreenToWorld(float screen_x, float screen_y,
-                       int screen_width, int screen_height,
+                       int m_ScreenWidth, int m_ScreenHeight,
                        float& world_x, float& world_y) const override;
 };
 

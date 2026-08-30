@@ -53,20 +53,20 @@ float CameraComponent::GetPositionY() const
     return owner ? owner->GetWorldY() : 0.0f;
 }
 
-float CameraComponent::GetVisibleWidth(int32_t screen_width) const
+float CameraComponent::GetVisibleWidth(int32_t m_ScreenWidth) const
 {
     const float ppm = GetPixelsPerMeter();
-    return (ppm > 0.0f) ? (static_cast<float>(screen_width) / ppm) : 0.0f;
+    return (ppm > 0.0f) ? (static_cast<float>(m_ScreenWidth) / ppm) : 0.0f;
 }
 
-float CameraComponent::GetVisibleHeight(int32_t screen_height) const
+float CameraComponent::GetVisibleHeight(int32_t m_ScreenHeight) const
 {
     const float ppm = GetPixelsPerMeter();
-    return (ppm > 0.0f) ? (static_cast<float>(screen_height) / ppm) : 0.0f;
+    return (ppm > 0.0f) ? (static_cast<float>(m_ScreenHeight) / ppm) : 0.0f;
 }
 
 void CameraComponent::WorldToScreen(float world_x, float world_y,
-                                     int screen_width, int screen_height,
+                                     int m_ScreenWidth, int m_ScreenHeight,
                                      float& screen_x, float& screen_y) const
 {
     // World: meters, center origin, Y UP (positive Y = up)
@@ -88,19 +88,19 @@ void CameraComponent::WorldToScreen(float world_x, float world_y,
     const float rel_x = world_x - cam_x;
     const float rel_y = world_y - cam_y;
 
-    screen_x = rel_x * ppm + static_cast<float>(screen_width) * 0.5f;
-    screen_y = -rel_y * ppm + static_cast<float>(screen_height) * 0.5f; // Negate Y: world Y+ is up
+    screen_x = rel_x * ppm + static_cast<float>(m_ScreenWidth) * 0.5f;
+    screen_y = -rel_y * ppm + static_cast<float>(m_ScreenHeight) * 0.5f; // Negate Y: world Y+ is up
 }
 
 void CameraComponent::ScreenToWorld(float screen_x, float screen_y,
-                                     int screen_width, int screen_height,
+                                     int m_ScreenWidth, int m_ScreenHeight,
                                      float& world_x, float& world_y) const
 {
     // Inverse of WorldToScreen.
     const float ppm = GetPixelsPerMeter();
     const float inv = (ppm > 0.0f) ? (1.0f / ppm) : 0.0f;
-    const float rel_x = (screen_x - static_cast<float>(screen_width) * 0.5f) * inv;
-    const float rel_y = (screen_y - static_cast<float>(screen_height) * 0.5f) * inv;
+    const float rel_x = (screen_x - static_cast<float>(m_ScreenWidth) * 0.5f) * inv;
+    const float rel_y = (screen_y - static_cast<float>(m_ScreenHeight) * 0.5f) * inv;
 
     world_x = rel_x + GetPositionX();
     world_y = -rel_y + GetPositionY(); // Negate Y: screen Y down -> world Y up

@@ -38,13 +38,13 @@ int32_t RendererComponent::GetSortingOrder() const
 #ifdef V_ENGINE_ENABLE_MASK
 void RendererComponent::SetMaskMode(MaskRenderMode mode, uint8_t stencilId)
 {
-    mask_mode = mode;
-    stencil_id = stencilId;
+    maskMode = mode;
+    stencilId = stencilId;
 }
 
 void RendererComponent::ClearMask()
 {
-    mask_mode = MaskRenderMode::None;
-    stencil_id = 0;
+    maskMode = MaskRenderMode::None;
+    stencilId = 0;
 }
 #endif

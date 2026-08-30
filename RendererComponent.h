@@ -76,8 +76,8 @@ class RendererComponent : public DekiBehaviour, public ISortableProvider
 
 #ifdef V_ENGINE_ENABLE_MASK
     // Mask support - minimal memory overhead (2 bytes total)
-    MaskRenderMode mask_mode = MaskRenderMode::None;
-    uint8_t stencil_id = 0;  // 0 = no stencil test, 1-255 = stencil values
+    MaskRenderMode maskMode = MaskRenderMode::None;
+    uint8_t stencilId = 0;  // 0 = no stencil test, 1-255 = stencil values
 #endif
 
     void SetSortingOrder(int order);

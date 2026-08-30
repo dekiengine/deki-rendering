@@ -14,10 +14,10 @@ class DekiRenderer;
 class DekiRenderSystem : public IDekiRenderSystem
 {
    private:
-    uint8_t* render_buffer;
-    int32_t screen_width;
-    int32_t screen_height;
-    DekiColorFormat color_format;
+    uint8_t* m_RenderBuffer;
+    int32_t m_ScreenWidth;
+    int32_t m_ScreenHeight;
+    DekiColorFormat m_ColorFormat;
     bool m_IsFirstRender = true;
     bool m_OwnsBuffer = true;
 
@@ -41,10 +41,10 @@ class DekiRenderSystem : public IDekiRenderSystem
     DekiRenderer* GetRenderer() const override { return m_Renderer; }
 
     // Access methods for external systems (like HAL)
-    const uint8_t* GetFrameBuffer() const override { return render_buffer; }
-    int32_t GetScreenWidth() const override { return screen_width; }
-    int32_t GetScreenHeight() const override { return screen_height; }
-    DekiColorFormat GetColorFormat() const override { return color_format; }
+    const uint8_t* GetFrameBuffer() const override { return m_RenderBuffer; }
+    int32_t GetScreenWidth() const override { return m_ScreenWidth; }
+    int32_t GetScreenHeight() const override { return m_ScreenHeight; }
+    DekiColorFormat GetColorFormat() const override { return m_ColorFormat; }
 
     // Pixel operations (optimized for fast execution)
     void GetPixel(int32_t x, int32_t y, uint8_t* r, uint8_t* g, uint8_t* b) const;
