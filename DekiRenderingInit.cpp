@@ -73,9 +73,9 @@ void DekiRendering_InitSystem()
     }
 
     // 3b. Auto-attach passes flagged autoAttach=true that the project's
-    //     .rpipeline didn't already list. This lets module-owned passes
+    //     .rpipeline didn't already list. This lets package-owned passes
     //     (e.g. tilemap) participate without forcing every project to know
-    //     module pass names. Projects can still mention an autoAttach pass
+    //     package pass names. Projects can still mention an autoAttach pass
     //     explicitly in .rpipeline to control its ordering.
     if (s_PassReceiver)
     {
@@ -89,7 +89,7 @@ void DekiRendering_InitSystem()
         }
     }
 
-    // 3c. Install a hook so passes registered after this point (e.g. modules
+    // 3c. Install a hook so passes registered after this point (e.g. packages
     //     that load after deki-rendering inits) still get auto-attached. This
     //     is the path deki-tilemap takes — its DLL loads after the rendering
     //     system has already finished its first scan.
@@ -142,7 +142,7 @@ void DekiRendering_ShutdownSystem()
     DekiEngine::GetInstance().SetRenderSystem(nullptr);
 
     // Drop the late-attach hook so a stale lambda doesn't reference a freed
-    // renderer if a module re-registers after shutdown.
+    // renderer if a package re-registers after shutdown.
     DekiRenderPassRegistry::SetAutoAttachCallback(nullptr);
 
     for (int i = 0; i < s_PassCount; i++)

@@ -19,7 +19,7 @@ namespace QuadBlit
 // ============================================================================
 // Kernel dispatch table
 // ============================================================================
-// Default-null. Platform modules call RegisterKernel(op, fn) at init to plug in
+// Default-null. Platform packages call RegisterKernel(op, fn) at init to plug in
 // SIMD implementations. The blit dispatcher checks for a non-null entry only
 // when all preconditions hold (format, no scale, no rotation, alignment, no
 // tint where applicable).

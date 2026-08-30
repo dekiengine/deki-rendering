@@ -206,7 +206,7 @@ void DekiRenderSystem::RenderToBufferStatic(Scene* scene, ICamera* camera,
         return;
 
     // RenderContext uses CameraComponent* internally — safe cast since
-    // the rendering module owns CameraComponent and knows the concrete type
+    // the rendering package owns CameraComponent and knows the concrete type
     RenderContext ctx{static_cast<CameraComponent*>(camera), buffer, width, height, format};
     renderer->Render(scene, ctx);
 }

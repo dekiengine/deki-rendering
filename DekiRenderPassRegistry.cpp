@@ -27,7 +27,7 @@ void Register(const char* name, RenderPassInfo info)
 
     GetRegistry()[name] = info;
 
-    // Late-attach for modules that load after DekiRendering_InitSystem already
+    // Late-attach for packages that load after DekiRendering_InitSystem already
     // ran its scan. The callback is installed by DekiRendering_InitSystem.
     if (info.autoAttach)
     {

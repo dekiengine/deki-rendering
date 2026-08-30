@@ -193,7 +193,7 @@ namespace QuadBlit
     // Per-row kernel dispatch
     // ============================================================================
     //
-    // Platform modules can register hand-tuned SIMD kernels for specific
+    // Platform packages can register hand-tuned SIMD kernels for specific
     // format pairs. The blit dispatcher checks preconditions (format, no
     // rotation, no scale, alignment, no tint) up-front; when they hold AND
     // a kernel is registered, the SIMD kernel runs. Otherwise the existing
@@ -246,7 +246,7 @@ namespace QuadBlit
                                  uint8_t tintR, uint8_t tintG, uint8_t tintB, uint8_t tintA);
 
     // Register a kernel for the given op. Pass nullptr to clear.
-    // Typically called once at module init from a platform integration module.
+    // Typically called once at package init from a platform integration package.
     void RegisterKernel(KernelOp op, RowKernelFn fn);
 
     // Returns the registered kernel for the op, or nullptr if none.

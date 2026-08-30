@@ -1,17 +1,17 @@
 #pragma once
 
 /**
- * @file DekiRenderingModule.h
- * @brief Central header for the Deki Rendering Module
+ * @file DekiRenderingPackage.h
+ * @brief Central header for the Deki Rendering Package
  *
- * This module provides the rendering subsystem:
+ * This package provides the rendering subsystem:
  * - DekiRenderSystem: framebuffer management
  * - Standard2DRenderer: default 2D render pipeline
  * - QuadBlit: 2D blitting with transforms
  * - RendererComponent: abstract base for renderable components
  * - CameraComponent: camera/projection
  *
- * The engine can run without this module for headless/automation use cases.
+ * The engine can run without this package for headless/automation use cases.
  */
 
 // DLL export macro

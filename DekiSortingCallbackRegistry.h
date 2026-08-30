@@ -4,7 +4,7 @@
  * @file DekiSortingCallbackRegistry.h
  * @brief Registry for sorting callbacks — always-on, not tied to passes
  *
- * Modules self-register sorting callbacks at static init time.
+ * Packages self-register sorting callbacks at static init time.
  * All registered callbacks are added to the renderer at startup,
  * regardless of which passes are in the pipeline.
  *

@@ -4,7 +4,7 @@
  * @file DekiRenderPassRegistry.h
  * @brief Factory registry for RenderPass implementations
  *
- * Modules self-register their render passes at static init time.
+ * Packages self-register their render passes at static init time.
  * The render pipeline asset (.rpipeline) specifies which passes to activate.
  * At startup, the rendering system creates and adds the configured passes.
  *
@@ -43,8 +43,8 @@ struct RenderPassInfo
 
     // If true, the rendering init auto-attaches this pass to the active
     // Standard2DRenderer when it isn't already listed in the project's
-    // .rpipeline. Use for passes that *must* run whenever their owning module
-    // is loaded (e.g. tilemaps) — avoids forcing every project to know module
+    // .rpipeline. Use for passes that *must* run whenever their owning package
+    // is loaded (e.g. tilemaps) — avoids forcing every project to know package
     // pass names. Projects can still override by listing the pass explicitly
     // in .rpipeline to control ordering relative to other passes.
     bool autoAttach = false;
@@ -69,8 +69,8 @@ const RenderPassInfo* Get(const char* name);
 /**
  * @brief Remove a previously registered render pass
  *
- * Modules that register a pass MUST unregister on DLL detach. Otherwise the
- * registry holds a std::function whose target lives in the unloaded module's
+ * Packages that register a pass MUST unregister on DLL detach. Otherwise the
+ * registry holds a std::function whose target lives in the unloaded package's
  * code; destroying that std::function later (when deki-rendering unloads)
  * jumps to unmapped memory.
  *
@@ -91,8 +91,8 @@ void GetAllNames(std::vector<std::string>& outNames);
  * @brief Install a callback invoked whenever an autoAttach pass is registered.
  *
  * DekiRenderingInit installs this after the active renderer is created so a
- * module that loads after the rendering system inits (e.g. deki-tilemap, which
- * loads after deki-rendering) still gets its pass attached. Modules don't need
+ * package that loads after the rendering system inits (e.g. deki-tilemap, which
+ * loads after deki-rendering) still gets its pass attached. Packages don't need
  * to know about it.
  */
 using AutoAttachCallback = std::function<void(const char*, const RenderPassInfo&)>;

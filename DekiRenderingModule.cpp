@@ -1,18 +1,18 @@
 /**
- * @file DekiRenderingModule.cpp
- * @brief Module entry point for deki-rendering DLL
+ * @file DekiRenderingPackage.cpp
+ * @brief Package entry point for deki-rendering DLL
  *
  * Registers the rendering subsystem with DekiEngine.
  * For editor builds, this is a separate DLL that can be hot-reloaded.
  * For runtime builds, sources are statically linked into the engine.
  */
 
-#include "DekiRenderingModule.h"
+#include "DekiRenderingPackage.h"
 #include "DekiRenderingInit.h"
 #include "DekiEngine.h"
 #include "DekiLogSystem.h"
 #include "interop/DekiPlugin.h"
-#include "DekiModuleFeatureMeta.h"
+#include "DekiPackageFeatureMeta.h"
 #include "CameraComponent.h"
 #include "RendererComponent.h"
 #include "reflection/ComponentRegistry.h"
@@ -40,7 +40,7 @@ DEKI_RENDERING_API int DekiRendering_EnsureRegistered(void)
     DekiRendering_RegisterComponents();
 
     // Initialize the rendering system (idempotent — may already be initialized
-    // by deki_init_module_systems() during DekiEngine::Initialize())
+    // by deki_init_package_systems() during DekiEngine::Initialize())
     DekiRendering_InitSystem();
 
     return DekiRendering_GetAutoComponentCount();
@@ -58,13 +58,13 @@ extern "C" {
 #ifndef DEKI_PLUGIN_EXPORTS
 DEKI_PLUGIN_API const char* DekiPlugin_GetName(void)
 {
-    return "Deki Rendering Module";
+    return "Deki Rendering Package";
 }
 
 DEKI_PLUGIN_API const char* DekiPlugin_GetVersion(void)
 {
-#ifdef DEKI_MODULE_VERSION
-    return DEKI_MODULE_VERSION;
+#ifdef DEKI_PACKAGE_VERSION
+    return DEKI_PACKAGE_VERSION;
 #else
     return "0.0.0-dev";
 #endif
@@ -105,13 +105,13 @@ DEKI_PLUGIN_API void DekiPlugin_RegisterComponents(void)
 #endif // DEKI_PLUGIN_EXPORTS (resume after feature data)
 
 // =============================================================================
-// Module Feature API
+// Package Feature API
 // =============================================================================
 
 static const char* s_CameraGuids[] = { CameraComponent::StaticGuid };
 static const char* s_RendererGuids[] = { RendererComponent::StaticGuid };
 
-static const DekiModuleFeatureInfo s_Features[] = {
+static const DekiPackageFeatureInfo s_Features[] = {
     {"camera",   "Camera",   "2D camera with projection",      true, "",  s_CameraGuids,   1},
     {"renderer", "Renderer", "Base renderer component",        true, "",  s_RendererGuids,  1},
 };
@@ -122,7 +122,7 @@ DEKI_PLUGIN_API int DekiPlugin_GetFeatureCount(void)
     return sizeof(s_Features) / sizeof(s_Features[0]);
 }
 
-DEKI_PLUGIN_API const DekiModuleFeatureInfo* DekiPlugin_GetFeature(int index)
+DEKI_PLUGIN_API const DekiPackageFeatureInfo* DekiPlugin_GetFeature(int index)
 {
     if (index < 0 || index >= DekiPlugin_GetFeatureCount())
         return nullptr;
@@ -134,7 +134,7 @@ DEKI_PLUGIN_API const DekiModuleFeatureInfo* DekiPlugin_GetFeature(int index)
 } // extern "C"
 
 // =============================================================================
-// Module-specific API
+// Package-specific API
 // =============================================================================
 
 DEKI_RENDERING_API const char* DekiRendering_GetName(void)
@@ -147,7 +147,7 @@ DEKI_RENDERING_API int DekiRendering_GetFeatureCount(void)
     return static_cast<int>(sizeof(s_Features) / sizeof(s_Features[0]));
 }
 
-DEKI_RENDERING_API const DekiModuleFeatureInfo* DekiRendering_GetFeature(int index)
+DEKI_RENDERING_API const DekiPackageFeatureInfo* DekiRendering_GetFeature(int index)
 {
     if (index < 0 || index >= DekiRendering_GetFeatureCount())
         return nullptr;

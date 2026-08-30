@@ -4,7 +4,7 @@
  * @file DekiRendererRegistry.h
  * @brief Factory registry for DekiRenderer implementations
  *
- * Modules self-register their renderers at static init time.
+ * Packages self-register their renderers at static init time.
  * The rendering system creates the configured renderer at startup
  * by looking up the name from ProjectSettings.
  *
