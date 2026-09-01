@@ -277,7 +277,7 @@ void DekiRenderSystem::ClearBuffer(uint8_t r, uint8_t g, uint8_t b)
     }
 }
 
-void DekiRenderSystem::ClearBuffer(const deki::Color& color)
+void DekiRenderSystem::ClearBuffer(const Deki::Color& color)
 {
     ClearBuffer(color.r, color.g, color.b);
 }
@@ -340,11 +340,11 @@ DEKI_FAST_ATTR void DekiRenderSystem::GetPixel(int32_t x, int32_t y, uint8_t* r,
     }
 }
 
-DEKI_FAST_ATTR deki::Color DekiRenderSystem::GetPixel(int32_t x, int32_t y) const
+DEKI_FAST_ATTR Deki::Color DekiRenderSystem::GetPixel(int32_t x, int32_t y) const
 {
     uint8_t r, g, b;
     GetPixel(x, y, &r, &g, &b);
-    return deki::Color(r, g, b);
+    return Deki::Color(r, g, b);
 }
 
 int DekiRenderSystem::GetBytesPerPixel(DekiColorFormat format)

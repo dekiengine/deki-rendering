@@ -34,7 +34,7 @@ class DekiRenderSystem : public IDekiRenderSystem
     bool Setup(int32_t width, int32_t height, DekiColorFormat format) override;
     void Render(Scene* current_scene) override;
     void ClearBuffer(uint8_t r, uint8_t g, uint8_t b);
-    void ClearBuffer(const deki::Color& color);
+    void ClearBuffer(const Deki::Color& color);
 
     // Renderer management
     void SetRenderer(DekiRenderer* renderer) override { m_Renderer = renderer; }
@@ -48,7 +48,7 @@ class DekiRenderSystem : public IDekiRenderSystem
 
     // Pixel operations (optimized for fast execution)
     void GetPixel(int32_t x, int32_t y, uint8_t* r, uint8_t* g, uint8_t* b) const;
-    deki::Color GetPixel(int32_t x, int32_t y) const;
+    Deki::Color GetPixel(int32_t x, int32_t y) const;
 
     int GetBytesPerPixel(DekiColorFormat format);
 

@@ -30,7 +30,7 @@ public:
     DEKI_DESCRIPTION("The view: clear color, zoom (pixels per meter) and pixel snap.")
 
     DEKI_EXPORT
-    deki::Color clearColor = deki::Color(49, 77, 121);  // Background clear color
+    Deki::Color clearColor = Deki::Color(49, 77, 121);  // Background clear color
 
     // Framebuffer pixels per world meter. 0 = inherit project default.
     DEKI_EXPORT

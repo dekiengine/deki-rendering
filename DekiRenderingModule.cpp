@@ -12,7 +12,6 @@
 #include "DekiEngine.h"
 #include "DekiLogSystem.h"
 #include "interop/DekiPlugin.h"
-#include "DekiPackageFeatureMeta.h"
 #include "CameraComponent.h"
 #include "RendererComponent.h"
 #include "reflection/ComponentRegistry.h"
@@ -70,11 +69,6 @@ DEKI_PLUGIN_API const char* DekiPlugin_GetVersion(void)
 #endif
 }
 
-DEKI_PLUGIN_API const char* DekiPlugin_GetReflectionJson(void)
-{
-    return "{}";
-}
-
 DEKI_PLUGIN_API int DekiPlugin_Init(void)
 {
     return 0;
@@ -102,33 +96,6 @@ DEKI_PLUGIN_API void DekiPlugin_RegisterComponents(void)
     DekiRendering_EnsureRegistered();
 }
 
-#endif // DEKI_PLUGIN_EXPORTS (resume after feature data)
-
-// =============================================================================
-// Package Feature API
-// =============================================================================
-
-static const char* s_CameraGuids[] = { CameraComponent::StaticGuid };
-static const char* s_RendererGuids[] = { RendererComponent::StaticGuid };
-
-static const DekiPackageFeatureInfo s_Features[] = {
-    {"camera",   "Camera",   "2D camera with projection",      true, "",  s_CameraGuids,   1},
-    {"renderer", "Renderer", "Base renderer component",        true, "",  s_RendererGuids,  1},
-};
-
-#ifndef DEKI_PLUGIN_EXPORTS
-DEKI_PLUGIN_API int DekiPlugin_GetFeatureCount(void)
-{
-    return sizeof(s_Features) / sizeof(s_Features[0]);
-}
-
-DEKI_PLUGIN_API const DekiPackageFeatureInfo* DekiPlugin_GetFeature(int index)
-{
-    if (index < 0 || index >= DekiPlugin_GetFeatureCount())
-        return nullptr;
-    return &s_Features[index];
-}
-
 #endif // DEKI_PLUGIN_EXPORTS
 
 } // extern "C"
@@ -140,18 +107,6 @@ DEKI_PLUGIN_API const DekiPackageFeatureInfo* DekiPlugin_GetFeature(int index)
 DEKI_RENDERING_API const char* DekiRendering_GetName(void)
 {
     return "Rendering";
-}
-
-DEKI_RENDERING_API int DekiRendering_GetFeatureCount(void)
-{
-    return static_cast<int>(sizeof(s_Features) / sizeof(s_Features[0]));
-}
-
-DEKI_RENDERING_API const DekiPackageFeatureInfo* DekiRendering_GetFeature(int index)
-{
-    if (index < 0 || index >= DekiRendering_GetFeatureCount())
-        return nullptr;
-    return &s_Features[index];
 }
 
 #endif // DEKI_EDITOR

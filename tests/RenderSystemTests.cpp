@@ -217,7 +217,7 @@ TEST_F(RenderSystemSetupTest, GetPixel_ColorOverload)
     rs.Setup(4, 4, DekiColorFormat::RGB888);
     rs.ClearBuffer(100, 150, 200);
 
-    deki::Color c = rs.GetPixel(0, 0);
+    Deki::Color c = rs.GetPixel(0, 0);
     EXPECT_EQ(c.r, 100);
     EXPECT_EQ(c.g, 150);
     EXPECT_EQ(c.b, 200);
