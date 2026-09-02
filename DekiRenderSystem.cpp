@@ -14,7 +14,6 @@
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
-#include <functional>
 
 DekiRenderSystem::DekiRenderSystem()
 : m_RenderBuffer(nullptr)
@@ -152,20 +151,15 @@ void DekiRenderSystem::Render(Scene* current_scene)
     if (!m_CachedCamera)
     {
         // Search recursively through scene objects
-        std::function<CameraComponent*(DekiObject*)> findCamera = [&](DekiObject* obj) -> CameraComponent* {
-            CameraComponent* cam = obj->GetComponent<CameraComponent>();
-            if (cam) return cam;
-            for (auto* child : obj->GetChildren())
-            {
-                cam = findCamera(child);
-                if (cam) return cam;
-            }
-            return nullptr;
-        };
         for (DekiObject* obj : current_scene->GetObjects())
         {
-            m_CachedCamera = findCamera(obj);
-            if (m_CachedCamera) break;
+            DekiObject* holder = FindInSubtree(obj, [](DekiObject* o)
+                                               { return o->GetComponent<CameraComponent>() != nullptr; });
+            if (holder)
+            {
+                m_CachedCamera = holder->GetComponent<CameraComponent>();
+                break;
+            }
         }
 
         // Fall back to Persistent objects
