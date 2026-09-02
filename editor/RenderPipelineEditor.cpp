@@ -1,3 +1,6 @@
+// Editor-only translation unit (a firmware build compiles nothing from it).
+#ifdef DEKI_EDITOR
+
 /**
  * @file RenderPipelineEditor.cpp
  * @brief AssetTypeEditor for RenderPipeline .asset files
@@ -206,3 +209,5 @@ public:
 };
 
 REGISTER_EDITOR(RenderPipelineEditor)
+
+#endif  // DEKI_EDITOR
