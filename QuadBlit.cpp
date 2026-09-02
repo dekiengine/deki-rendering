@@ -1791,6 +1791,30 @@ static DEKI_FAST_ATTR void BlitScaled_RGB565A8_to_RGB565_Dither(
 // dither path matches the source/target pair, so every dither blit lands
 // somewhere — no silent fallback to alpha blend.
 
+// Map a sampled source coordinate through the Source's flip flags. Inverse
+// of Tiled's order (transpose, then H, then V), so applied V, H, then D.
+static inline void ApplyFlips(const Source& s, int32_t& x, int32_t& y)
+{
+    if (s.flipV) y = s.height - 1 - y;
+    if (s.flipH) x = s.width - 1 - x;
+    if (s.flipD)
+    {
+        // A transpose only makes sense for a square source; Tiled only sets
+        // it on tiles, which are square. Anything else keeps its orientation.
+        if (s.width == s.height)
+        {
+            const int32_t t = x;
+            x = y;
+            y = t;
+        }
+    }
+}
+
+static inline bool HasFlips(const Source& s)
+{
+    return s.flipH || s.flipV || s.flipD;
+}
+
 static DEKI_FAST_ATTR void BlitScaledDithered_Generic(
     const Source& source, uint8_t* target, int32_t targetWidth, int32_t /*targetHeight*/,
     DekiColorFormat targetFormat,
@@ -1815,9 +1839,13 @@ static DEKI_FAST_ATTR void BlitScaledDithered_Generic(
         {
             int32_t srcX = (xStep == 0) ? (px - destX)
                                         : (int32_t)(((uint32_t)(px - destX) * xStep) >> 16);
+            // Per-pixel copies: in the scaled kernels srcY is the row's, and a
+            // transpose must not rewrite it for the pixels that follow.
+            int32_t sampleX = srcX, sampleY = srcY;
+            ApplyFlips(source, sampleX, sampleY);
 
             uint8_t r, g, b, a;
-            ExtractSourcePixel(source, srcX, srcY, r, g, b, a);
+            ExtractSourcePixel(source, sampleX, sampleY, r, g, b, a);
             if (a == 0) continue;
 
             if (hasKey && r == keyR && g == keyG && b == keyB) continue;
@@ -1869,9 +1897,13 @@ static DEKI_FAST_ATTR void BlitScaled_Generic(
         {
             int32_t srcX = (xStep == 0) ? (px - destX)
                                         : (int32_t)(((uint32_t)(px - destX) * xStep) >> 16);
+            // Per-pixel copies: in the scaled kernels srcY is the row's, and a
+            // transpose must not rewrite it for the pixels that follow.
+            int32_t sampleX = srcX, sampleY = srcY;
+            ApplyFlips(source, sampleX, sampleY);
 
             uint8_t r, g, b, a;
-            ExtractSourcePixel(source, srcX, srcY, r, g, b, a);
+            ExtractSourcePixel(source, sampleX, sampleY, r, g, b, a);
             if (a == 0) continue;
 
             if (hasKey && r == keyR && g == keyG && b == keyB) continue;
@@ -1933,6 +1965,23 @@ void BlitScaled(const Source& source,
 
     bool hasTint = (tintR != 255 || tintG != 255 || tintB != 255);
     bool hasAlphaTint = (tintA != 255);
+
+    // Flipped sources sample through the generic per-pixel kernels, which are
+    // the only ones that map coordinates individually. The specialised kernels
+    // walk source rows forwards (and some hand rows to SIMD), so they cannot
+    // mirror; flips are rare (Tiled tiles), so the slower path is acceptable.
+    if (HasFlips(source))
+    {
+        if (useOrderedDither && source.hasAlpha)
+            BlitScaledDithered_Generic(source, target, targetWidth, targetHeight, targetFormat,
+                                       destX, destY, destWidth, destHeight,
+                                       bounds, hasTint, hasAlphaTint, tintR, tintG, tintB, tintA);
+        else
+            BlitScaled_Generic(source, target, targetWidth, targetHeight, targetFormat,
+                               destX, destY, destWidth, destHeight,
+                               bounds, hasTint, hasAlphaTint, tintR, tintG, tintB, tintA);
+        return;
+    }
 
     // Ordered-dither path: only meaningful when the source has per-pixel alpha
     // (otherwise no partial-alpha pixels exist to dither). Falls through to the
@@ -2291,9 +2340,13 @@ void Blit(const Source& source,
 
             if (srcX < 0 || srcX >= source.width || srcY < 0 || srcY >= source.height)
                 continue;
+            // Per-pixel copies: in the scaled kernels srcY is the row's, and a
+            // transpose must not rewrite it for the pixels that follow.
+            int32_t sampleX = srcX, sampleY = srcY;
+            ApplyFlips(source, sampleX, sampleY);
 
             uint8_t r, g, b, a;
-            ExtractSourcePixel(source, srcX, srcY, r, g, b, a);
+            ExtractSourcePixel(source, sampleX, sampleY, r, g, b, a);
 
             if (source.hasChromaKey &&
                 r == source.keyR && g == source.keyG && b == source.keyB)

@@ -1011,3 +1011,52 @@ TEST_F(QuadBlitSpanRegressionTest, RotationPath_TintsSourceBeforeBlend)
 
     EXPECT_EQ(Read565(turned, W, 4, 4), Read565(straight, W, 4, 4));
 }
+
+// ---------------------------------------------------------------------------
+// Flips. Tiled-authored tiles carry H/V/D flags; they used to be expressed as
+// negative destination sizes, which BlitScaled rejects outright.
+// ---------------------------------------------------------------------------
+TEST_F(QuadBlitSpanRegressionTest, FlipH_MirrorsColumns)
+{
+    uint16_t src[2] = { Pack565(255, 0, 0), Pack565(0, 255, 0) };
+    QuadBlit::Source s = QuadBlit::MakeSource(reinterpret_cast<const uint8_t*>(src), 2, 1, 2, false, true, false);
+    s.flipH = true;
+    uint8_t target[2 * 2] = {0};
+    QuadBlit::BlitScaled(s, target, 2, 1, DekiColorFormat::RGB565, 0, 0, 2, 1);
+    EXPECT_EQ(Read565(target, 2, 0, 0), src[1]);
+    EXPECT_EQ(Read565(target, 2, 1, 0), src[0]);
+}
+
+TEST_F(QuadBlitSpanRegressionTest, FlipV_MirrorsRows)
+{
+    uint16_t src[2] = { Pack565(255, 0, 0), Pack565(0, 255, 0) };
+    QuadBlit::Source s = QuadBlit::MakeSource(reinterpret_cast<const uint8_t*>(src), 1, 2, 2, false, true, false);
+    s.flipV = true;
+    uint8_t target[1 * 2 * 2] = {0};
+    QuadBlit::BlitScaled(s, target, 1, 2, DekiColorFormat::RGB565, 0, 0, 1, 2);
+    EXPECT_EQ(Read565(target, 1, 0, 0), src[1]);
+    EXPECT_EQ(Read565(target, 1, 0, 1), src[0]);
+}
+
+TEST_F(QuadBlitSpanRegressionTest, FlipD_Transposes)
+{
+    uint16_t src[4] = { Pack565(255, 0, 0), Pack565(0, 255, 0),
+                        Pack565(0, 0, 255), Pack565(255, 255, 0) };
+    QuadBlit::Source s = QuadBlit::MakeSource(reinterpret_cast<const uint8_t*>(src), 2, 2, 2, false, true, false);
+    s.flipD = true;
+    uint8_t target[2 * 2 * 2] = {0};
+    QuadBlit::BlitScaled(s, target, 2, 2, DekiColorFormat::RGB565, 0, 0, 2, 2);
+    EXPECT_EQ(Read565(target, 2, 0, 0), src[0]);
+    EXPECT_EQ(Read565(target, 2, 1, 0), src[2]);  // (1,0) samples source (0,1)
+    EXPECT_EQ(Read565(target, 2, 0, 1), src[1]);
+    EXPECT_EQ(Read565(target, 2, 1, 1), src[3]);
+}
+
+TEST_F(QuadBlitSpanRegressionTest, NegativeSize_IsStillRejected)
+{
+    uint16_t src[1] = { Pack565(255, 0, 0) };
+    QuadBlit::Source s = QuadBlit::MakeSource(reinterpret_cast<const uint8_t*>(src), 1, 1, 2, false, true, false);
+    uint8_t target[2] = {0};
+    QuadBlit::BlitScaled(s, target, 1, 1, DekiColorFormat::RGB565, 0, 0, -1, 1);
+    EXPECT_EQ(Read565(target, 1, 0, 0), 0u);
+}

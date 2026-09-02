@@ -111,6 +111,15 @@ namespace QuadBlit
         // 2×2 world units instead of 32×32. Default 1 means "treat source
         // pixels as world units" (legacy pixel mode).
         float pixelsPerMeter = 1.0f;
+
+        // Mirror the source when sampling. Tiled's flags map straight onto these:
+        // flipD transposes (x<->y, square sources only), then flipH mirrors
+        // horizontally, then flipV vertically. Flipped blits take the generic
+        // per-pixel path; a negative destWidth/destHeight is NOT a flip and is
+        // rejected (which is how every flipped tile used to vanish).
+        bool flipH = false;
+        bool flipV = false;
+        bool flipD = false;
     };
 
     /**
