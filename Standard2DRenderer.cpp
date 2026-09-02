@@ -201,7 +201,19 @@ void Standard2DRenderer::PostExecuteBuiltins(DekiObject* obj, RenderContext& ctx
 void Standard2DRenderer::CollectSortableItems(DekiObject* obj,
     std::pair<DekiObject*, int>* items, int& count, int maxItems)
 {
-    if (!obj || count >= maxItems) return;
+    // RenderObject skips inactive objects, but they used to claim a slot here
+    // first, and could push a visible object past the cap.
+    if (!obj || !obj->IsActive()) return;
+    if (count >= maxItems)
+    {
+        // Rate-limited: this runs per frame. Silence here used to mean the
+        // 65th renderable simply never drew.
+        static uint32_t s_OverflowReports = 0;
+        if ((s_OverflowReports++ % 600) == 0)
+            DEKI_LOG_WARNING("Standard2DRenderer: more than %d sortable objects under one parent; '%s' is not drawn",
+                             maxItems, obj->GetName().c_str());
+        return;
+    }
 
     // Check built-in components first
     int32_t order;
