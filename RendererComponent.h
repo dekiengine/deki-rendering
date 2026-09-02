@@ -26,11 +26,9 @@ enum class MaskRenderMode : uint8_t
  * @brief How partial-alpha pixels are rendered.
  *
  * Blend         = standard alpha blend (default; smooth, slower).
- * OrderedDither = ordered-dither / screen-door (faster, visible stippling).
- *
- * NOTE: OrderedDither requires the dither blit paths shipped by the perf
- * follow-up (item 2.1). Until those land, OrderedDither falls through to
- * Blend with a one-time warning so existing scenes aren't broken.
+ * OrderedDither = ordered-dither / screen-door (faster, visible stippling):
+ *                 the Bayer paths in QuadBlit, selected per object by
+ *                 Standard2DRenderer.
  */
 enum class AlphaMode : uint8_t
 {
@@ -70,7 +68,7 @@ class RendererComponent : public DekiBehaviour, public ISortableProvider
     DEKI_EXPORT
     bool pixelSnap = true;
 
-    DEKI_TOOLTIP("How partial-alpha pixels are rendered. Blend = smooth alpha blend (slower, no artifacts). OrderedDither = stippling pattern (much faster, visible dither — best for fades and retro pixel art). NOTE: OrderedDither falls back to Blend until the dither blit paths land.")
+    DEKI_TOOLTIP("How partial-alpha pixels are rendered. Blend = smooth alpha blend (slower, no artifacts). OrderedDither = stippling pattern (much faster, visible dither — best for fades and retro pixel art). ")
     DEKI_EXPORT
     AlphaMode alphaMode = AlphaMode::Blend;
 
@@ -105,7 +103,9 @@ class RendererComponent : public DekiBehaviour, public ISortableProvider
      * @param outTintA Output tint alpha (255 = opaque)
      * @return true if content was rendered, false if nothing to render
      *
-     * NOTE: The caller is responsible for freeing outSource.pixels if this returns true
+     * Ownership: outSource.ownsPixels says whether the renderer must delete[]
+     * outSource.pixels after blitting. Components that own their buffers
+     * (sprites, baked text and gradients) leave it false.
      */
     virtual bool RenderContent(const DekiObject* owner,
                                QuadBlit::Source& outSource,

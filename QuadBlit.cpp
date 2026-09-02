@@ -11,8 +11,9 @@
 #include "DekiEngine.h"
 #include "DekiLogSystem.h"
 
-// Fast alpha blend approximation: (a * b + 128) >> 8 instead of (a * b) / 255
-#define FAST_DIV255(x) (((x) + 128) >> 8)
+// x / 255 for x in [0, 65535], exact (the classic (x + 128) >> 8 lost the top
+// value: 255 * 255 came out as 254, so repeated tints and blends drifted darker).
+#define FAST_DIV255(x) (((x) + 1 + ((x) >> 8)) >> 8)
 
 namespace QuadBlit
 {
