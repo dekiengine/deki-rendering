@@ -9,6 +9,7 @@
 // includes DekiEngine.h (unity build) — and its sibling RendererComponent.cpp already
 // includes it in editor mode.
 #include "DekiEngine.h"
+#include "DekiLogSystem.h"
 
 // Fast alpha blend approximation: (a * b + 128) >> 8 instead of (a * b) / 255
 #define FAST_DIV255(x) (((x) + 128) >> 8)
@@ -48,15 +49,26 @@ static inline bool Aligned16(const void* a, const void* b)
 // Clip Rect Stack Implementation
 // ============================================================================
 
-static constexpr int MAX_CLIP_STACK = 8;
+static constexpr int MAX_CLIP_STACK = 16;
 static ClipRect s_ClipStack[MAX_CLIP_STACK];
 static int s_ClipStackDepth = 0;
 static bool s_ClipEnabled = true;
+// Pushes refused for lack of a slot. Their matching pops are absorbed so the
+// stack stays balanced: the overflowed levels draw with the deepest rect that
+// did fit (over-clipped), instead of a pop discarding a live rect and every
+// later draw going unclipped with no diagnostic.
+static int s_ClipOverflow = 0;
 
 void PushClipRect(int32_t left, int32_t top, int32_t right, int32_t bottom)
 {
     if (s_ClipStackDepth >= MAX_CLIP_STACK)
+    {
+        if (s_ClipOverflow == 0)
+            DEKI_LOG_WARNING("QuadBlit: clip stack overflow (depth %d); nested clips beyond this use the parent rect",
+                             MAX_CLIP_STACK);
+        s_ClipOverflow++;
         return;
+    }
 
     ClipRect rect = { left, top, right, bottom };
 
@@ -75,6 +87,11 @@ void PushClipRect(int32_t left, int32_t top, int32_t right, int32_t bottom)
 
 void PopClipRect()
 {
+    if (s_ClipOverflow > 0)
+    {
+        s_ClipOverflow--;
+        return;
+    }
     if (s_ClipStackDepth > 0)
         s_ClipStackDepth--;
 }
@@ -92,6 +109,7 @@ ClipRect GetCurrentClipRect()
 void ClearClipStack()
 {
     s_ClipStackDepth = 0;
+    s_ClipOverflow = 0;
     s_ClipEnabled = true;
 }
 
@@ -421,9 +439,12 @@ static DEKI_FAST_ATTR void BlitScaled_RGB565A8_to_RGB565(
                         }
                     }
 
-                    // Right alpha region
-                    srcPtr = rowBase + clampedOpaqueEnd * bpp;
-                    for (int32_t sx = clampedOpaqueEnd; sx < srcEndX; sx++)
+                    // Right alpha region. Starts at the clip start when the opaque
+                    // span ends before it (or is empty): starting at opaqueEnd wrote
+                    // pixels the clip rect had excluded.
+                    const int32_t rightStart = std::max(clampedOpaqueEnd, srcStartX);
+                    srcPtr = rowBase + rightStart * bpp;
+                    for (int32_t sx = rightStart; sx < srcEndX; sx++)
                     {
                         uint8_t a = srcPtr[2];
                         if (a == 0) { srcPtr += bpp; continue; }
@@ -2282,6 +2303,16 @@ void Blit(const Source& source,
             if (effectiveAlpha == 0)
                 continue;
 
+            // Tint the source colour BEFORE compositing, as every BlitScaled
+            // kernel does. Tinting afterwards multiplied the background in too,
+            // so a tinted sprite changed appearance the moment it rotated.
+            if (hasTint)
+            {
+                r = FAST_DIV255(r * tintR);
+                g = FAST_DIV255(g * tintG);
+                b = FAST_DIV255(b * tintB);
+            }
+
             if (useOrderedDither && source.hasAlpha)
             {
                 // Threshold compare; no destination read, no per-channel blend.
@@ -2296,13 +2327,6 @@ void Blit(const Source& source,
                 r = FAST_DIV255(r * effectiveAlpha + bgR * invA);
                 g = FAST_DIV255(g * effectiveAlpha + bgG * invA);
                 b = FAST_DIV255(b * effectiveAlpha + bgB * invA);
-            }
-
-            if (hasTint)
-            {
-                r = FAST_DIV255(r * tintR);
-                g = FAST_DIV255(g * tintG);
-                b = FAST_DIV255(b * tintB);
             }
 
             WriteTargetPixel(target, px, py, targetWidth, targetFormat, r, g, b);

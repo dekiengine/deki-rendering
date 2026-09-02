@@ -881,3 +881,133 @@ TEST_F(QuadBlitDitherTest, GenericPath_RGB565A8_to_RGB565A8)
     EXPECT_EQ(target[5], 0x66);
 }
 
+
+// ============================================================================
+// Regressions: row-span edge cases, clip-stack overflow, rotation tint order
+// ============================================================================
+
+namespace
+{
+uint16_t Pack565(uint8_t r, uint8_t g, uint8_t b)
+{
+    return static_cast<uint16_t>(((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3));
+}
+uint16_t Read565(const uint8_t* buf, int w, int x, int y)
+{
+    return reinterpret_cast<const uint16_t*>(buf)[y * w + x];
+}
+// RGB565A8: 2 bytes of colour then 1 byte of alpha, per pixel.
+void Put565A8(uint8_t* dst, int i, uint16_t rgb, uint8_t a)
+{
+    dst[i * 3 + 0] = static_cast<uint8_t>(rgb & 0xFF);
+    dst[i * 3 + 1] = static_cast<uint8_t>(rgb >> 8);
+    dst[i * 3 + 2] = a;
+}
+}  // namespace
+
+class QuadBlitSpanRegressionTest : public ::testing::Test
+{
+protected:
+    void SetUp() override { QuadBlit::ClearClipStack(); }
+    void TearDown() override { QuadBlit::ClearClipStack(); }
+};
+
+// A row with no fully-opaque pixel carries an EMPTY span (start == end == w).
+// With the old sentinel (start=w, end=0) the left region covered the whole row
+// and the right region covered it again from x=0: every soft pixel was blended
+// twice. The spanned blit must equal the unspanned one.
+TEST_F(QuadBlitSpanRegressionTest, EmptyOpaqueSpan_BlendsEachPixelOnce)
+{
+    const int W = 4;
+    uint8_t src[W * 3];
+    for (int i = 0; i < W; i++) Put565A8(src, i, Pack565(255, 255, 255), 128);
+    const int16_t emptySpan[2] = { W, W };
+
+    uint8_t withSpans[W * 2] = {0}, withoutSpans[W * 2] = {0};
+    QuadBlit::Source spanned = QuadBlit::MakeSource(src, W, 1, 3, true, true, false, emptySpan);
+    QuadBlit::Source plain = QuadBlit::MakeSource(src, W, 1, 3, true, true, false, nullptr);
+    QuadBlit::BlitScaled(spanned, withSpans, W, 1, DekiColorFormat::RGB565, 0, 0, W, 1);
+    QuadBlit::BlitScaled(plain, withoutSpans, W, 1, DekiColorFormat::RGB565, 0, 0, W, 1);
+
+    for (int x = 0; x < W; x++)
+        EXPECT_EQ(Read565(withSpans, W, x, 0), Read565(withoutSpans, W, x, 0)) << "x=" << x;
+    // Half-alpha white over black is mid grey, not white (which double blending gives).
+    EXPECT_LT(Read565(withSpans, W, 0, 0), Pack565(200, 200, 200));
+}
+
+// The right-alpha region used to start at opaqueEnd even when the clip rect
+// started further right, writing pixels the clip had excluded.
+TEST_F(QuadBlitSpanRegressionTest, RightAlphaRegion_RespectsClipLeftEdge)
+{
+    const int W = 4;
+    uint8_t src[W * 3];
+    for (int i = 0; i < W; i++) Put565A8(src, i, Pack565(255, 255, 255), 128);
+    const int16_t emptySpan[2] = { W, W };
+    QuadBlit::Source spanned = QuadBlit::MakeSource(src, W, 1, 3, true, true, false, emptySpan);
+
+    uint8_t target[W * 2] = {0};
+    QuadBlit::PushClipRect(2, 0, W, 1);
+    QuadBlit::BlitScaled(spanned, target, W, 1, DekiColorFormat::RGB565, 0, 0, W, 1);
+    QuadBlit::PopClipRect();
+
+    EXPECT_EQ(Read565(target, W, 0, 0), 0u) << "left of the clip rect must stay untouched";
+    EXPECT_EQ(Read565(target, W, 1, 0), 0u);
+    EXPECT_NE(Read565(target, W, 2, 0), 0u);
+    EXPECT_NE(Read565(target, W, 3, 0), 0u);
+}
+
+// A push beyond the stack capacity is refused, but its pop must be absorbed so
+// the stack stays balanced: popping the overflowed level used to discard the
+// deepest live rect and leave everything after it unclipped.
+TEST_F(QuadBlitSpanRegressionTest, ClipStackOverflow_KeepsPushPopBalanced)
+{
+    int depth = 0;
+    while (QuadBlit::GetClipStackDepth() > depth)
+        ++depth;  // (defensive: starts at 0 after ClearClipStack)
+
+    // Fill the stack with nested rects that shrink by one each level.
+    int pushed = 0;
+    for (;;)
+    {
+        const int before = QuadBlit::GetClipStackDepth();
+        QuadBlit::PushClipRect(pushed, 0, 100, 100);
+        if (QuadBlit::GetClipStackDepth() == before)
+            break;  // this push overflowed
+        ++pushed;
+    }
+    const QuadBlit::ClipRect deepest = QuadBlit::GetCurrentClipRect();
+
+    QuadBlit::PopClipRect();  // pops the overflowed level, not the deepest live one
+    EXPECT_EQ(QuadBlit::GetClipStackDepth(), pushed);
+    EXPECT_EQ(QuadBlit::GetCurrentClipRect().left, deepest.left);
+
+    for (int i = 0; i < pushed; i++) QuadBlit::PopClipRect();
+    EXPECT_EQ(QuadBlit::GetClipStackDepth(), 0);
+}
+
+// The rotation path must tint the source BEFORE compositing, like every
+// BlitScaled kernel. A full turn takes the rotated code path with the same
+// geometry as no rotation, so the two must agree on the centre pixel.
+TEST_F(QuadBlitSpanRegressionTest, RotationPath_TintsSourceBeforeBlend)
+{
+    const int S = 3;
+    uint8_t src[S * S * 3];
+    for (int i = 0; i < S * S; i++) Put565A8(src, i, Pack565(255, 255, 255), 128);
+    QuadBlit::Source source = QuadBlit::MakeSource(src, S, S, 3, true, true, false);
+
+    const int W = 9, H = 9;
+    uint8_t straight[W * H * 2], turned[W * H * 2];
+    // A bright, distinct background so a wrong blend order shows.
+    for (int i = 0; i < W * H; i++)
+    {
+        reinterpret_cast<uint16_t*>(straight)[i] = Pack565(0, 0, 255);
+        reinterpret_cast<uint16_t*>(turned)[i] = Pack565(0, 0, 255);
+    }
+    const float fullTurn = 6.28318530718f;
+    QuadBlit::Blit(source, straight, W, H, DekiColorFormat::RGB565, 4, 4, 1.0f, 1.0f, 0.0f, 0.5f, 0.5f,
+                   255, 0, 0, 255);
+    QuadBlit::Blit(source, turned, W, H, DekiColorFormat::RGB565, 4, 4, 1.0f, 1.0f, fullTurn, 0.5f, 0.5f,
+                   255, 0, 0, 255);
+
+    EXPECT_EQ(Read565(turned, W, 4, 4), Read565(straight, W, 4, 4));
+}
