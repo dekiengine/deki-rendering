@@ -198,28 +198,33 @@ void Standard2DRenderer::PostExecuteBuiltins(DekiObject* obj, RenderContext& ctx
 
 // --- Sortable item collection ---
 
-void Standard2DRenderer::CollectSortableItems(DekiObject* obj,
-    std::pair<DekiObject*, int>* items, int& count, int maxItems)
+std::vector<Standard2DRenderer::SortItem>& Standard2DRenderer::SortListForDepth(int depth)
 {
-    // RenderObject skips inactive objects, but they used to claim a slot here
-    // first, and could push a visible object past the cap.
+    if (static_cast<size_t>(depth) >= m_SortScratch.size())
+        m_SortScratch.resize(depth + 1);
+    std::vector<SortItem>& list = m_SortScratch[depth];
+    list.clear();  // keeps capacity: no allocation once warm
+    return list;
+}
+
+void Standard2DRenderer::SortItems(std::vector<SortItem>& items)
+{
+    // Lower order draws first; equal orders keep collection order.
+    std::sort(items.begin(), items.end(), [](const SortItem& a, const SortItem& b)
+              { return a.order != b.order ? a.order < b.order : a.seq < b.seq; });
+}
+
+void Standard2DRenderer::CollectSortableItems(DekiObject* obj, std::vector<SortItem>& items)
+{
+    // RenderObject skips inactive objects; not collecting them keeps the
+    // sort (and the draw order) about what is actually visible.
     if (!obj || !obj->IsActive()) return;
-    if (count >= maxItems)
-    {
-        // Rate-limited: this runs per frame. Silence here used to mean the
-        // 65th renderable simply never drew.
-        static uint32_t s_OverflowReports = 0;
-        if ((s_OverflowReports++ % 600) == 0)
-            DEKI_LOG_WARNING("Standard2DRenderer: more than %d sortable objects under one parent; '%s' is not drawn",
-                             maxItems, obj->GetName().c_str());
-        return;
-    }
 
     // Check built-in components first
     int32_t order;
     if (GetBuiltinSortingOrder(obj, order))
     {
-        items[count++] = {obj, order};
+        items.push_back({obj, order, static_cast<uint32_t>(items.size())});
         return;
     }
 
@@ -228,14 +233,14 @@ void Standard2DRenderer::CollectSortableItems(DekiObject* obj,
     {
         if (m_SortingCallbacks[s](obj, order))
         {
-            items[count++] = {obj, order};
+            items.push_back({obj, order, static_cast<uint32_t>(items.size())});
             return;
         }
     }
 
     // No one claimed it — transparent container, children float up
     for (auto* child : obj->GetChildren())
-        CollectSortableItems(child, items, count, maxItems);
+        CollectSortableItems(child, items);
 }
 
 // --- Main render loop ---
@@ -255,24 +260,24 @@ void Standard2DRenderer::Render(Scene* scene, const RenderContext& ctx)
         m_Passes[p]->BeginFrame(frameCtx);
 
     // Collect and sort root objects
-    std::pair<DekiObject*, int> sortableItems[64];
-    int sortableCount = 0;
+    m_SortDepth = 0;
+    std::vector<SortItem>& sortableItems = SortListForDepth(0);
 
     for (DekiObject* obj : scene->GetObjects())
-        CollectSortableItems(obj, sortableItems, sortableCount, 64);
+        CollectSortableItems(obj, sortableItems);
 
     // Also collect persistent objects
     const auto& persistentObjects = DekiEngine::GetInstance().GetSceneSystem().GetPersistentObjects();
     for (DekiObject* obj : persistentObjects)
-        CollectSortableItems(obj, sortableItems, sortableCount, 64);
+        CollectSortableItems(obj, sortableItems);
 
     // Sort by sortingOrder (lower = behind)
-    std::stable_sort(sortableItems, sortableItems + sortableCount,
-        [](const auto& a, const auto& b) { return a.second < b.second; });
+    SortItems(sortableItems);
 
-    // Render in sorted order
-    for (int i = 0; i < sortableCount; i++)
-        RenderObject(sortableItems[i].first, frameCtx);
+    // Render in sorted order. Index loop: RenderObject recurses and the deeper
+    // levels use their own scratch lists, so this one is stable meanwhile.
+    for (size_t i = 0; i < sortableItems.size(); i++)
+        RenderObject(sortableItems[i].obj, frameCtx);
 
     // Post-frame composites (e.g. screen-space overlays).
     for (int p = m_PassCount - 1; p >= 0; p--)
@@ -299,16 +304,16 @@ void Standard2DRenderer::RenderObject(DekiObject* obj, const RenderContext& ctx)
 
     // Phase 4: Recurse into sorted children — uses objCtx so children inherit any
     // buffer redirect applied by this object's PreExecute / Execute hooks.
-    std::pair<DekiObject*, int> childItems[64];
-    int childCount = 0;
+    ++m_SortDepth;
+    std::vector<SortItem>& childItems = SortListForDepth(m_SortDepth);
     for (auto* child : obj->GetChildren())
-        CollectSortableItems(child, childItems, childCount, 64);
+        CollectSortableItems(child, childItems);
 
-    std::stable_sort(childItems, childItems + childCount,
-        [](const auto& a, const auto& b) { return a.second < b.second; });
+    SortItems(childItems);
 
-    for (int i = 0; i < childCount; i++)
-        RenderObject(childItems[i].first, objCtx);
+    for (size_t i = 0; i < childItems.size(); i++)
+        RenderObject(childItems[i].obj, objCtx);
+    --m_SortDepth;
 
     // Phase 5: Post-execute custom passes (clip pop, reverse order)
     for (int p = m_PassCount - 1; p >= 0; p--)

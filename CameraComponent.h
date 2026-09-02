@@ -42,6 +42,13 @@ public:
     DEKI_EXPORT
     bool pixelSnap = false;
 
+    // Clear the framebuffer to clearColor before each frame. Turn off when the
+    // first thing drawn covers the whole screen (a full-screen background
+    // sprite or tilemap): the clear is a full framebuffer write per frame.
+    DEKI_TOOLTIP("Clear the framebuffer to the clear color before drawing. Turn off when a full-screen background covers everything: saves a full framebuffer write per frame.")
+    DEKI_EXPORT
+    bool clearEveryFrame = true;
+
     // Projection mode (forward-compat hook). Hidden in inspector — only
     // Orthographic is meaningful for the 2D software renderer today.
     ProjectionMode projectionMode = ProjectionMode::Orthographic;

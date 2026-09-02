@@ -182,8 +182,10 @@ void DekiRenderSystem::Render(Scene* current_scene)
 
     CameraComponent* camera = m_CachedCamera;
 
-    // Always clear the entire buffer before rendering
-    ClearBuffer(camera->clearColor);
+    // Clear the entire buffer before rendering, unless the camera says the
+    // scene paints every pixel itself.
+    if (camera->clearEveryFrame)
+        ClearBuffer(camera->clearColor);
 
     // Delegate to the active renderer
     RenderContext ctx{camera, m_RenderBuffer, m_ScreenWidth, m_ScreenHeight, m_ColorFormat};

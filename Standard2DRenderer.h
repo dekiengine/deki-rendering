@@ -4,7 +4,7 @@
 #include "RenderPass.h"
 
 #include <cstdint>
-#include <utility>
+#include <vector>
 
 // Forward declarations
 class DekiObject;
@@ -64,8 +64,23 @@ private:
     SortingCallback m_SortingCallbacks[MAX_SORTING_CALLBACKS] = {};
     int m_SortingCallbackCount = 0;
 
-    void CollectSortableItems(DekiObject* obj,
-        std::pair<DekiObject*, int>* items, int& count, int maxItems);
+    // One renderable claimed by a component, with its insertion order so the
+    // sort is stable without std::stable_sort (whose temporary buffer was a
+    // heap allocation per parent per frame).
+    struct SortItem
+    {
+        DekiObject* obj;
+        int32_t order;
+        uint32_t seq;
+    };
+    // One reusable list per recursion depth. They used to be 64-entry stack
+    // arrays: 512 bytes of stack per hierarchy level, and a silent cap.
+    std::vector<std::vector<SortItem>> m_SortScratch;
+    int m_SortDepth = 0;
+    std::vector<SortItem>& SortListForDepth(int depth);
+    static void SortItems(std::vector<SortItem>& items);
+
+    void CollectSortableItems(DekiObject* obj, std::vector<SortItem>& items);
     void RenderObject(DekiObject* obj, const RenderContext& ctx);
 
     // Built-in component handling
