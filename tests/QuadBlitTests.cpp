@@ -1060,3 +1060,44 @@ TEST_F(QuadBlitSpanRegressionTest, NegativeSize_IsStillRejected)
     QuadBlit::BlitScaled(s, target, 1, 1, DekiColorFormat::RGB565, 0, 0, -1, 1);
     EXPECT_EQ(Read565(target, 1, 0, 0), 0u);
 }
+
+TEST_F(QuadBlitSpanRegressionTest, RotationPath_HalfTurnRotatesThePattern)
+{
+    uint16_t src[4] = { Pack565(255, 0, 0), Pack565(0, 255, 0),
+                        Pack565(0, 0, 255), Pack565(255, 255, 0) };
+    QuadBlit::Source s = QuadBlit::MakeSource(reinterpret_cast<const uint8_t*>(src), 2, 2, 2, false, true, false);
+    const int W = 5, H = 5;
+    uint8_t target[W * H * 2] = {0};
+    QuadBlit::Blit(s, target, W, H, DekiColorFormat::RGB565, 2, 2, 1.0f, 1.0f, 3.14159265f, 0.5f, 0.5f);
+    // Same corner-sampled geometry as the float version: the rotated quad
+    // lands on columns/rows 2..3 with the pattern turned by 180 degrees.
+    EXPECT_EQ(Read565(target, W, 2, 2), src[3]);
+    EXPECT_EQ(Read565(target, W, 3, 2), src[2]);
+    EXPECT_EQ(Read565(target, W, 2, 3), src[1]);
+    EXPECT_EQ(Read565(target, W, 3, 3), src[0]);
+    EXPECT_EQ(Read565(target, W, 1, 2), 0u);
+    EXPECT_EQ(Read565(target, W, 0, 0), 0u);
+}
+
+TEST_F(QuadBlitSpanRegressionTest, RotationPath_ARGBTargetMatchesRGB565)
+{
+    const int S = 3;
+    uint8_t src[S * S * 3];
+    for (int i = 0; i < S * S; i++) Put565A8(src, i, Pack565(255, 255, 255), 128);
+    QuadBlit::Source source = QuadBlit::MakeSource(src, S, S, 3, true, true, false);
+    const int W = 9, H = 9;
+    uint8_t t565[W * H * 2];
+    uint8_t t888[W * H * 4];
+    for (int i = 0; i < W * H; i++)
+    {
+        reinterpret_cast<uint16_t*>(t565)[i] = Pack565(0, 0, 255);
+        reinterpret_cast<uint32_t*>(t888)[i] = 0xFF0000FFu;
+    }
+    QuadBlit::Blit(source, t565, W, H, DekiColorFormat::RGB565, 4, 4, 1.0f, 1.0f, 0.7f, 0.5f, 0.5f, 255, 0, 0, 255);
+    QuadBlit::Blit(source, t888, W, H, DekiColorFormat::ARGB8888, 4, 4, 1.0f, 1.0f, 0.7f, 0.5f, 0.5f, 255, 0, 0, 255);
+    const uint16_t c565 = Read565(t565, W, 4, 4);
+    const uint32_t c888 = reinterpret_cast<const uint32_t*>(t888)[4 * W + 4];
+    // Both blends of half-alpha red over blue: red ~128, blue ~127 (5/6/5 quantised).
+    EXPECT_NEAR((c565 >> 11) << 3, (c888 >> 16) & 0xFF, 8);
+    EXPECT_NEAR((c565 & 0x1F) << 3, c888 & 0xFF, 8);
+}

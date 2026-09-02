@@ -2233,6 +2233,190 @@ static inline void GetTargetPixel(const uint8_t* target, int32_t x, int32_t y,
     }
 }
 
+// ============================================================================
+// Rotated blit kernel
+// ============================================================================
+// Inverse-maps every destination pixel of the rotated quad's bounding box back
+// into the source with a 16.16 fixed-point DDA: two adds per pixel, where the
+// float version did two multiplies, two divides, a float compare per edge and
+// a per-pixel switch on the source layout AND on the target format. Both are
+// template parameters here, so each blit resolves them once.
+
+enum class SrcKind { RGB565, RGB565A8, RGBA8888, RGB888, ALPHA8 };
+
+template <SrcKind SK>
+static inline void ReadSrcPixel(const uint8_t* p, uint8_t& r, uint8_t& g, uint8_t& b, uint8_t& a)
+{
+    if constexpr (SK == SrcKind::RGB565 || SK == SrcKind::RGB565A8)
+    {
+        const uint16_t v = *(const uint16_t*)p;
+        r = (uint8_t)((v >> 11) << 3);
+        g = (uint8_t)(((v >> 5) & 0x3F) << 2);
+        b = (uint8_t)((v & 0x1F) << 3);
+        a = (SK == SrcKind::RGB565A8) ? p[2] : 255;
+    }
+    else if constexpr (SK == SrcKind::RGBA8888)
+    {
+        r = p[0]; g = p[1]; b = p[2]; a = p[3];
+    }
+    else if constexpr (SK == SrcKind::RGB888)
+    {
+        r = p[0]; g = p[1]; b = p[2]; a = 255;
+    }
+    else
+    {
+        // ALPHA8: coverage only; RGB comes from the tint (white when untinted).
+        r = g = b = 255;
+        a = p[0];
+    }
+}
+
+template <DekiColorFormat F>
+static inline void ReadDstPixel(const uint8_t* target, size_t idx, uint8_t& r, uint8_t& g, uint8_t& b)
+{
+    if constexpr (F == DekiColorFormat::RGB565)
+    {
+        const uint16_t v = ((const uint16_t*)target)[idx];
+        r = (uint8_t)((v >> 11) << 3); g = (uint8_t)(((v >> 5) & 0x3F) << 2); b = (uint8_t)((v & 0x1F) << 3);
+    }
+    else if constexpr (F == DekiColorFormat::RGB888)
+    {
+        r = target[idx * 3]; g = target[idx * 3 + 1]; b = target[idx * 3 + 2];
+    }
+    else if constexpr (F == DekiColorFormat::ARGB8888)
+    {
+        const uint32_t v = ((const uint32_t*)target)[idx];
+        r = (v >> 16) & 0xFF; g = (v >> 8) & 0xFF; b = v & 0xFF;
+    }
+    else  // RGB565A8
+    {
+        const uint16_t v = (uint16_t)target[idx * 3] | ((uint16_t)target[idx * 3 + 1] << 8);
+        r = (uint8_t)((v >> 11) << 3); g = (uint8_t)(((v >> 5) & 0x3F) << 2); b = (uint8_t)((v & 0x1F) << 3);
+    }
+}
+
+template <DekiColorFormat F>
+static inline void WriteDstPixel(uint8_t* target, size_t idx, uint8_t r, uint8_t g, uint8_t b)
+{
+    if constexpr (F == DekiColorFormat::RGB565)
+    {
+        ((uint16_t*)target)[idx] = (uint16_t)(((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3));
+    }
+    else if constexpr (F == DekiColorFormat::RGB888)
+    {
+        target[idx * 3] = r; target[idx * 3 + 1] = g; target[idx * 3 + 2] = b;
+    }
+    else if constexpr (F == DekiColorFormat::ARGB8888)
+    {
+        ((uint32_t*)target)[idx] = (0xFFu << 24) | ((uint32_t)r << 16) | ((uint32_t)g << 8) | b;
+    }
+    else  // RGB565A8: the blend produced opaque RGB; mark the pixel covered.
+    {
+        const uint16_t v = (uint16_t)(((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3));
+        target[idx * 3] = (uint8_t)(v & 0xFF);
+        target[idx * 3 + 1] = (uint8_t)(v >> 8);
+        target[idx * 3 + 2] = 0xFF;
+    }
+}
+
+struct RotatedBlitArgs
+{
+    int32_t startX, startY, endX, endY;  // destination rows/columns to visit
+    int32_t rowSx, rowSy;                // 16.16 source coords of (startX, startY)
+    int32_t dSxDx, dSyDx;                // per-column source step
+    int32_t dSxDy, dSyDy;                // per-row source step
+    bool hasTint, hasAlphaTint, useOrderedDither;
+    uint8_t tintR, tintG, tintB, tintA;
+};
+
+template <SrcKind SK, DekiColorFormat F>
+static DEKI_FAST_ATTR void RotatedBlitT(const Source& source, uint8_t* target, int32_t targetWidth,
+                                        const RotatedBlitArgs& a)
+{
+    const int32_t stride = SourceStride(source);
+    const int32_t bpp = source.bytesPerPixel;
+    const uint32_t srcW = (uint32_t)source.width, srcH = (uint32_t)source.height;
+    const bool flips = HasFlips(source);
+    const bool hasKey = source.hasChromaKey;
+    const uint8_t keyR = source.keyR, keyG = source.keyG, keyB = source.keyB;
+    const bool dither = a.useOrderedDither && source.hasAlpha;
+
+    int32_t rowSx = a.rowSx, rowSy = a.rowSy;
+    for (int32_t py = a.startY; py < a.endY; py++, rowSx += a.dSxDy, rowSy += a.dSyDy)
+    {
+        int32_t sx = rowSx, sy = rowSy;
+        for (int32_t px = a.startX; px < a.endX; px++, sx += a.dSxDx, sy += a.dSyDx)
+        {
+            // Arithmetic shift keeps negatives negative; the unsigned compare
+            // then rejects them together with the far edge in one test.
+            int32_t ix = sx >> 16, iy = sy >> 16;
+            if ((uint32_t)ix >= srcW || (uint32_t)iy >= srcH)
+                continue;
+            if (flips) ApplyFlips(source, ix, iy);
+
+            uint8_t r, g, b, alpha;
+            ReadSrcPixel<SK>(source.pixels + iy * stride + ix * bpp, r, g, b, alpha);
+            if (hasKey && r == keyR && g == keyG && b == keyB)
+                continue;
+
+            uint8_t effectiveAlpha = a.hasAlphaTint ? FAST_DIV255(alpha * a.tintA) : alpha;
+            if (effectiveAlpha == 0)
+                continue;
+
+            // Tint the source BEFORE compositing, like every BlitScaled kernel.
+            if (a.hasTint)
+            {
+                r = FAST_DIV255(r * a.tintR);
+                g = FAST_DIV255(g * a.tintG);
+                b = FAST_DIV255(b * a.tintB);
+            }
+
+            const size_t idx = (size_t)py * (size_t)targetWidth + (size_t)px;
+            if (dither)
+            {
+                if (effectiveAlpha <= BayerThreshold(px, py))
+                    continue;
+            }
+            else if (effectiveAlpha < 255)
+            {
+                uint8_t bgR, bgG, bgB;
+                ReadDstPixel<F>(target, idx, bgR, bgG, bgB);
+                const uint8_t invA = 255 - effectiveAlpha;
+                r = FAST_DIV255(r * effectiveAlpha + bgR * invA);
+                g = FAST_DIV255(g * effectiveAlpha + bgG * invA);
+                b = FAST_DIV255(b * effectiveAlpha + bgB * invA);
+            }
+            WriteDstPixel<F>(target, idx, r, g, b);
+        }
+    }
+}
+
+template <DekiColorFormat F>
+static void RotatedBlitForTarget(const Source& source, uint8_t* target, int32_t targetWidth,
+                                 const RotatedBlitArgs& a)
+{
+    if (source.isRGB565)
+    {
+        if (source.bytesPerPixel >= 3) RotatedBlitT<SrcKind::RGB565A8, F>(source, target, targetWidth, a);
+        else                           RotatedBlitT<SrcKind::RGB565, F>(source, target, targetWidth, a);
+    }
+    else if (source.bytesPerPixel == 4) RotatedBlitT<SrcKind::RGBA8888, F>(source, target, targetWidth, a);
+    else if (source.bytesPerPixel == 3) RotatedBlitT<SrcKind::RGB888, F>(source, target, targetWidth, a);
+    else                                RotatedBlitT<SrcKind::ALPHA8, F>(source, target, targetWidth, a);
+}
+
+static void RotatedBlitDispatch(const Source& source, uint8_t* target, int32_t targetWidth,
+                                DekiColorFormat targetFormat, const RotatedBlitArgs& a)
+{
+    switch (targetFormat)
+    {
+        case DekiColorFormat::RGB565:   RotatedBlitForTarget<DekiColorFormat::RGB565>(source, target, targetWidth, a); break;
+        case DekiColorFormat::RGB888:   RotatedBlitForTarget<DekiColorFormat::RGB888>(source, target, targetWidth, a); break;
+        case DekiColorFormat::ARGB8888: RotatedBlitForTarget<DekiColorFormat::ARGB8888>(source, target, targetWidth, a); break;
+        case DekiColorFormat::RGB565A8: RotatedBlitForTarget<DekiColorFormat::RGB565A8>(source, target, targetWidth, a); break;
+    }
+}
+
 void Blit(const Source& source,
           uint8_t* target,
           int32_t targetWidth,
@@ -2319,72 +2503,31 @@ void Blit(const Source& source,
     bool hasTint = (tintR != 255 || tintG != 255 || tintB != 255);
     bool hasAlphaTint = (tintA != 255);
 
-    float cosNegR = cosR;
-    float sinNegR = -sinR;
+    // Fixed-point inverse mapping. For destination pixel (px, py):
+    //   localX =  dx*cosR + dy*sinR + pivotSX
+    //   localY = -dx*sinR + dy*cosR + pivotSY
+    //   srcX   = localX * srcW / destWidth,  srcY = localY * srcH / destHeight
+    // which is affine in (px, py), so it is evaluated once at the box corner and
+    // stepped per column and per row in 16.16.
+    const float sxScale = source.width / destWidth;
+    const float syScale = source.height / destHeight;
+    const float dx0 = static_cast<float>(startX - screenX);
+    const float dy0 = static_cast<float>(startY - screenY);
+    const float localX0 = dx0 * cosR + dy0 * sinR + pivotSX;
+    const float localY0 = -dx0 * sinR + dy0 * cosR + pivotSY;
 
-    for (int32_t py = startY; py < endY; py++)
-    {
-        for (int32_t px = startX; px < endX; px++)
-        {
-            float dx = static_cast<float>(px - screenX);
-            float dy = static_cast<float>(py - screenY);
+    RotatedBlitArgs args;
+    args.startX = startX; args.startY = startY; args.endX = endX; args.endY = endY;
+    args.rowSx = static_cast<int32_t>(std::lround(localX0 * sxScale * 65536.0f));
+    args.rowSy = static_cast<int32_t>(std::lround(localY0 * syScale * 65536.0f));
+    args.dSxDx = static_cast<int32_t>(std::lround(cosR * sxScale * 65536.0f));
+    args.dSyDx = static_cast<int32_t>(std::lround(-sinR * syScale * 65536.0f));
+    args.dSxDy = static_cast<int32_t>(std::lround(sinR * sxScale * 65536.0f));
+    args.dSyDy = static_cast<int32_t>(std::lround(cosR * syScale * 65536.0f));
+    args.hasTint = hasTint; args.hasAlphaTint = hasAlphaTint; args.useOrderedDither = useOrderedDither;
+    args.tintR = tintR; args.tintG = tintG; args.tintB = tintB; args.tintA = tintA;
 
-            float localX = dx * cosNegR - dy * sinNegR + pivotSX;
-            float localY = dx * sinNegR + dy * cosNegR + pivotSY;
-
-            if (localX < 0 || localX >= destWidth || localY < 0 || localY >= destHeight)
-                continue;
-
-            int32_t srcX = static_cast<int32_t>(localX * source.width / destWidth);
-            int32_t srcY = static_cast<int32_t>(localY * source.height / destHeight);
-
-            if (srcX < 0 || srcX >= source.width || srcY < 0 || srcY >= source.height)
-                continue;
-            // Per-pixel copies: in the scaled kernels srcY is the row's, and a
-            // transpose must not rewrite it for the pixels that follow.
-            int32_t sampleX = srcX, sampleY = srcY;
-            ApplyFlips(source, sampleX, sampleY);
-
-            uint8_t r, g, b, a;
-            ExtractSourcePixel(source, sampleX, sampleY, r, g, b, a);
-
-            if (source.hasChromaKey &&
-                r == source.keyR && g == source.keyG && b == source.keyB)
-                continue;
-
-            uint8_t effectiveAlpha = hasAlphaTint ? FAST_DIV255(a * tintA) : a;
-            if (effectiveAlpha == 0)
-                continue;
-
-            // Tint the source colour BEFORE compositing, as every BlitScaled
-            // kernel does. Tinting afterwards multiplied the background in too,
-            // so a tinted sprite changed appearance the moment it rotated.
-            if (hasTint)
-            {
-                r = FAST_DIV255(r * tintR);
-                g = FAST_DIV255(g * tintG);
-                b = FAST_DIV255(b * tintB);
-            }
-
-            if (useOrderedDither && source.hasAlpha)
-            {
-                // Threshold compare; no destination read, no per-channel blend.
-                if (effectiveAlpha <= BayerThreshold(px, py))
-                    continue;
-            }
-            else if (effectiveAlpha < 255)
-            {
-                uint8_t bgR, bgG, bgB;
-                GetTargetPixel(target, px, py, targetWidth, targetFormat, bgR, bgG, bgB);
-                uint8_t invA = 255 - effectiveAlpha;
-                r = FAST_DIV255(r * effectiveAlpha + bgR * invA);
-                g = FAST_DIV255(g * effectiveAlpha + bgG * invA);
-                b = FAST_DIV255(b * effectiveAlpha + bgB * invA);
-            }
-
-            WriteTargetPixel(target, px, py, targetWidth, targetFormat, r, g, b);
-        }
-    }
+    RotatedBlitDispatch(source, target, targetWidth, targetFormat, args);
 }
 
 } // namespace QuadBlit
