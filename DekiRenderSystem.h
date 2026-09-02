@@ -18,8 +18,10 @@ class DekiRenderSystem : public IDekiRenderSystem
     int32_t m_ScreenWidth;
     int32_t m_ScreenHeight;
     DekiColorFormat m_ColorFormat;
-    bool m_IsFirstRender = true;
     bool m_OwnsBuffer = true;
+    // Display whose GetRenderBuffer() was last offered to us; adoption is
+    // attempted once per display so Render() does not re-query when owning.
+    class IDekiDisplay* m_AdoptionCheckedDisplay = nullptr;
 
     // Active renderer (non-owning — caller manages lifetime)
     DekiRenderer* m_Renderer = nullptr;
@@ -32,6 +34,9 @@ class DekiRenderSystem : public IDekiRenderSystem
     DekiRenderSystem();
     ~DekiRenderSystem() override;
     bool Setup(int32_t width, int32_t height, DekiColorFormat format) override;
+    /// Switch to the display's internal buffer when it exists and matches our
+    /// size. Returns true when the render buffer now points at the display's.
+    bool TryAdoptDisplayBuffer();
     void Render(Scene* current_scene) override;
     void ClearBuffer(uint8_t r, uint8_t g, uint8_t b);
     void ClearBuffer(const Deki::Color& color);

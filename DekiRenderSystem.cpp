@@ -50,6 +50,12 @@ bool DekiRenderSystem::Setup(int32_t width, int32_t height, DekiColorFormat form
         }
     }
 
+    if (width <= 0 || height <= 0)
+    {
+        DEKI_LOG_ERROR("DekiRenderSystem::Setup: invalid size %dx%d", width, height);
+        return false;
+    }
+
     // Clean up existing buffers if any
     if (m_RenderBuffer && m_OwnsBuffer)
     {
@@ -57,52 +63,51 @@ bool DekiRenderSystem::Setup(int32_t width, int32_t height, DekiColorFormat form
     }
     m_RenderBuffer = nullptr;
     m_OwnsBuffer = true;
-
-    int bytes_per_pixel = GetBytesPerPixel(format);
-    size_t buffer_size = width * height * bytes_per_pixel;
-
-    // Try display-provided internal RAM buffer first (avoids memcpy in Present)
-    IDekiDisplay* display = DekiEngine::GetInstance().GetDisplay();
-    if (display)
-    {
-        int32_t dw = 0, dh = 0;
-        uint8_t* directBuf = display->GetRenderBuffer(&dw, &dh);
-        if (directBuf && dw == width && dh == height)
-        {
-            m_RenderBuffer = directBuf;
-            m_OwnsBuffer = false;
-            m_ScreenWidth = width;
-            m_ScreenHeight = height;
-            m_ColorFormat = format;
-            m_IsFirstRender = true;
-            return true;
-        }
-    }
-    else
-    {
-        // No display yet — defer allocation until display is available
-        m_ScreenWidth = width;
-        m_ScreenHeight = height;
-        m_ColorFormat = format;
-        return true;
-    }
-
-    // Allocate in internal RAM for fast random-access rendering
-    m_RenderBuffer = (uint8_t*)DekiMemory::AllocateInternal(buffer_size, "DekiRenderSystem::Setup-framebuffer");
-    if (!m_RenderBuffer)
-    {
-        return false;
-    }
+    m_AdoptionCheckedDisplay = nullptr;
 
     m_ScreenWidth = width;
     m_ScreenHeight = height;
     m_ColorFormat = format;
-
-    // Reset first render flag and camera cache
-    m_IsFirstRender = true;
     m_CachedCamera = nullptr;
     m_CachedCameraScene = nullptr;
 
+    // Prefer a display-provided internal RAM buffer (avoids a memcpy in Present).
+    if (TryAdoptDisplayBuffer())
+        return true;
+
+    // No display yet, or its buffer does not match: own one. This used to
+    // "defer allocation until a display is available" and return true with a
+    // null buffer — but Render() only re-queried the display for non-owned
+    // buffers, so the allocation never happened and nothing was ever drawn,
+    // with no error. Now Setup either yields a usable buffer or says so.
+    int bytes_per_pixel = GetBytesPerPixel(format);
+    size_t buffer_size = (size_t)width * (size_t)height * (size_t)bytes_per_pixel;
+    m_RenderBuffer = (uint8_t*)DekiMemory::AllocateInternal(buffer_size, "DekiRenderSystem::Setup-framebuffer");
+    if (!m_RenderBuffer)
+    {
+        DEKI_LOG_ERROR("DekiRenderSystem::Setup: failed to allocate %zu-byte framebuffer (%dx%d)",
+                       buffer_size, width, height);
+        return false;
+    }
+    return true;
+}
+
+bool DekiRenderSystem::TryAdoptDisplayBuffer()
+{
+    IDekiDisplay* display = DekiEngine::GetInstance().GetDisplay();
+    if (!display || display == m_AdoptionCheckedDisplay)
+        return false;
+    m_AdoptionCheckedDisplay = display;
+
+    int32_t dw = 0, dh = 0;
+    uint8_t* directBuf = display->GetRenderBuffer(&dw, &dh);
+    if (!directBuf || dw != m_ScreenWidth || dh != m_ScreenHeight)
+        return false;
+
+    if (m_RenderBuffer && m_OwnsBuffer)
+        DekiMemory::FreeInternal(m_RenderBuffer);
+    m_RenderBuffer = directBuf;
+    m_OwnsBuffer = false;
     return true;
 }
 
@@ -113,9 +118,14 @@ void DekiRenderSystem::Render(Scene* current_scene)
         return;
     }
 
-    // Re-query display buffer each frame for double-buffer support
-    // (render_index alternates in Present, so the pointer changes)
-    if (!m_OwnsBuffer)
+    // A display registered after Setup() may offer a direct buffer: adopt it
+    // once. Otherwise re-query the display buffer each frame for double-buffer
+    // support (render_index alternates in Present, so the pointer changes).
+    if (m_OwnsBuffer)
+    {
+        TryAdoptDisplayBuffer();
+    }
+    else
     {
         IDekiDisplay* display = DekiEngine::GetInstance().GetDisplay();
         if (display)
