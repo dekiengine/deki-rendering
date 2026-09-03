@@ -956,32 +956,25 @@ TEST_F(QuadBlitSpanRegressionTest, RightAlphaRegion_RespectsClipLeftEdge)
     EXPECT_NE(Read565(target, W, 3, 0), 0u);
 }
 
-// A push beyond the stack capacity is refused, but its pop must be absorbed so
-// the stack stays balanced: popping the overflowed level used to discard the
-// deepest live rect and leave everything after it unclipped.
-TEST_F(QuadBlitSpanRegressionTest, ClipStackOverflow_KeepsPushPopBalanced)
+// The clip stack has no fixed capacity: 40 nested levels (deeper than the old
+// 16-slot array) all intersect and pop back out in order.
+TEST_F(QuadBlitSpanRegressionTest, ClipStack_DeepNestingHasNoCap)
 {
-    int depth = 0;
-    while (QuadBlit::GetClipStackDepth() > depth)
-        ++depth;  // (defensive: starts at 0 after ClearClipStack)
-
-    // Fill the stack with nested rects that shrink by one each level.
-    int pushed = 0;
-    for (;;)
+    ASSERT_EQ(QuadBlit::GetClipStackDepth(), 0);
+    constexpr int kDepth = 40;
+    for (int i = 0; i < kDepth; i++)
     {
-        const int before = QuadBlit::GetClipStackDepth();
-        QuadBlit::PushClipRect(pushed, 0, 100, 100);
-        if (QuadBlit::GetClipStackDepth() == before)
-            break;  // this push overflowed
-        ++pushed;
+        QuadBlit::PushClipRect(i, 0, 100, 100);  // shrinks by one column per level
+        EXPECT_EQ(QuadBlit::GetClipStackDepth(), i + 1);
+        EXPECT_EQ(QuadBlit::GetCurrentClipRect().left, i);  // intersected with the parent
     }
-    const QuadBlit::ClipRect deepest = QuadBlit::GetCurrentClipRect();
-
-    QuadBlit::PopClipRect();  // pops the overflowed level, not the deepest live one
-    EXPECT_EQ(QuadBlit::GetClipStackDepth(), pushed);
-    EXPECT_EQ(QuadBlit::GetCurrentClipRect().left, deepest.left);
-
-    for (int i = 0; i < pushed; i++) QuadBlit::PopClipRect();
+    for (int i = kDepth - 1; i >= 0; i--)
+    {
+        EXPECT_EQ(QuadBlit::GetCurrentClipRect().left, i);
+        QuadBlit::PopClipRect();
+    }
+    EXPECT_EQ(QuadBlit::GetClipStackDepth(), 0);
+    QuadBlit::PopClipRect();  // extra pop on an empty stack is harmless
     EXPECT_EQ(QuadBlit::GetClipStackDepth(), 0);
 }
 

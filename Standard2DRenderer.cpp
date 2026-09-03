@@ -26,43 +26,28 @@ static struct Standard2DRegistrar {
 
 void Standard2DRenderer::AddPass(RenderPass* pass)
 {
-    if (m_PassCount < MAX_PASSES)
-        m_Passes[m_PassCount++] = pass;
+    if (pass && std::find(m_Passes.begin(), m_Passes.end(), pass) == m_Passes.end())
+        m_Passes.push_back(pass);
 }
 
 void Standard2DRenderer::RemovePass(RenderPass* pass)
 {
-    for (int i = 0; i < m_PassCount; i++)
-    {
-        if (m_Passes[i] == pass)
-        {
-            // Shift remaining passes down
-            for (int j = i; j < m_PassCount - 1; j++)
-                m_Passes[j] = m_Passes[j + 1];
-            m_Passes[--m_PassCount] = nullptr;
-            return;
-        }
-    }
+    auto it = std::find(m_Passes.begin(), m_Passes.end(), pass);
+    if (it != m_Passes.end())
+        m_Passes.erase(it);
 }
 
 void Standard2DRenderer::AddSortingCallback(SortingCallback cb)
 {
-    if (m_SortingCallbackCount < MAX_SORTING_CALLBACKS)
-        m_SortingCallbacks[m_SortingCallbackCount++] = cb;
+    if (cb && std::find(m_SortingCallbacks.begin(), m_SortingCallbacks.end(), cb) == m_SortingCallbacks.end())
+        m_SortingCallbacks.push_back(cb);
 }
 
 void Standard2DRenderer::RemoveSortingCallback(SortingCallback cb)
 {
-    for (int i = 0; i < m_SortingCallbackCount; i++)
-    {
-        if (m_SortingCallbacks[i] == cb)
-        {
-            for (int j = i; j < m_SortingCallbackCount - 1; j++)
-                m_SortingCallbacks[j] = m_SortingCallbacks[j + 1];
-            m_SortingCallbacks[--m_SortingCallbackCount] = nullptr;
-            return;
-        }
-    }
+    auto it = std::find(m_SortingCallbacks.begin(), m_SortingCallbacks.end(), cb);
+    if (it != m_SortingCallbacks.end())
+        m_SortingCallbacks.erase(it);
 }
 
 // --- Built-in component handling ---
@@ -257,9 +242,9 @@ void Standard2DRenderer::CollectSortableItems(DekiObject* obj, std::vector<SortI
     }
 
     // Then check custom sorting callbacks
-    for (int s = 0; s < m_SortingCallbackCount; s++)
+    for (SortingCallback cb : m_SortingCallbacks)
     {
-        if (m_SortingCallbacks[s](obj, order))
+        if (cb(obj, order))
         {
             items.push_back({obj, order, static_cast<uint32_t>(items.size())});
             return;
@@ -284,8 +269,8 @@ void Standard2DRenderer::Render(Scene* scene, const RenderContext& ctx)
     // BeginFrame to install a default render target for the whole frame;
     // every RenderObject below uses frameCtx, not the original ctx.
     RenderContext frameCtx = ctx;
-    for (int p = 0; p < m_PassCount; p++)
-        m_Passes[p]->BeginFrame(frameCtx);
+    for (RenderPass* pass : m_Passes)
+        pass->BeginFrame(frameCtx);
 
     // Collect and sort root objects
     m_SortDepth = 0;
@@ -308,8 +293,8 @@ void Standard2DRenderer::Render(Scene* scene, const RenderContext& ctx)
         RenderObject(sortableItems[i].obj, frameCtx);
 
     // Post-frame composites (e.g. screen-space overlays).
-    for (int p = m_PassCount - 1; p >= 0; p--)
-        m_Passes[p]->EndFrame(frameCtx);
+    for (auto it = m_Passes.rbegin(); it != m_Passes.rend(); ++it)
+        (*it)->EndFrame(frameCtx);
 }
 
 void Standard2DRenderer::RenderObject(DekiObject* obj, const RenderContext& ctx)
@@ -320,15 +305,15 @@ void Standard2DRenderer::RenderObject(DekiObject* obj, const RenderContext& ctx)
     RenderContext objCtx = ctx;
 
     // Phase 1: Pre-execute custom passes (may redirect ctx.buffer for this object)
-    for (int p = 0; p < m_PassCount; p++)
-        m_Passes[p]->PreExecute(obj, objCtx);
+    for (RenderPass* pass : m_Passes)
+        pass->PreExecute(obj, objCtx);
 
     // Phase 2: Execute built-in handling (sprite blit) — uses any ctx redirect from PreExecute
     ExecuteBuiltins(obj, objCtx);
 
     // Phase 3: Execute custom passes (clip push, etc.)
-    for (int p = 0; p < m_PassCount; p++)
-        m_Passes[p]->Execute(obj, objCtx);
+    for (RenderPass* pass : m_Passes)
+        pass->Execute(obj, objCtx);
 
     // Phase 4: Recurse into sorted children — uses objCtx so children inherit any
     // buffer redirect applied by this object's PreExecute / Execute hooks.
@@ -344,8 +329,8 @@ void Standard2DRenderer::RenderObject(DekiObject* obj, const RenderContext& ctx)
     --m_SortDepth;
 
     // Phase 5: Post-execute custom passes (clip pop, reverse order)
-    for (int p = m_PassCount - 1; p >= 0; p--)
-        m_Passes[p]->PostExecute(obj, objCtx);
+    for (auto it = m_Passes.rbegin(); it != m_Passes.rend(); ++it)
+        (*it)->PostExecute(obj, objCtx);
 
     // Phase 6: Post-execute built-ins
     PostExecuteBuiltins(obj, objCtx);

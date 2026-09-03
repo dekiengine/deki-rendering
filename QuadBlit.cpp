@@ -3,6 +3,7 @@
 #include <cmath>
 #include <algorithm>
 #include <cstring>
+#include <vector>
 
 // DekiColorFormat comes from the engine header. The editor build used to re-declare it
 // locally instead of including this; that is a second definition of the same type, which
@@ -77,67 +78,45 @@ static inline bool Aligned16(const void* a, const void* b)
 // Clip Rect Stack Implementation
 // ============================================================================
 
-static constexpr int MAX_CLIP_STACK = 16;
-static ClipRect s_ClipStack[MAX_CLIP_STACK];
-static int s_ClipStackDepth = 0;
+// Grows with the nesting depth of the scene; capacity persists across frames
+// (ClearClipStack only clears). A fixed 16-slot array used to over-clip every
+// level beyond the sixteenth.
+static std::vector<ClipRect> s_ClipStack;
 static bool s_ClipEnabled = true;
-// Pushes refused for lack of a slot. Their matching pops are absorbed so the
-// stack stays balanced: the overflowed levels draw with the deepest rect that
-// did fit (over-clipped), instead of a pop discarding a live rect and every
-// later draw going unclipped with no diagnostic.
-static int s_ClipOverflow = 0;
 
 void PushClipRect(int32_t left, int32_t top, int32_t right, int32_t bottom)
 {
-    if (s_ClipStackDepth >= MAX_CLIP_STACK)
-    {
-        if (s_ClipOverflow == 0)
-            DEKI_LOG_WARNING("QuadBlit: clip stack overflow (depth %d); nested clips beyond this use the parent rect",
-                             MAX_CLIP_STACK);
-        s_ClipOverflow++;
-        return;
-    }
-
     ClipRect rect = { left, top, right, bottom };
 
     // Intersect with parent clip rect
-    if (s_ClipStackDepth > 0)
+    if (!s_ClipStack.empty())
     {
-        const ClipRect& parent = s_ClipStack[s_ClipStackDepth - 1];
+        const ClipRect& parent = s_ClipStack.back();
         rect.left = std::max(rect.left, parent.left);
         rect.top = std::max(rect.top, parent.top);
         rect.right = std::min(rect.right, parent.right);
         rect.bottom = std::min(rect.bottom, parent.bottom);
     }
 
-    s_ClipStack[s_ClipStackDepth++] = rect;
+    s_ClipStack.push_back(rect);
 }
 
 void PopClipRect()
 {
-    if (s_ClipOverflow > 0)
-    {
-        s_ClipOverflow--;
-        return;
-    }
-    if (s_ClipStackDepth > 0)
-        s_ClipStackDepth--;
+    if (!s_ClipStack.empty())
+        s_ClipStack.pop_back();
 }
 
 ClipRect GetCurrentClipRect()
 {
-    if (!s_ClipEnabled)
+    if (!s_ClipEnabled || s_ClipStack.empty())
         return ClipRect{};
-
-    if (s_ClipStackDepth > 0)
-        return s_ClipStack[s_ClipStackDepth - 1];
-    return ClipRect{};
+    return s_ClipStack.back();
 }
 
 void ClearClipStack()
 {
-    s_ClipStackDepth = 0;
-    s_ClipOverflow = 0;
+    s_ClipStack.clear();
     s_ClipEnabled = true;
 }
 
@@ -153,7 +132,7 @@ bool IsClipEnabled()
 
 int GetClipStackDepth()
 {
-    return s_ClipStackDepth;
+    return static_cast<int>(s_ClipStack.size());
 }
 
 // ============================================================================

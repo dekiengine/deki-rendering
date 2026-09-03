@@ -316,10 +316,13 @@ uint64_t RunTarget(DekiColorFormat fmt, bool print)
 // 0 means "not captured yet": the test prints the actual value and fails.
 struct Expected { DekiColorFormat fmt; const char* name; uint64_t hash; };
 const Expected kExpected[] = {
-    { DekiColorFormat::RGB565,   "RGB565",   0x69b546a3da0996e8ULL },
-    { DekiColorFormat::RGB888,   "RGB888",   0x0ad3e9d2a782a927ULL },
-    { DekiColorFormat::ARGB8888, "ARGB8888", 0xd7d9ffed1677d11eULL },
-    { DekiColorFormat::RGB565A8, "RGB565A8", 0x7bf4c4a8b14653edULL },
+    // Re-pinned 2026-09-03 when the QuadBlit clip stack lost its 16-slot cap: only
+    // the "nested clips depth 40" case changed (levels 17..40 used to be clipped
+    // by level 16's rect); every other case hash is identical to the first pin.
+    { DekiColorFormat::RGB565,   "RGB565",   0x1d8eb3cd8824484dULL },
+    { DekiColorFormat::RGB888,   "RGB888",   0x57549d41cf335c9bULL },
+    { DekiColorFormat::ARGB8888, "ARGB8888", 0x99d8e38d9ca41e9fULL },
+    { DekiColorFormat::RGB565A8, "RGB565A8", 0xb9a61fd457e7a6cfULL },
 };
 
 }  // namespace

@@ -58,12 +58,8 @@ public:
     void RemoveSortingCallback(SortingCallback cb);
 
 private:
-    static constexpr int MAX_PASSES = 16;
-    static constexpr int MAX_SORTING_CALLBACKS = 8;
-    RenderPass* m_Passes[MAX_PASSES] = {};
-    int m_PassCount = 0;
-    SortingCallback m_SortingCallbacks[MAX_SORTING_CALLBACKS] = {};
-    int m_SortingCallbackCount = 0;
+    std::vector<RenderPass*> m_Passes;  // in attach order; no cap
+    std::vector<SortingCallback> m_SortingCallbacks;
 
     // One renderable claimed by a component, with its insertion order so the
     // sort is stable without std::stable_sort (whose temporary buffer was a

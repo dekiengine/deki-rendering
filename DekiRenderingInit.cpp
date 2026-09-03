@@ -16,23 +16,25 @@ static DekiRenderSystem* s_RenderSystem = nullptr;
 static DekiRenderer* s_Renderer = nullptr;
 static Standard2DRenderer* s_PassReceiver = nullptr;
 
-static constexpr int MAX_INIT_PASSES = 8;
-static RenderPass* s_Passes[MAX_INIT_PASSES] = {};
-static std::string s_PassNames[MAX_INIT_PASSES];
-static int s_PassCount = 0;
+// Passes this system created, in attach order. No cap: a fixed array of 8
+// used to silently drop the ninth pass.
+struct AttachedPass
+{
+    std::string name;
+    RenderPass* pass;
+};
+static std::vector<AttachedPass> s_Passes;
 
 static void AttachPass(const char* name, const RenderPassInfo& info)
 {
     if (!s_PassReceiver || !info.factory) return;
-    if (s_PassCount >= MAX_INIT_PASSES) return;
-    for (int i = 0; i < s_PassCount; ++i)
-        if (s_PassNames[i] == name) return;  // already attached
+    for (const AttachedPass& p : s_Passes)
+        if (p.name == name) return;  // already attached
 
-    s_Passes[s_PassCount]    = info.factory();
-    s_PassNames[s_PassCount] = name;
-    s_PassReceiver->AddPass(s_Passes[s_PassCount]);
+    RenderPass* pass = info.factory();
+    s_Passes.push_back({ name, pass });
+    s_PassReceiver->AddPass(pass);
     DEKI_LOG_INTERNAL("DekiRendering: Attached pass '%s'", name);
-    s_PassCount++;
 }
 
 void DekiRendering_InitSystem()
@@ -109,29 +111,20 @@ void DekiRendering_InitSystem()
 
     // 5. Register with engine
     DekiEngine::GetInstance().SetRenderSystem(s_RenderSystem);
-    DEKI_LOG_INTERNAL("DekiRendering: Init complete (renderer=%p, %d passes)", (void*)s_Renderer, s_PassCount);
+    DEKI_LOG_INTERNAL("DekiRendering: Init complete (renderer=%p, %d passes)", (void*)s_Renderer, (int)s_Passes.size());
 }
 
 void DekiRendering_DetachPass(const char* name)
 {
     if (!name) return;
-    for (int i = 0; i < s_PassCount; ++i)
+    for (auto it = s_Passes.begin(); it != s_Passes.end(); ++it)
     {
-        if (s_PassNames[i] != name) continue;
+        if (it->name != name) continue;
 
         if (s_PassReceiver)
-            s_PassReceiver->RemovePass(s_Passes[i]);
-        delete s_Passes[i];
-
-        // Compact arrays so indices stay contiguous.
-        for (int j = i; j < s_PassCount - 1; ++j)
-        {
-            s_Passes[j]    = s_Passes[j + 1];
-            s_PassNames[j] = std::move(s_PassNames[j + 1]);
-        }
-        s_PassCount--;
-        s_Passes[s_PassCount] = nullptr;
-        s_PassNames[s_PassCount].clear();
+            s_PassReceiver->RemovePass(it->pass);
+        delete it->pass;
+        s_Passes.erase(it);
         DEKI_LOG_INTERNAL("DekiRendering: Detached pass '%s'", name);
         return;
     }
@@ -145,13 +138,9 @@ void DekiRendering_ShutdownSystem()
     // renderer if a package re-registers after shutdown.
     DekiRenderPassRegistry::SetAutoAttachCallback(nullptr);
 
-    for (int i = 0; i < s_PassCount; i++)
-    {
-        delete s_Passes[i];
-        s_Passes[i] = nullptr;
-        s_PassNames[i].clear();
-    }
-    s_PassCount = 0;
+    for (AttachedPass& p : s_Passes)
+        delete p.pass;
+    s_Passes.clear();
     s_PassReceiver = nullptr;
 
     delete s_Renderer;
