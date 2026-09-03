@@ -14,6 +14,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <cstdlib>
 #include <vector>
 #include "QuadBlit.h"
 #include "DekiEngine.h"  // DekiColorFormat
@@ -125,8 +126,9 @@ SrcBuf MakeSrc(SrcFmt f, int w, int h, uint32_t seed, int stridePad, bool chroma
             const uint32_t roll = rng.Next() % 4;
             if (inRun) a = 255;
             else a = (roll == 0) ? 0 : (roll == 1 ? 255 : rng.Byte());
-            // Outside the run a chroma-keyed source is the key colour on some pixels
-            const bool isKey = chroma && !inRun && (roll >= 2);
+            // Chroma-keyed sources honour the chromaRowSpans contract: every
+            // pixel outside the run IS the key colour, every pixel inside is not.
+            const bool isKey = chroma && !inRun;
             if (isKey) { r = kKeyR; g = kKeyG; b = kKeyB; }
             else if (chroma && r == kKeyR && g == kKeyG && b == kKeyB) { g = 0x40; }
             switch (f)
@@ -238,24 +240,33 @@ uint64_t RunTarget(DekiColorFormat dst, bool print)
                                      c.tr, c.tg, c.tb, c.ta, c.dither);
             }
             QuadBlit::ClearClipStack();
-            const uint64_t before = hash;
-            hash = Fnv(target, hash);
+            // Each case hashes on its own (so two builds can be compared case
+            // by case); the per-target value folds the case hashes in order.
+            const uint64_t caseHash = Fnv(target, 0xcbf29ce484222325ULL);
+            hash = (hash ^ caseHash) * 0x100000001b3ULL;
             if (print)
                 std::printf("  %-18s %-22s %016llx\n", SrcName(sf), c.name,
-                            static_cast<unsigned long long>(hash ^ before));
+                            static_cast<unsigned long long>(caseHash));
         }
     }
     return hash;
 }
 
-// Captured from the specialised kernels before the template refactor.
-// 0 means "not captured yet": the test then prints the actual value and fails.
+// Captured from the unified pipeline (September 2026). Against the twelve
+// hand-written kernels it replaced, exactly two things changed, both on
+// purpose: an RGB565A8 source with hasAlpha == false is opaque on every path
+// (the ARGB8888/RGB888 kernels and the rotated path read its alpha byte
+// anyway), and blends onto an RGB565A8 target through the generic, flipped
+// and rotated paths keep coverage alpha (src-over union) like the
+// specialised kernels always did instead of writing 0xFF. Every other case
+// is bit-identical. 0 means "not captured yet": the test then prints the
+// actual value and fails.
 struct Expected { DekiColorFormat fmt; const char* name; uint64_t hash; };
 const Expected kExpected[] = {
-    { DekiColorFormat::RGB565,   "RGB565",   0x500ccf00dfd73dd1ULL },
-    { DekiColorFormat::RGB888,   "RGB888",   0x1ab417dbb01f5b49ULL },
-    { DekiColorFormat::ARGB8888, "ARGB8888", 0x304e0b8287d87f7fULL },
-    { DekiColorFormat::RGB565A8, "RGB565A8", 0x6785ffab257d4682ULL },
+    { DekiColorFormat::RGB565,   "RGB565",   0x0a31383163f71c2bULL },
+    { DekiColorFormat::RGB888,   "RGB888",   0x2f1126ce6004d7f7ULL },
+    { DekiColorFormat::ARGB8888, "ARGB8888", 0xc80bf916f6efe40bULL },
+    { DekiColorFormat::RGB565A8, "RGB565A8", 0xd8f3d76abf379d7aULL },
 };
 
 }  // namespace
@@ -267,7 +278,8 @@ class GoldenBlitTest : public ::testing::TestWithParam<int>
 TEST_P(GoldenBlitTest, TargetFormatMatchesGolden)
 {
     const Expected& e = kExpected[GetParam()];
-    const uint64_t actual = RunTarget(e.fmt, false);
+    // DEKI_GOLDEN_PRINT=1 lists every case's hash (to diff two builds).
+    const uint64_t actual = RunTarget(e.fmt, std::getenv("DEKI_GOLDEN_PRINT") != nullptr);
     std::printf("GOLDEN %s = 0x%016llxULL\n", e.name, static_cast<unsigned long long>(actual));
     if (actual != e.hash)
     {
