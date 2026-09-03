@@ -53,21 +53,21 @@ float CameraComponent::GetPositionY() const
     return owner ? owner->GetWorldY() : 0.0f;
 }
 
-float CameraComponent::GetVisibleWidth(int32_t m_ScreenWidth) const
+float CameraComponent::GetVisibleWidth(int32_t screenWidth) const
 {
     const float ppm = GetPixelsPerMeter();
-    return (ppm > 0.0f) ? (static_cast<float>(m_ScreenWidth) / ppm) : 0.0f;
+    return (ppm > 0.0f) ? (static_cast<float>(screenWidth) / ppm) : 0.0f;
 }
 
-float CameraComponent::GetVisibleHeight(int32_t m_ScreenHeight) const
+float CameraComponent::GetVisibleHeight(int32_t screenHeight) const
 {
     const float ppm = GetPixelsPerMeter();
-    return (ppm > 0.0f) ? (static_cast<float>(m_ScreenHeight) / ppm) : 0.0f;
+    return (ppm > 0.0f) ? (static_cast<float>(screenHeight) / ppm) : 0.0f;
 }
 
-void CameraComponent::WorldToScreen(float world_x, float world_y,
-                                     int m_ScreenWidth, int m_ScreenHeight,
-                                     float& screen_x, float& screen_y) const
+void CameraComponent::WorldToScreen(float worldX, float worldY,
+                                     int screenWidth, int screenHeight,
+                                     float& screenX, float& screenY) const
 {
     // World: meters, center origin, Y UP (positive Y = up)
     // Screen: top-left origin, Y down
@@ -85,23 +85,23 @@ void CameraComponent::WorldToScreen(float world_x, float world_y,
         cam_x = std::round(cam_x * ppm) / ppm;
         cam_y = std::round(cam_y * ppm) / ppm;
     }
-    const float rel_x = world_x - cam_x;
-    const float rel_y = world_y - cam_y;
+    const float rel_x = worldX - cam_x;
+    const float rel_y = worldY - cam_y;
 
-    screen_x = rel_x * ppm + static_cast<float>(m_ScreenWidth) * 0.5f;
-    screen_y = -rel_y * ppm + static_cast<float>(m_ScreenHeight) * 0.5f; // Negate Y: world Y+ is up
+    screenX = rel_x * ppm + static_cast<float>(screenWidth) * 0.5f;
+    screenY = -rel_y * ppm + static_cast<float>(screenHeight) * 0.5f; // Negate Y: world Y+ is up
 }
 
-void CameraComponent::ScreenToWorld(float screen_x, float screen_y,
-                                     int m_ScreenWidth, int m_ScreenHeight,
-                                     float& world_x, float& world_y) const
+void CameraComponent::ScreenToWorld(float screenX, float screenY,
+                                     int screenWidth, int screenHeight,
+                                     float& worldX, float& worldY) const
 {
     // Inverse of WorldToScreen.
     const float ppm = GetPixelsPerMeter();
     const float inv = (ppm > 0.0f) ? (1.0f / ppm) : 0.0f;
-    const float rel_x = (screen_x - static_cast<float>(m_ScreenWidth) * 0.5f) * inv;
-    const float rel_y = (screen_y - static_cast<float>(m_ScreenHeight) * 0.5f) * inv;
+    const float rel_x = (screenX - static_cast<float>(screenWidth) * 0.5f) * inv;
+    const float rel_y = (screenY - static_cast<float>(screenHeight) * 0.5f) * inv;
 
-    world_x = rel_x + GetPositionX();
-    world_y = -rel_y + GetPositionY(); // Negate Y: screen Y down -> world Y up
+    worldX = rel_x + GetPositionX();
+    worldY = -rel_y + GetPositionY(); // Negate Y: screen Y down -> world Y up
 }

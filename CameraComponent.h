@@ -74,17 +74,17 @@ public:
     float GetPositionY() const;
 
     // Visible world size (meters) for a given screen size in pixels.
-    float GetVisibleWidth(int32_t m_ScreenWidth) const;
-    float GetVisibleHeight(int32_t m_ScreenHeight) const;
+    float GetVisibleWidth(int32_t screenWidth) const;
+    float GetVisibleHeight(int32_t screenHeight) const;
 
     // ICamera: Coordinate conversion (float in, float out)
-    void WorldToScreen(float world_x, float world_y,
-                       int m_ScreenWidth, int m_ScreenHeight,
-                       float& screen_x, float& screen_y) const override;
+    void WorldToScreen(float worldX, float worldY,
+                       int screenWidth, int screenHeight,
+                       float& screenX, float& screenY) const override;
 
-    void ScreenToWorld(float screen_x, float screen_y,
-                       int m_ScreenWidth, int m_ScreenHeight,
-                       float& world_x, float& world_y) const override;
+    void ScreenToWorld(float screenX, float screenY,
+                       int screenWidth, int screenHeight,
+                       float& worldX, float& worldY) const override;
 };
 
 // Generated property metadata (after class definition for offsetof)
