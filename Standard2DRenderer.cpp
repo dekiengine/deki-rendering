@@ -228,8 +228,8 @@ void Standard2DRenderer::PostExecuteBuiltins(DekiObject* obj, RenderContext& ctx
 
 std::vector<Standard2DRenderer::SortItem>& Standard2DRenderer::SortListForDepth(int depth)
 {
-    if (static_cast<size_t>(depth) >= m_SortScratch.size())
-        m_SortScratch.resize(depth + 1);
+    while (static_cast<size_t>(depth) >= m_SortScratch.size())
+        m_SortScratch.emplace_back();  // deque: existing lists keep their addresses
     std::vector<SortItem>& list = m_SortScratch[depth];
     list.clear();  // keeps capacity: no allocation once warm
     return list;

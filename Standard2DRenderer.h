@@ -4,6 +4,7 @@
 #include "RenderPass.h"
 
 #include <cstdint>
+#include <deque>
 #include <vector>
 
 // Forward declarations
@@ -75,7 +76,12 @@ private:
     };
     // One reusable list per recursion depth. They used to be 64-entry stack
     // arrays: 512 bytes of stack per hierarchy level, and a silent cap.
-    std::vector<std::vector<SortItem>> m_SortScratch;
+    // One scratch list per recursion depth. A deque, not a vector of vectors:
+    // Render() and RenderObject() hold a reference to their depth's list while
+    // deeper levels are created, and growing a vector<vector> moves the inner
+    // vectors, leaving that reference dangling (the renderer golden test found
+    // it as a use-after-free on the first frame with children).
+    std::deque<std::vector<SortItem>> m_SortScratch;
     int m_SortDepth = 0;
     std::vector<SortItem>& SortListForDepth(int depth);
     static void SortItems(std::vector<SortItem>& items);
