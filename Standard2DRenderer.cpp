@@ -117,6 +117,34 @@ void Standard2DRenderer::ExecuteBuiltins(DekiObject* obj, RenderContext& ctx)
     {
         const bool useOrderedDither = (renderer->alphaMode == AlphaMode::OrderedDither);
 
+        // Cull before RenderContent, which may rasterise text, bake a gradient
+        // or copy a frame: a conservative screen box from the component's
+        // world extents - any pivot (the content lies within one full size of
+        // the origin) and any rotation (within width + height). Objects of
+        // unknown size are drawn.
+        float extentW = 0.0f, extentH = 0.0f;
+        if (renderer->GetContentExtents(extentW, extentH))
+        {
+            float cx, cy;
+            ctx.camera->WorldToScreen(obj->GetWorldX(), obj->GetWorldY(), ctx.width, ctx.height, cx, cy);
+            const float reach = (std::fabs(extentW * obj->GetWorldScaleX()) +
+                                 std::fabs(extentH * obj->GetWorldScaleY())) *
+                                    ctx.camera->GetPixelsPerMeter() +
+                                2.0f;
+            float left = 0.0f, top = 0.0f;
+            float right = static_cast<float>(ctx.width), bottom = static_cast<float>(ctx.height);
+            if (!renderer->ignoreClip && QuadBlit::IsClipEnabled())
+            {
+                const QuadBlit::ClipRect clip = QuadBlit::GetCurrentClipRect();
+                left = std::max(left, static_cast<float>(clip.left));
+                top = std::max(top, static_cast<float>(clip.top));
+                right = std::min(right, static_cast<float>(clip.right));
+                bottom = std::min(bottom, static_cast<float>(clip.bottom));
+            }
+            if (cx + reach < left || cx - reach > right || cy + reach < top || cy - reach > bottom)
+                return;
+        }
+
         QuadBlit::Source source;
         float pivotX, pivotY;
         uint8_t tintR, tintG, tintB, tintA;

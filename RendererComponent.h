@@ -107,6 +107,20 @@ class RendererComponent : public DekiBehaviour, public ISortableProvider
      * outSource.pixels after blitting. Components that own their buffers
      * (sprites, baked text and gradients) leave it false.
      */
+    /**
+     * @brief Conservative world-space size of what RenderContent draws, in
+     * meters, before the object's scale. The renderer skips RenderContent
+     * (and the blit) for objects entirely outside the target and the current
+     * clip; it accounts for any pivot and any rotation itself. Return false
+     * when the size is unknown: the object is then always drawn.
+     */
+    virtual bool GetContentExtents(float& outWidth, float& outHeight) const
+    {
+        (void)outWidth;
+        (void)outHeight;
+        return false;
+    }
+
     virtual bool RenderContent(const DekiObject* owner,
                                QuadBlit::Source& outSource,
                                float& outPivotX,
