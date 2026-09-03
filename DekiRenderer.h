@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include "DekiEngine.h"
+#include "FrameCamera.h"
 
 // Forward declarations
 class Scene;
@@ -19,6 +20,13 @@ struct RenderContext
     int32_t width;
     int32_t height;
     DekiColorFormat format;
+    // World-to-screen snapshot for this frame, captured by Standard2DRenderer
+    // after the passes' BeginFrame from `camera` and the target size. Use it
+    // instead of camera->WorldToScreen in per-object / per-tile code. Trailing
+    // with a default so the five-field aggregate initialisers keep working;
+    // a pass that redirects an object to a target of a different size must
+    // refresh it (camera->CaptureFrameCamera) for that object.
+    FrameCamera cam = {};
 };
 
 /**

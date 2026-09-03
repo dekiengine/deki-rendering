@@ -30,11 +30,6 @@ void RendererComponent::SetSortingOrder(int order)
     sortingOrder = order;
 }
 
-int32_t RendererComponent::GetSortingOrder() const
-{
-    return sortingOrder;
-}
-
 #ifdef V_ENGINE_ENABLE_MASK
 void RendererComponent::SetMaskMode(MaskRenderMode mode, uint8_t stencilId)
 {

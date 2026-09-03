@@ -14,6 +14,7 @@
  */
 
 #include <gtest/gtest.h>
+#include <algorithm>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -358,4 +359,81 @@ TEST(RendererGoldenTest, ClipStackBalancedAfterDeepNesting)
     RenderContext ctx{ b.camera, target.data(), kW, kH, DekiColorFormat::RGB565 };
     renderer.Render(&b.scene, ctx);
     EXPECT_EQ(QuadBlit::GetClipStackDepth(), 0);
+}
+
+// A clip and a renderer on ONE object must render like the clip on a parent
+// with the renderer on a child at the same world position: the clip is pushed
+// before the object's own content is drawn (one component walk resolves both).
+TEST(RendererGoldenTest, ClipAndRendererOnOneObjectMatchesParentChildForm)
+{
+    RegisterTestAdapters();
+    auto render = [](bool sameObject) {
+        SceneBuilder b;
+        DekiObject* holder = b.Object("holder", 0.1f, -0.05f);
+        auto* clip = holder->AddComponent<TestClip>();
+        clip->width = 0.15f;
+        clip->height = 0.15f;
+        TestRenderer* r = sameObject ? holder->AddComponent<TestRenderer>()
+                                     : b.Sprite("child", 0.0f, 0.0f, 0x001F, 0, holder);
+        r->colour = 0x001F;
+        r->sourcePpm = 4.0f;  // 1 m square: far larger than the clip
+        std::vector<uint8_t> target(static_cast<size_t>(kW) * kH * 2, 0);
+        Standard2DRenderer renderer;
+        RenderContext ctx{ b.camera, target.data(), kW, kH, DekiColorFormat::RGB565 };
+        renderer.Render(&b.scene, ctx);
+        QuadBlit::ClearClipStack();
+        return target;
+    };
+    const std::vector<uint8_t> same = render(true);
+    const std::vector<uint8_t> split = render(false);
+    EXPECT_EQ(same, split);
+    // ... and the clip really applied: the far corner stays background.
+    EXPECT_EQ(same[0], 0u);
+    EXPECT_EQ(same[1], 0u);
+    // ... while the centre is blue.
+    const size_t centre = (static_cast<size_t>(kH / 2) * kW + kW / 2 + 1) * 2;
+    EXPECT_EQ(same[centre] | (same[centre + 1] << 8), 0x001F);
+}
+
+// A component type that gains an IClipProvider adapter AFTER the renderer has
+// already classified it (a package loading later) must clip from the next
+// frame on: the per-type cache is dropped when the adapter registry changes.
+class TestLateClip : public DekiComponent, public IClipProvider
+{
+public:
+    DECLARE_COMPONENT_TYPE(TestLateClip, DekiComponent)
+    float GetClipWidth() const override { return 0.15f; }
+    float GetClipHeight() const override { return 0.15f; }
+};
+
+TEST(RendererGoldenTest, AdapterRegisteredAfterFirstFrameTakesEffect)
+{
+    RegisterTestAdapters();
+    SceneBuilder b;
+    DekiObject* holder = b.Object("holder", 0.0f, 0.0f);
+    holder->AddComponent<TestLateClip>();
+    // Like ClipComponent, a real clip is also sortable so the renderer claims
+    // it; an unclaimed container's clip is never pushed (containers only
+    // float their children up).
+    holder->AddComponent<TestSortGroup>();
+    auto* big = b.Sprite("big", 0.0f, 0.0f, 0xF800, 0, holder);
+    big->sourcePpm = 4.0f;
+
+    Standard2DRenderer renderer;
+    std::vector<uint8_t> target(static_cast<size_t>(kW) * kH * 2, 0);
+    RenderContext ctx{ b.camera, target.data(), kW, kH, DekiColorFormat::RGB565 };
+    renderer.Render(&b.scene, ctx);
+    QuadBlit::ClearClipStack();
+    // 6 px from the centre: inside the 16 px sprite, outside the 2.4 px clip.
+    const size_t corner = (static_cast<size_t>(kH / 2 - 6) * kW + kW / 2 - 6) * 2;
+    EXPECT_EQ(target[corner] | (target[corner + 1] << 8), 0xF800) << "no adapter yet: unclipped";
+
+    ComponentInterfaceAdapters::Register(IClipProvider::InterfaceID, TestLateClip::StaticType,
+                                         [](DekiComponent* c) -> void* { return static_cast<IClipProvider*>(static_cast<TestLateClip*>(c)); });
+    std::fill(target.begin(), target.end(), 0);
+    renderer.Render(&b.scene, ctx);
+    EXPECT_EQ(QuadBlit::GetClipStackDepth(), 0);
+    EXPECT_EQ(target[corner] | (target[corner + 1] << 8), 0x0000) << "adapter registered: clipped";
+    const size_t centre = (static_cast<size_t>(kH / 2) * kW + kW / 2) * 2;
+    EXPECT_EQ(target[centre] | (target[centre + 1] << 8), 0xF800);
 }

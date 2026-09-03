@@ -65,9 +65,7 @@ float CameraComponent::GetVisibleHeight(int32_t screenHeight) const
     return (ppm > 0.0f) ? (static_cast<float>(screenHeight) / ppm) : 0.0f;
 }
 
-void CameraComponent::WorldToScreen(float worldX, float worldY,
-                                     int screenWidth, int screenHeight,
-                                     float& screenX, float& screenY) const
+FrameCamera CameraComponent::CaptureFrameCamera(int screenWidth, int screenHeight) const
 {
     // World: meters, center origin, Y UP (positive Y = up)
     // Screen: top-left origin, Y down
@@ -77,19 +75,26 @@ void CameraComponent::WorldToScreen(float worldX, float worldY,
     // whole pixels (cam_x_px = round(cam_x * ppm) / ppm) so smooth camera
     // tweens / shake quantize at the camera level. The per-renderer
     // pixelSnap still applies on top of this.
-    const float ppm = GetPixelsPerMeter();
-    float cam_x = GetPositionX();
-    float cam_y = GetPositionY();
-    if (pixelSnap && ppm > 0.0f)
+    FrameCamera fc;
+    fc.ppm = GetPixelsPerMeter();
+    fc.camX = GetPositionX();
+    fc.camY = GetPositionY();
+    if (pixelSnap && fc.ppm > 0.0f)
     {
-        cam_x = std::round(cam_x * ppm) / ppm;
-        cam_y = std::round(cam_y * ppm) / ppm;
+        fc.camX = std::round(fc.camX * fc.ppm) / fc.ppm;
+        fc.camY = std::round(fc.camY * fc.ppm) / fc.ppm;
     }
-    const float rel_x = worldX - cam_x;
-    const float rel_y = worldY - cam_y;
+    fc.halfW = static_cast<float>(screenWidth) * 0.5f;
+    fc.halfH = static_cast<float>(screenHeight) * 0.5f;
+    fc.valid = true;
+    return fc;
+}
 
-    screenX = rel_x * ppm + static_cast<float>(screenWidth) * 0.5f;
-    screenY = -rel_y * ppm + static_cast<float>(screenHeight) * 0.5f; // Negate Y: world Y+ is up
+void CameraComponent::WorldToScreen(float worldX, float worldY,
+                                     int screenWidth, int screenHeight,
+                                     float& screenX, float& screenY) const
+{
+    CaptureFrameCamera(screenWidth, screenHeight).WorldToScreen(worldX, worldY, screenX, screenY);
 }
 
 void CameraComponent::ScreenToWorld(float screenX, float screenY,

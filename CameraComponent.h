@@ -4,6 +4,7 @@
 #include <cmath>
 #include "DekiComponent.h"
 #include "ICamera.h"
+#include "FrameCamera.h"
 #include "reflection/DekiProperty.h"
 #include "Color.h"
 
@@ -76,6 +77,12 @@ public:
     // Visible world size (meters) for a given screen size in pixels.
     float GetVisibleWidth(int32_t screenWidth) const;
     float GetVisibleHeight(int32_t screenHeight) const;
+
+    // Snapshot of this camera's world-to-screen mapping for a target of the
+    // given size: position (camera-pixel-snapped), pixels per meter, centre.
+    // WorldToScreen below is this snapshot's WorldToScreen, so the two agree
+    // exactly; the renderer captures it once per frame (RenderContext::cam).
+    FrameCamera CaptureFrameCamera(int screenWidth, int screenHeight) const;
 
     // ICamera: Coordinate conversion (float in, float out)
     void WorldToScreen(float worldX, float worldY,

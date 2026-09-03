@@ -50,44 +50,79 @@ void Standard2DRenderer::RemoveSortingCallback(SortingCallback cb)
         m_SortingCallbacks.erase(it);
 }
 
-// --- Built-in component handling ---
-
-bool Standard2DRenderer::GetBuiltinSortingOrder(DekiObject* obj, int32_t& outOrder)
+void Standard2DRenderer::RebuildHookLists()
 {
-    // Check RendererComponent
-    auto* renderer = obj->GetComponent<RendererComponent>();
-    if (renderer)
+    m_BeginPasses.clear();
+    m_PrePasses.clear();
+    m_ExecPasses.clear();
+    m_PostPasses.clear();
+    m_EndPasses.clear();
+    for (RenderPass* pass : m_Passes)
     {
-        outOrder = renderer->GetSortingOrder();
-        return true;
+        const uint32_t mask = pass->HookMask();
+        if (mask & RenderPassHooks::BeginFrame)  m_BeginPasses.push_back(pass);
+        if (mask & RenderPassHooks::PreExecute)  m_PrePasses.push_back(pass);
+        if (mask & RenderPassHooks::Execute)     m_ExecPasses.push_back(pass);
+        if (mask & RenderPassHooks::PostExecute) m_PostPasses.push_back(pass);
+        if (mask & RenderPassHooks::EndFrame)    m_EndPasses.push_back(pass);
     }
-
-    // Check ISortableProvider (ClipComponent, SortingGroupComponent, etc.)
-    auto* sortable = obj->FindInterface<ISortableProvider>();
-    if (sortable)
-    {
-        outOrder = sortable->GetSortingOrder();
-        return true;
-    }
-
-    return false;
 }
 
-void Standard2DRenderer::ExecuteBuiltins(DekiObject* obj, RenderContext& ctx)
+// --- Component classification ---
+
+const Standard2DRenderer::TypeTraits& Standard2DRenderer::TraitsFor(const DekiComponent* comp)
 {
+    const ComponentType type = comp->GetType();
+    auto it = m_TypeTraits.find(type);
+    if (it != m_TypeTraits.end())
+        return it->second;
+
+    // Same predicates as DekiObject::GetComponent<RendererComponent>() and
+    // FindInterface<T>() (exact type, then one base level), evaluated once.
+    const ComponentType base = comp->GetBaseType();
+    TypeTraits traits;
+    traits.isRenderer = (type == RendererComponent::StaticType || base == RendererComponent::StaticType);
+    traits.clipAdapter = ComponentInterfaceAdapters::Find(IClipProvider::InterfaceID, type, base);
+    traits.sortableAdapter = ComponentInterfaceAdapters::Find(ISortableProvider::InterfaceID, type, base);
+    return m_TypeTraits.emplace(type, traits).first->second;
+}
+
+Standard2DRenderer::Renderables Standard2DRenderer::ResolveRenderables(DekiObject* obj)
+{
+    // One walk of the component list; first match wins per role, exactly as
+    // the separate GetComponent / FindInterface lookups did.
+    Renderables r{ nullptr, nullptr, nullptr };
+    for (DekiComponent* comp : obj->GetComponents())
+    {
+        const TypeTraits& t = TraitsFor(comp);
+        if (t.isRenderer && !r.renderer)
+            r.renderer = static_cast<RendererComponent*>(comp);
+        if (t.clipAdapter && !r.clip)
+            r.clip = static_cast<IClipProvider*>(t.clipAdapter(comp));
+        if (t.sortableAdapter && !r.sortable)
+            r.sortable = static_cast<ISortableProvider*>(t.sortableAdapter(comp));
+    }
+    return r;
+}
+
+// --- Built-in component handling ---
+
+void Standard2DRenderer::ExecuteBuiltins(const SortItem& item, RenderContext& ctx)
+{
+    DekiObject* obj = item.obj;
+    const DekiWorldTransform wt = obj->GetWorldTransform();  // one dirty check for all five values
+
     // Clip: push clip rect if IClipProvider is present
-    auto* clip = obj->FindInterface<IClipProvider>();
-    if (clip)
+    if (item.clip)
     {
         float fScreenX, fScreenY;
-        ctx.camera->WorldToScreen(obj->GetWorldX(), obj->GetWorldY(),
-                                   ctx.width, ctx.height, fScreenX, fScreenY);
+        ctx.cam.WorldToScreen(wt.x, wt.y, fScreenX, fScreenY);
         int32_t screenX = static_cast<int32_t>(std::floor(fScreenX));
         int32_t screenY = static_cast<int32_t>(std::floor(fScreenY));
 
-        const float effective = ctx.camera->GetPixelsPerMeter();
-        float scaledW = clip->GetClipWidth() * effective * obj->GetWorldScaleX();
-        float scaledH = clip->GetClipHeight() * effective * obj->GetWorldScaleY();
+        const float effective = ctx.cam.ppm;
+        float scaledW = item.clip->GetClipWidth() * effective * wt.scaleX;
+        float scaledH = item.clip->GetClipHeight() * effective * wt.scaleY;
         int32_t left = screenX - static_cast<int32_t>(std::floor(scaledW * 0.5f));
         int32_t top  = screenY - static_cast<int32_t>(std::floor(scaledH * 0.5f));
 
@@ -97,10 +132,13 @@ void Standard2DRenderer::ExecuteBuiltins(DekiObject* obj, RenderContext& ctx)
     }
 
     // Sprite: blit content
-    auto* renderer = obj->GetComponent<RendererComponent>();
+    RendererComponent* renderer = item.renderer;
     if (renderer)
     {
         const bool useOrderedDither = (renderer->alphaMode == AlphaMode::OrderedDither);
+
+        float fScreenX, fScreenY;
+        ctx.cam.WorldToScreen(wt.x, wt.y, fScreenX, fScreenY);
 
         // Cull before RenderContent, which may rasterise text, bake a gradient
         // or copy a frame: a conservative screen box from the component's
@@ -110,11 +148,10 @@ void Standard2DRenderer::ExecuteBuiltins(DekiObject* obj, RenderContext& ctx)
         float extentW = 0.0f, extentH = 0.0f;
         if (renderer->GetContentExtents(extentW, extentH))
         {
-            float cx, cy;
-            ctx.camera->WorldToScreen(obj->GetWorldX(), obj->GetWorldY(), ctx.width, ctx.height, cx, cy);
-            const float reach = (std::fabs(extentW * obj->GetWorldScaleX()) +
-                                 std::fabs(extentH * obj->GetWorldScaleY())) *
-                                    ctx.camera->GetPixelsPerMeter() +
+            const float cx = fScreenX, cy = fScreenY;
+            const float reach = (std::fabs(extentW * wt.scaleX) +
+                                 std::fabs(extentH * wt.scaleY)) *
+                                    ctx.cam.ppm +
                                 2.0f;
             float left = 0.0f, top = 0.0f;
             float right = static_cast<float>(ctx.width), bottom = static_cast<float>(ctx.height);
@@ -136,10 +173,6 @@ void Standard2DRenderer::ExecuteBuiltins(DekiObject* obj, RenderContext& ctx)
         if (renderer->RenderContent(obj, source, pivotX, pivotY,
                                      tintR, tintG, tintB, tintA))
         {
-            float fScreenX, fScreenY;
-            ctx.camera->WorldToScreen(obj->GetWorldX(), obj->GetWorldY(),
-                                       ctx.width, ctx.height, fScreenX, fScreenY);
-
             // Temporarily disable clipping if renderer has ignoreClip set
             bool wasClipEnabled = QuadBlit::IsClipEnabled();
             if (renderer->ignoreClip)
@@ -153,11 +186,11 @@ void Standard2DRenderer::ExecuteBuiltins(DekiObject* obj, RenderContext& ctx)
             // World coords are always meters; sprite.pixelsPerMeter is always
             // honored. Match camera and sprite PPM (and project PPM) for 1:1
             // pixel rendering of source art.
-            const float worldToScreen = ctx.camera->GetPixelsPerMeter();
+            const float worldToScreen = ctx.cam.ppm;
             const float spritePPM = (source.pixelsPerMeter > 0.0f) ? source.pixelsPerMeter : 1.0f;
             const float invSourcePPM = 1.0f / spritePPM;
-            const float drawScaleX = obj->GetWorldScaleX() * worldToScreen * invSourcePPM;
-            const float drawScaleY = obj->GetWorldScaleY() * worldToScreen * invSourcePPM;
+            const float drawScaleX = wt.scaleX * worldToScreen * invSourcePPM;
+            const float drawScaleY = wt.scaleY * worldToScreen * invSourcePPM;
 
             // pixelSnap = true → round to nearest pixel (sharp, sprite-art).
             // pixelSnap = false → truncate (sub-pixel motion accumulates;
@@ -179,7 +212,7 @@ void Standard2DRenderer::ExecuteBuiltins(DekiObject* obj, RenderContext& ctx)
                 intScreenY,
                 drawScaleX,
                 drawScaleY,
-                obj->GetWorldRotation(),
+                wt.rotation,
                 pivotX,
                 pivotY,
                 tintR,
@@ -202,10 +235,10 @@ void Standard2DRenderer::ExecuteBuiltins(DekiObject* obj, RenderContext& ctx)
     }
 }
 
-void Standard2DRenderer::PostExecuteBuiltins(DekiObject* obj, RenderContext& ctx)
+void Standard2DRenderer::PostExecuteBuiltins(const SortItem& item)
 {
     // Pop clip rect if IClipProvider is present
-    if (obj->FindInterface<IClipProvider>())
+    if (item.clip)
         QuadBlit::PopClipRect();
 }
 
@@ -229,24 +262,33 @@ void Standard2DRenderer::SortItems(std::vector<SortItem>& items)
 
 void Standard2DRenderer::CollectSortableItems(DekiObject* obj, std::vector<SortItem>& items)
 {
-    // RenderObject skips inactive objects; not collecting them keeps the
-    // sort (and the draw order) about what is actually visible.
+    // Every object reaching the sort is active and was reached through active
+    // parents (the walk starts at the scene roots), so RenderObject needs no
+    // further active check.
     if (!obj || !obj->IsActive()) return;
 
-    // Check built-in components first
-    int32_t order;
-    if (GetBuiltinSortingOrder(obj, order))
+    const Renderables r = ResolveRenderables(obj);
+
+    // Check built-in components first: a renderer, then any other sortable
+    // (ClipComponent, SortingGroupComponent, ...).
+    if (r.renderer)
     {
-        items.push_back({obj, order, static_cast<uint32_t>(items.size())});
+        items.push_back({obj, r.renderer, r.clip, r.renderer->sortingOrder, static_cast<uint32_t>(items.size())});
+        return;
+    }
+    if (r.sortable)
+    {
+        items.push_back({obj, nullptr, r.clip, r.sortable->GetSortingOrder(), static_cast<uint32_t>(items.size())});
         return;
     }
 
     // Then check custom sorting callbacks
+    int32_t order;
     for (SortingCallback cb : m_SortingCallbacks)
     {
         if (cb(obj, order))
         {
-            items.push_back({obj, order, static_cast<uint32_t>(items.size())});
+            items.push_back({obj, nullptr, r.clip, order, static_cast<uint32_t>(items.size())});
             return;
         }
     }
@@ -265,12 +307,26 @@ void Standard2DRenderer::Render(Scene* scene, const RenderContext& ctx)
 
     QuadBlit::ClearClipStack();
 
+    // A package that loaded (or reloaded) since the last frame may have
+    // registered adapters for types already classified: start over.
+    const uint32_t adapterVersion = ComponentInterfaceAdapters::Version();
+    if (adapterVersion != m_TraitsVersion)
+    {
+        m_TypeTraits.clear();
+        m_TraitsVersion = adapterVersion;
+    }
+    RebuildHookLists();
+
     // Frame-scoped mutable context. Passes can swap frameCtx.buffer in
     // BeginFrame to install a default render target for the whole frame;
     // every RenderObject below uses frameCtx, not the original ctx.
     RenderContext frameCtx = ctx;
-    for (RenderPass* pass : m_Passes)
+    for (RenderPass* pass : m_BeginPasses)
         pass->BeginFrame(frameCtx);
+
+    // Capture the camera once for the frame, against the target the passes
+    // settled on. Everything below maps world to screen through this.
+    frameCtx.cam = frameCtx.camera->CaptureFrameCamera(frameCtx.width, frameCtx.height);
 
     // Collect and sort root objects
     m_SortDepth = 0;
@@ -290,29 +346,27 @@ void Standard2DRenderer::Render(Scene* scene, const RenderContext& ctx)
     // Render in sorted order. Index loop: RenderObject recurses and the deeper
     // levels use their own scratch lists, so this one is stable meanwhile.
     for (size_t i = 0; i < sortableItems.size(); i++)
-        RenderObject(sortableItems[i].obj, frameCtx);
+        RenderObject(sortableItems[i], frameCtx);
 
     // Post-frame composites (e.g. screen-space overlays).
-    for (auto it = m_Passes.rbegin(); it != m_Passes.rend(); ++it)
+    for (auto it = m_EndPasses.rbegin(); it != m_EndPasses.rend(); ++it)
         (*it)->EndFrame(frameCtx);
 }
 
-void Standard2DRenderer::RenderObject(DekiObject* obj, const RenderContext& ctx)
+void Standard2DRenderer::RenderObject(const SortItem& item, const RenderContext& ctx)
 {
-    if (!obj || !obj->IsActiveInHierarchy())
-        return;
-
+    DekiObject* obj = item.obj;
     RenderContext objCtx = ctx;
 
     // Phase 1: Pre-execute custom passes (may redirect ctx.buffer for this object)
-    for (RenderPass* pass : m_Passes)
+    for (RenderPass* pass : m_PrePasses)
         pass->PreExecute(obj, objCtx);
 
     // Phase 2: Execute built-in handling (sprite blit) — uses any ctx redirect from PreExecute
-    ExecuteBuiltins(obj, objCtx);
+    ExecuteBuiltins(item, objCtx);
 
-    // Phase 3: Execute custom passes (clip push, etc.)
-    for (RenderPass* pass : m_Passes)
+    // Phase 3: Execute custom passes (tilemap draw, etc.)
+    for (RenderPass* pass : m_ExecPasses)
         pass->Execute(obj, objCtx);
 
     // Phase 4: Recurse into sorted children — uses objCtx so children inherit any
@@ -325,13 +379,13 @@ void Standard2DRenderer::RenderObject(DekiObject* obj, const RenderContext& ctx)
     SortItems(childItems);
 
     for (size_t i = 0; i < childItems.size(); i++)
-        RenderObject(childItems[i].obj, objCtx);
+        RenderObject(childItems[i], objCtx);
     --m_SortDepth;
 
-    // Phase 5: Post-execute custom passes (clip pop, reverse order)
-    for (auto it = m_Passes.rbegin(); it != m_Passes.rend(); ++it)
+    // Phase 5: Post-execute custom passes (reverse order)
+    for (auto it = m_PostPasses.rbegin(); it != m_PostPasses.rend(); ++it)
         (*it)->PostExecute(obj, objCtx);
 
-    // Phase 6: Post-execute built-ins
-    PostExecuteBuiltins(obj, objCtx);
+    // Phase 6: Post-execute built-ins (clip pop)
+    PostExecuteBuiltins(item);
 }

@@ -2,13 +2,19 @@
 
 #include "DekiRenderer.h"
 #include "RenderPass.h"
+#include "ComponentInterfaceAdapters.h"
 
 #include <cstdint>
 #include <deque>
+#include <unordered_map>
 #include <vector>
 
 // Forward declarations
 class DekiObject;
+class DekiComponent;
+class RendererComponent;
+class IClipProvider;
+class ISortableProvider;
 
 /**
  * @brief Standard 2D renderer with built-in support for sprites, clipping, and sorting groups
@@ -24,6 +30,13 @@ class DekiObject;
  *
  * Can also be composed inside other renderers (e.g., a 3D renderer
  * that uses Standard2DRenderer for UI overlays).
+ *
+ * Per frame it captures the camera once into RenderContext::cam, resolves
+ * each object's renderer / clip / sortable components with a single walk of
+ * its component list (component types are classified once and cached), and
+ * calls each pass only for the hooks its HookMask() declares. There are no
+ * fixed capacities anywhere: passes, callbacks, objects per level and clip
+ * depth all grow as needed.
  */
 class Standard2DRenderer : public DekiRenderer
 {
@@ -59,19 +72,53 @@ public:
 
 private:
     std::vector<RenderPass*> m_Passes;  // in attach order; no cap
+    // Per-hook subsets of m_Passes in the same relative order, rebuilt from
+    // HookMask() at the start of every frame. A pass that only implements
+    // Execute costs nothing in the other four loops.
+    std::vector<RenderPass*> m_BeginPasses;
+    std::vector<RenderPass*> m_PrePasses;
+    std::vector<RenderPass*> m_ExecPasses;
+    std::vector<RenderPass*> m_PostPasses;
+    std::vector<RenderPass*> m_EndPasses;
+    void RebuildHookLists();
+
     std::vector<SortingCallback> m_SortingCallbacks;
 
-    // One renderable claimed by a component, with its insertion order so the
-    // sort is stable without std::stable_sort (whose temporary buffer was a
-    // heap allocation per parent per frame).
+    // What a component type contributes to rendering, resolved once per type
+    // (one hash lookup in this DLL per component per frame instead of two
+    // engine-registry probes per interface per component). Dropped whenever
+    // ComponentInterfaceAdapters::Version() changes, i.e. a package registered
+    // an adapter after the cache was filled.
+    struct TypeTraits
+    {
+        bool isRenderer;
+        InterfaceAdapter clipAdapter;      // null when the type is not an IClipProvider
+        InterfaceAdapter sortableAdapter;  // null when the type is not an ISortableProvider
+    };
+    std::unordered_map<ComponentType, TypeTraits> m_TypeTraits;
+    uint32_t m_TraitsVersion = 0;
+    const TypeTraits& TraitsFor(const DekiComponent* comp);
+
+    struct Renderables
+    {
+        RendererComponent* renderer;
+        IClipProvider* clip;
+        ISortableProvider* sortable;
+    };
+    Renderables ResolveRenderables(DekiObject* obj);
+
+    // One renderable claimed by a component, with the components already
+    // resolved and its insertion order so the sort is stable without
+    // std::stable_sort (whose temporary buffer was a heap allocation per
+    // parent per frame).
     struct SortItem
     {
         DekiObject* obj;
+        RendererComponent* renderer;  // may be null (sort group, clip-only, callback-claimed)
+        IClipProvider* clip;          // may be null
         int32_t order;
         uint32_t seq;
     };
-    // One reusable list per recursion depth. They used to be 64-entry stack
-    // arrays: 512 bytes of stack per hierarchy level, and a silent cap.
     // One scratch list per recursion depth. A deque, not a vector of vectors:
     // Render() and RenderObject() hold a reference to their depth's list while
     // deeper levels are created, and growing a vector<vector> moves the inner
@@ -83,10 +130,9 @@ private:
     static void SortItems(std::vector<SortItem>& items);
 
     void CollectSortableItems(DekiObject* obj, std::vector<SortItem>& items);
-    void RenderObject(DekiObject* obj, const RenderContext& ctx);
+    void RenderObject(const SortItem& item, const RenderContext& ctx);
 
     // Built-in component handling
-    bool GetBuiltinSortingOrder(DekiObject* obj, int32_t& outOrder);
-    void ExecuteBuiltins(DekiObject* obj, RenderContext& ctx);
-    void PostExecuteBuiltins(DekiObject* obj, RenderContext& ctx);
+    void ExecuteBuiltins(const SortItem& item, RenderContext& ctx);
+    void PostExecuteBuiltins(const SortItem& item);
 };

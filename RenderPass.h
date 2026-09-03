@@ -26,11 +26,40 @@ struct RenderContext;
  *
  * standard2DRenderer.AddPass(&myEffectPass);
  * @endcode
+ *
+ * Contract notes:
+ * - Override HookMask() to name the hooks you implement; the renderer then
+ *   skips this pass entirely for the others (a per-object virtual call each).
+ * - ctx.cam is the frame's world-to-screen snapshot (see FrameCamera), taken
+ *   once after every BeginFrame. Map through it in Execute/PreExecute rather
+ *   than calling ctx.camera per object or per tile.
  */
+namespace RenderPassHooks
+{
+enum : uint32_t
+{
+    BeginFrame  = 1u << 0,
+    PreExecute  = 1u << 1,
+    Execute     = 1u << 2,
+    PostExecute = 1u << 3,
+    EndFrame    = 1u << 4,
+    All         = BeginFrame | PreExecute | Execute | PostExecute | EndFrame,
+};
+}
+
 class RenderPass
 {
 public:
     virtual ~RenderPass() = default;
+
+    /**
+     * @brief Which hooks this pass implements (RenderPassHooks bits).
+     *
+     * Read at the start of every frame. The default keeps every hook, so
+     * existing passes behave as before; declaring only what you override
+     * removes the empty virtual calls for the rest.
+     */
+    virtual uint32_t HookMask() const { return RenderPassHooks::All; }
 
     /**
      * @brief Called once per frame, before any object renders.

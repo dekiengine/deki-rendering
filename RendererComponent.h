@@ -79,7 +79,7 @@ class RendererComponent : public DekiBehaviour, public ISortableProvider
 #endif
 
     void SetSortingOrder(int order);
-    int32_t GetSortingOrder() const override;
+    int32_t GetSortingOrder() const override { return sortingOrder; }
 
 #ifdef V_ENGINE_ENABLE_MASK
     // Mask configuration methods
