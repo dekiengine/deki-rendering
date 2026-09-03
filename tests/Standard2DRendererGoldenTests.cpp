@@ -31,6 +31,7 @@
 #include "CameraComponent.h"
 #include "RendererComponent.h"
 #include "Standard2DRenderer.h"
+#include "DirtyRegion.h"
 #include "QuadBlit.h"
 
 namespace
@@ -436,4 +437,44 @@ TEST(RendererGoldenTest, AdapterRegisteredAfterFirstFrameTakesEffect)
     EXPECT_EQ(target[corner] | (target[corner + 1] << 8), 0x0000) << "adapter registered: clipped";
     const size_t centre = (static_cast<size_t>(kH / 2) * kW + kW / 2) * 2;
     EXPECT_EQ(target[centre] | (target[centre + 1] << 8), 0xF800);
+}
+
+// With dirty tracking on, every case renders the same pixels, and every pixel
+// that differs from the background lies inside the reported region.
+TEST(RendererGoldenTest, DirtyTrackingIsPixelIdenticalAndCoversEveryDrawnPixel)
+{
+    RegisterTestAdapters();
+    for (const Case& c : kCases)
+    {
+        SceneBuilder b;
+        c.build(b);
+        std::vector<uint8_t> plain(static_cast<size_t>(kW) * kH * 2, 0);
+        std::vector<uint8_t> tracked(static_cast<size_t>(kW) * kH * 2, 0);
+
+        Standard2DRenderer r1;
+        RenderContext c1{ b.camera, plain.data(), kW, kH, DekiColorFormat::RGB565 };
+        r1.Render(&b.scene, c1);
+        QuadBlit::ClearClipStack();
+        EXPECT_EQ(r1.GetLastFrameDirty(), nullptr) << c.name << ": untracked render reports nothing";
+
+        Standard2DRenderer r2;
+        RenderContext c2{ b.camera, tracked.data(), kW, kH, DekiColorFormat::RGB565 };
+        c2.trackDirty = true;
+        r2.Render(&b.scene, c2);
+        QuadBlit::ClearClipStack();
+        EXPECT_EQ(plain, tracked) << c.name;
+        EXPECT_EQ(QuadBlit::GetDirtyTrackedTarget(), nullptr) << "tracking left on after the frame";
+
+        const DirtyRegion* d = r2.GetLastFrameDirty();
+        ASSERT_NE(d, nullptr) << c.name;
+        int uncovered = 0;
+        for (int y = 0; y < kH; ++y)
+            for (int x = 0; x < kW; ++x)
+            {
+                const size_t i = (static_cast<size_t>(y) * kW + x) * 2;
+                if ((tracked[i] | tracked[i + 1]) != 0 && !d->Contains(x, y))
+                    ++uncovered;
+            }
+        EXPECT_EQ(uncovered, 0) << c.name << ": drawn pixels outside the dirty region";
+    }
 }

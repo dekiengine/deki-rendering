@@ -3,6 +3,7 @@
 
 // Forward declarations
 enum class DekiColorFormat;
+class DirtyRegion;
 
 /**
  * @brief Centralized quad blitting with full 2D transforms
@@ -61,6 +62,34 @@ namespace QuadBlit
      * @brief Get current clip stack depth (diagnostic)
      */
     int GetClipStackDepth();
+
+    /**
+     * @brief Dirty-rect tracking.
+     *
+     * While set, every blit whose target is `trackedTarget` adds its clipped
+     * destination rectangle to `region`; blits into any other buffer (a
+     * particle composite, a pass's scratch target) are ignored.
+     * Standard2DRenderer sets this for the frame when RenderContext::trackDirty
+     * is on and clears it afterwards. Pass nullptr to stop.
+     */
+    void SetDirtyTracking(DirtyRegion* region, const uint8_t* trackedTarget);
+
+    /**
+     * @brief Add a rectangle to the tracked region, for code that writes the
+     *        tracked target without going through a blit. No-op when nothing
+     *        is tracked.
+     */
+    void MarkDirty(int32_t left, int32_t top, int32_t right, int32_t bottom);
+
+    /**
+     * @brief Everything changed (a whole-frame composite written directly).
+     */
+    void MarkAllDirty();
+
+    /**
+     * @brief The buffer currently tracked, or nullptr.
+     */
+    const uint8_t* GetDirtyTrackedTarget();
 
     /**
      * @brief Source buffer descriptor

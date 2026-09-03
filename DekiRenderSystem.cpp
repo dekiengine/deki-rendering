@@ -9,8 +9,10 @@
 #include "DekiObject.h"
 #include "Scene.h"
 #include "RenderingProjectSettings.h"
+#include "ProjectSettings.h"
 #include "reflection/SettingsRegistry.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -34,20 +36,39 @@ DekiRenderSystem::~DekiRenderSystem()
 
 bool DekiRenderSystem::Setup(int32_t width, int32_t height, DekiColorFormat format)
 {
-    // Read project-wide rendering settings. Backing implementations for the
-    // perf toggles (half-width framebuffer, interlaced, dirty-tile tracking)
-    // ship as separate follow-ups; until then we just log non-default values
-    // so the user can verify the registry is being hydrated correctly.
+    // Project-wide rendering settings. In the editor the registry holds the
+    // hydrated instance; on device there is no registry, so the values come
+    // straight out of the loaded dproject.bin. Half-width and interlaced have
+    // no implementation yet and are only reported.
+    m_TrackDirty = false;
+    m_DirtyAlign = 32;
+    bool halfWidth = false, interlaced = false;
     if (auto* rs = DekiSettingsRegistry::Instance().Get<RenderingProjectSettings>())
     {
-        if (rs->halfWidthFramebuffer || rs->interlaced60hz || rs->dirtyTileTracking)
-        {
-            DEKI_LOG(LogLevel::Info,
-                     "[Rendering] settings: half_width=%d interlaced=%d dirty_tracking=%d tile_size=%d (impls pending)",
-                     (int)rs->halfWidthFramebuffer, (int)rs->interlaced60hz,
-                     (int)rs->dirtyTileTracking, rs->dirtyTileSize);
-        }
+        m_TrackDirty = rs->dirtyTileTracking;
+        m_DirtyAlign = rs->dirtyTileSize;
+        halfWidth = rs->halfWidthFramebuffer;
+        interlaced = rs->interlaced60hz;
     }
+    else
+    {
+        // "Rendering" is RenderingProjectSettings' DEKI_PROJECT_SETTINGS_SECTION.
+        bool b = false;
+        int32_t a = 0;
+        if (ProjectSettings::ReadPackageSettingBool("Rendering", "dirtyTileTracking", b)) m_TrackDirty = b;
+        if (ProjectSettings::ReadPackageSettingInt32("Rendering", "dirtyTileSize", a)) m_DirtyAlign = a;
+        if (ProjectSettings::ReadPackageSettingBool("Rendering", "halfWidthFramebuffer", b)) halfWidth = b;
+        if (ProjectSettings::ReadPackageSettingBool("Rendering", "interlaced60hz", b)) interlaced = b;
+    }
+    if (m_DirtyAlign < 1) m_DirtyAlign = 1;
+    if (halfWidth || interlaced)
+    {
+        DEKI_LOG(LogLevel::Info, "[Rendering] settings: half_width=%d interlaced=%d (no implementation yet)",
+                 (int)halfWidth, (int)interlaced);
+    }
+    if (m_TrackDirty)
+        DEKI_LOG_INTERNAL("[Rendering] dirty-rect tracking on, alignment %d px", m_DirtyAlign);
+    ResetDirtyHistory();
 
     if (width <= 0 || height <= 0)
     {
@@ -182,14 +203,117 @@ void DekiRenderSystem::Render(Scene* current_scene)
 
     CameraComponent* camera = m_CachedCamera;
 
-    // Clear the entire buffer before rendering, unless the camera says the
-    // scene paints every pixel itself.
+    // ---- dirty-rect present -------------------------------------------------
+    // Anything the bookkeeping cannot vouch for (first use of a buffer, a
+    // size/format change, a clear-colour change, a frame the renderer could
+    // not describe, MarkAllDirty) is a full clear and a full present, so
+    // "off" and "unsure" both behave exactly as before.
+    const bool tracking = m_TrackDirty;
+    BufferHistory* hist = tracking ? &HistoryFor(m_RenderBuffer) : nullptr;
+    bool full = !tracking || m_ForceFull || !hist->valid;
+    const Deki::Color clear = camera->clearColor;
+    if (!m_HaveClearColor || clear.r != m_LastClearColor.r || clear.g != m_LastClearColor.g ||
+        clear.b != m_LastClearColor.b)
+    {
+        full = true;
+        m_LastClearColor = clear;
+        m_HaveClearColor = true;
+    }
+
+    // Clear before rendering, unless the camera says the scene paints every
+    // pixel itself. With tracking, only what the last frame on this buffer
+    // drew needs clearing.
     if (camera->clearEveryFrame)
-        ClearBuffer(camera->clearColor);
+    {
+        if (full || hist->lastDrawn.IsFull())
+            ClearBuffer(clear);
+        else
+            for (const DekiRect& r : hist->lastDrawn.Rects())
+                ClearRect(r.left, r.top, r.Width(), r.Height(), clear.r, clear.g, clear.b);
+    }
 
     // Delegate to the active renderer
     RenderContext ctx{camera, m_RenderBuffer, m_ScreenWidth, m_ScreenHeight, m_ColorFormat};
+    ctx.trackDirty = tracking;
     m_Renderer->Render(current_scene, ctx);
+
+    if (!tracking)
+    {
+        m_PresentCount = -1;
+        return;
+    }
+
+    // What this frame drew, aligned so a small movement reuses its rectangle.
+    const DirtyRegion* drawn = m_Renderer->GetLastFrameDirty();
+    DirtyRegion& frame = m_DrawnScratch;
+    if (drawn)
+    {
+        frame = *drawn;
+        frame.Align(m_DirtyAlign);
+    }
+    else
+    {
+        frame.Reset(m_ScreenWidth, m_ScreenHeight);
+        frame.SetFull();
+        full = true;
+    }
+
+    // Present set: this frame's draws plus the previous frame's, whatever
+    // buffer that was rendered into.
+    if (full || frame.IsFull() || (m_HaveLastDrawn && m_LastDrawn.IsFull()))
+    {
+        m_PresentCount = -1;
+    }
+    else
+    {
+        m_PresentScratch = frame;
+        if (m_HaveLastDrawn)
+            m_PresentScratch.Union(m_LastDrawn);
+        if (m_PresentScratch.IsFull())
+            m_PresentCount = -1;
+        else
+        {
+            m_PresentRects = m_PresentScratch.Rects();
+            m_PresentCount = static_cast<int32_t>(m_PresentRects.size());
+        }
+    }
+
+    // History: what this buffer holds now, and what the screen is about to show.
+    hist->lastDrawn = frame;
+    hist->valid = true;
+    m_LastDrawn = frame;
+    m_HaveLastDrawn = true;
+    m_ForceFull = false;
+}
+
+DekiRenderSystem::BufferHistory& DekiRenderSystem::HistoryFor(const uint8_t* buffer)
+{
+    for (BufferHistory& h : m_History)
+        if (h.buffer == buffer) return h;
+    m_History.push_back(BufferHistory{ buffer, DirtyRegion{}, false });
+    return m_History.back();
+}
+
+void DekiRenderSystem::ResetDirtyHistory()
+{
+    m_History.clear();
+    m_HaveLastDrawn = false;
+    m_HaveClearColor = false;
+    m_ForceFull = true;
+    m_PresentCount = -1;
+}
+
+void DekiRenderSystem::SetDirtyTracking(bool enabled, int32_t alignment)
+{
+    m_TrackDirty = enabled;
+    m_DirtyAlign = alignment < 1 ? 1 : alignment;
+    ResetDirtyHistory();
+}
+
+const DekiRect* DekiRenderSystem::GetPresentRects(int32_t* count) const
+{
+    if (count) *count = m_PresentCount;
+    return m_PresentCount > 0 ? m_PresentRects.data() : nullptr;
 }
 
 void DekiRenderSystem::RenderToBuffer(Scene* scene, ICamera* camera,
@@ -217,70 +341,66 @@ void DekiRenderSystem::RenderToBufferStatic(Scene* scene, ICamera* camera,
     renderer->Render(scene, ctx);
 }
 
-void DekiRenderSystem::ClearBuffer(uint8_t r, uint8_t g, uint8_t b)
+namespace
 {
-    if (!m_RenderBuffer) return;
-    size_t pixel_count = m_ScreenWidth * m_ScreenHeight;
-    switch (m_ColorFormat)
+// One pixel of `format` at p; returns its size in bytes.
+inline size_t WritePixel(uint8_t* p, DekiColorFormat format, uint8_t r, uint8_t g, uint8_t b)
+{
+    switch (format)
     {
         case DekiColorFormat::RGB565:
         {
-            uint16_t rgb565 = ((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3);
-            // memset works when both bytes of the RGB565 value are the same
-            if ((rgb565 >> 8) == (rgb565 & 0xFF))
-            {
-                memset(m_RenderBuffer, rgb565 & 0xFF, pixel_count * 2);
-            }
-            else
-            {
-                // Fill using memcpy doubling -- faster than a loop
-                uint32_t pattern = (rgb565 << 16) | rgb565;
-                size_t total = pixel_count * 2;
-                memcpy(m_RenderBuffer, &pattern, 4);
-                for (size_t written = 4; written < total; written *= 2)
-                {
-                    size_t chunk = (written * 2 <= total) ? written : total - written;
-                    memcpy(m_RenderBuffer + written, m_RenderBuffer, chunk);
-                }
-            }
-            break;
+            const uint16_t v = static_cast<uint16_t>(((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3));
+            memcpy(p, &v, 2);
+            return 2;
         }
         case DekiColorFormat::RGB888:
-        {
-            for (size_t i = 0; i < pixel_count; i++)
-            {
-                size_t index = i * 3;
-                m_RenderBuffer[index] = r;
-                m_RenderBuffer[index + 1] = g;
-                m_RenderBuffer[index + 2] = b;
-            }
-            break;
-        }
+            p[0] = r; p[1] = g; p[2] = b;
+            return 3;
         case DekiColorFormat::ARGB8888:
         {
-            uint32_t argb8888 = (0xFF << 24) | (r << 16) | (g << 8) | b;
-            uint32_t* buffer32 = (uint32_t*)m_RenderBuffer;
-            for (size_t i = 0; i < pixel_count; i++)
-            {
-                buffer32[i] = argb8888;
-            }
-            break;
+            const uint32_t v = (0xFFu << 24) | (static_cast<uint32_t>(r) << 16) | (static_cast<uint32_t>(g) << 8) | b;
+            memcpy(p, &v, 4);
+            return 4;
         }
         case DekiColorFormat::RGB565A8:
         {
-            uint16_t rgb565 = ((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3);
-            uint8_t lo = uint8_t(rgb565 & 0xFF);
-            uint8_t hi = uint8_t((rgb565 >> 8) & 0xFF);
-            for (size_t i = 0; i < pixel_count; i++)
-            {
-                size_t idx = i * 3;
-                m_RenderBuffer[idx]     = lo;
-                m_RenderBuffer[idx + 1] = hi;
-                m_RenderBuffer[idx + 2] = 0xFF;  // opaque
-            }
-            break;
+            const uint16_t v = static_cast<uint16_t>(((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3));
+            p[0] = static_cast<uint8_t>(v & 0xFF);
+            p[1] = static_cast<uint8_t>(v >> 8);
+            p[2] = 0xFF;  // opaque
+            return 3;
         }
     }
+    return 0;
+}
+}  // namespace
+
+void DekiRenderSystem::ClearRect(int32_t x, int32_t y, int32_t w, int32_t h, uint8_t r, uint8_t g, uint8_t b)
+{
+    if (!m_RenderBuffer) return;
+    // Clip to the framebuffer.
+    int32_t x0 = std::max<int32_t>(x, 0), y0 = std::max<int32_t>(y, 0);
+    int32_t x1 = std::min<int32_t>(x + w, m_ScreenWidth), y1 = std::min<int32_t>(y + h, m_ScreenHeight);
+    if (x1 <= x0 || y1 <= y0) return;
+
+    const size_t bpp = static_cast<size_t>(GetBytesPerPixel(m_ColorFormat));
+    const size_t pitch = static_cast<size_t>(m_ScreenWidth) * bpp;
+    const size_t span = static_cast<size_t>(x1 - x0) * bpp;
+    uint8_t* row0 = m_RenderBuffer + static_cast<size_t>(y0) * pitch + static_cast<size_t>(x0) * bpp;
+
+    // Seed one pixel, double it across the first row, then copy the row down:
+    // memcpy all the way instead of a per-pixel (or per-byte) loop.
+    WritePixel(row0, m_ColorFormat, r, g, b);
+    for (size_t written = bpp; written < span; written *= 2)
+        memcpy(row0 + written, row0, std::min(written, span - written));
+    for (int32_t yy = y0 + 1; yy < y1; ++yy)
+        memcpy(row0 + static_cast<size_t>(yy - y0) * pitch, row0, span);
+}
+
+void DekiRenderSystem::ClearBuffer(uint8_t r, uint8_t g, uint8_t b)
+{
+    ClearRect(0, 0, m_ScreenWidth, m_ScreenHeight, r, g, b);
 }
 
 void DekiRenderSystem::ClearBuffer(const Deki::Color& color)

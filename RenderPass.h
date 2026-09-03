@@ -33,6 +33,11 @@ struct RenderContext;
  * - ctx.cam is the frame's world-to-screen snapshot (see FrameCamera), taken
  *   once after every BeginFrame. Map through it in Execute/PreExecute rather
  *   than calling ctx.camera per object or per tile.
+ * - Dirty-rect tracking (ctx.trackDirty): blits through QuadBlit into
+ *   ctx.buffer are recorded automatically. A pass that writes ctx.buffer any
+ *   other way must call QuadBlit::MarkDirty (or MarkAllDirty) for the pixels
+ *   it touched. A pass that swaps ctx.buffer in BeginFrame needs nothing: the
+ *   renderer then treats the whole frame as changed.
  */
 namespace RenderPassHooks
 {

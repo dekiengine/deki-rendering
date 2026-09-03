@@ -7,6 +7,7 @@
 // Forward declarations
 class Scene;
 class CameraComponent;
+class DirtyRegion;
 
 /**
  * @brief Context passed through the render pipeline
@@ -27,6 +28,10 @@ struct RenderContext
     // a pass that redirects an object to a target of a different size must
     // refresh it (camera->CaptureFrameCamera) for that object.
     FrameCamera cam = {};
+    // Ask the renderer to record which pixels of `buffer` this frame changes
+    // (see DekiRenderer::GetLastFrameDirty). Set by DekiRenderSystem when the
+    // project's dirty-rect tracking is on; off for edit-mode renders.
+    bool trackDirty = false;
 };
 
 /**
@@ -67,4 +72,12 @@ public:
      * @param ctx Render context with camera, buffer, and format info
      */
     virtual void Render(Scene* scene, const RenderContext& ctx) = 0;
+
+    /**
+     * @brief The pixels the last Render() changed in ctx.buffer, when that
+     *        render had ctx.trackDirty set; nullptr when it did not or when
+     *        the renderer cannot say (the caller then treats the whole frame
+     *        as changed). Valid until the next Render().
+     */
+    virtual const DirtyRegion* GetLastFrameDirty() const { return nullptr; }
 };

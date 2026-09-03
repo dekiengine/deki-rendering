@@ -8,10 +8,10 @@
  * @brief Project-wide rendering tradeoff toggles.
  *
  * Lives in the editor's Project Settings panel under the "Rendering" section.
- * Backing renderer implementations for each toggle ship as separate follow-up
- * work — declaring the field here gives the user a stable place to set the
- * preference, and DekiRenderSystem::Setup logs which non-default values are
- * active so it's clear what's expected to take effect once the impls land.
+ * dirtyTileTracking / dirtyTileSize drive DekiRenderSystem's dirty-rect
+ * present (the field names predate the implementation and are the scene
+ * format, so they stay). halfWidthFramebuffer and interlaced60hz have no
+ * implementation yet; DekiRenderSystem::Setup logs when they are set.
  */
 class RenderingProjectSettings : public DekiComponent
 {
@@ -28,12 +28,12 @@ public:
     DEKI_EXPORT
     bool interlaced60hz = false;
 
-    DEKI_TOOLTIP("Track dirty tiles and only push changed tiles to the display. Big win for UI scenes; small cost for fully-animating ones. Requires display backend support for partial updates.")
+    DEKI_TOOLTIP("Dirty-rect tracking: record the rectangles each frame draws, clear only those next frame and push only what changed (this frame's and last frame's rectangles) to the display. Big win for mostly-static scenes; small bookkeeping cost for fully-animating ones. Displays that cannot present partial frames still receive whole frames.")
     DEKI_EXPORT
     bool dirtyTileTracking = false;
 
-    DEKI_TOOLTIP("Pixel size of dirty-tracking tiles when dirtyTileTracking is enabled. Smaller = finer-grained updates but more bookkeeping.")
-    DEKI_RANGE(8, 64)
+    DEKI_TOOLTIP("Alignment of dirty rectangles in pixels: each rectangle is rounded out to multiples of this. Larger = fewer, bigger pushes and a small movement reuses the same rectangle; smaller = tighter rectangles.")
+    DEKI_RANGE(1, 256)
     DEKI_VISIBLE_WHEN(dirtyTileTracking, 1)
     DEKI_EXPORT
     int32_t dirtyTileSize = 32;

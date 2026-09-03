@@ -1,5 +1,6 @@
 #include "QuadBlit.h"
 #include "PixelFormat.h"
+#include "DirtyRegion.h"
 #include <cmath>
 #include <algorithm>
 #include <cstring>
@@ -133,6 +134,44 @@ bool IsClipEnabled()
 int GetClipStackDepth()
 {
     return static_cast<int>(s_ClipStack.size());
+}
+
+// ============================================================================
+// Dirty-rect tracking
+// ============================================================================
+
+static DirtyRegion* s_DirtyRegion = nullptr;
+static const uint8_t* s_DirtyTarget = nullptr;
+
+void SetDirtyTracking(DirtyRegion* region, const uint8_t* trackedTarget)
+{
+    s_DirtyRegion = region;
+    s_DirtyTarget = region ? trackedTarget : nullptr;
+}
+
+void MarkDirty(int32_t left, int32_t top, int32_t right, int32_t bottom)
+{
+    if (s_DirtyRegion)
+        s_DirtyRegion->Add(left, top, right, bottom);
+}
+
+void MarkAllDirty()
+{
+    if (s_DirtyRegion)
+        s_DirtyRegion->SetFull();
+}
+
+const uint8_t* GetDirtyTrackedTarget()
+{
+    return s_DirtyTarget;
+}
+
+// The rectangle a blit is about to write, once clipped, is exactly what the
+// frame changed there.
+static inline void NoteBlitRect(const uint8_t* target, int32_t startX, int32_t startY, int32_t endX, int32_t endY)
+{
+    if (s_DirtyRegion && target == s_DirtyTarget)
+        s_DirtyRegion->Add(startX, startY, endX, endY);
 }
 
 // ============================================================================
@@ -704,6 +743,7 @@ void BlitScaled(const Source& source,
     BlitBounds bounds;
     if (!ComputeClipBounds(destX, destY, destWidth, destHeight, targetWidth, targetHeight, bounds))
         return;
+    NoteBlitRect(target, bounds.startX, bounds.startY, bounds.endX, bounds.endY);
 
     BlitParams P;
     P.hasTint = (tintR != 255 || tintG != 255 || tintB != 255);
@@ -896,6 +936,7 @@ void Blit(const Source& source,
 
     if (startX >= endX || startY >= endY)
         return;
+    NoteBlitRect(target, startX, startY, endX, endY);
 
     BlitParams P;
     P.hasTint = (tintR != 255 || tintG != 255 || tintB != 255);

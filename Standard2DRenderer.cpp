@@ -328,6 +328,19 @@ void Standard2DRenderer::Render(Scene* scene, const RenderContext& ctx)
     // settled on. Everything below maps world to screen through this.
     frameCtx.cam = frameCtx.camera->CaptureFrameCamera(frameCtx.width, frameCtx.height);
 
+    // Dirty-rect tracking: QuadBlit records every blit into the caller's
+    // buffer. A pass that installed its own frame target composites back into
+    // the caller's buffer itself, without QuadBlit, so that frame is fully
+    // dirty.
+    m_FrameDirtyValid = ctx.trackDirty;
+    if (ctx.trackDirty)
+    {
+        m_FrameDirty.Reset(ctx.width, ctx.height);
+        if (frameCtx.buffer != ctx.buffer || frameCtx.width != ctx.width || frameCtx.height != ctx.height)
+            m_FrameDirty.SetFull();
+        QuadBlit::SetDirtyTracking(&m_FrameDirty, ctx.buffer);
+    }
+
     // Collect and sort root objects
     m_SortDepth = 0;
     std::vector<SortItem>& sortableItems = SortListForDepth(0);
@@ -351,6 +364,9 @@ void Standard2DRenderer::Render(Scene* scene, const RenderContext& ctx)
     // Post-frame composites (e.g. screen-space overlays).
     for (auto it = m_EndPasses.rbegin(); it != m_EndPasses.rend(); ++it)
         (*it)->EndFrame(frameCtx);
+
+    if (ctx.trackDirty)
+        QuadBlit::SetDirtyTracking(nullptr, nullptr);
 }
 
 void Standard2DRenderer::RenderObject(const SortItem& item, const RenderContext& ctx)

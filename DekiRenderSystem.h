@@ -1,8 +1,10 @@
 #pragma once
 #include <cstdint>
+#include <vector>
 
 #include "DekiEngine.h"
 #include "Color.h"
+#include "DirtyRegion.h"
 #include "providers/IDekiRenderSystem.h"
 
 
@@ -30,6 +32,35 @@ class DekiRenderSystem : public IDekiRenderSystem
     CameraComponent* m_CachedCamera = nullptr;
     Scene* m_CachedCameraScene = nullptr;
 
+    // ---- dirty-rect present (RenderingProjectSettings::dirtyTileTracking) ----
+    // With tracking on, a frame clears only what the previous frame on the
+    // same buffer drew, and the present covers this frame's draws plus the
+    // previous frame's (the display still shows those; they are cleared or
+    // overdrawn now). One history entry per buffer pointer handles displays
+    // that hand out alternating buffers. Anything the bookkeeping cannot
+    // vouch for is a full clear and a full present.
+    bool m_TrackDirty = false;
+    int32_t m_DirtyAlign = 32;  // rectangle alignment (px), a policy not a limit
+    struct BufferHistory
+    {
+        const uint8_t* buffer;
+        DirtyRegion lastDrawn;  // what the frame rendered into this buffer drew
+        bool valid;             // false until the buffer has been fully cleared once
+    };
+    std::vector<BufferHistory> m_History;
+    DirtyRegion m_LastDrawn;  // the previous frame's draws, whatever buffer
+    bool m_HaveLastDrawn = false;
+    bool m_ForceFull = true;
+    Deki::Color m_LastClearColor;
+    bool m_HaveClearColor = false;
+    DirtyRegion m_DrawnScratch;
+    DirtyRegion m_PresentScratch;
+    std::vector<DekiRect> m_PresentRects;
+    int32_t m_PresentCount = -1;
+
+    BufferHistory& HistoryFor(const uint8_t* buffer);
+    void ResetDirtyHistory();
+
    public:
     DekiRenderSystem();
     ~DekiRenderSystem() override;
@@ -40,6 +71,15 @@ class DekiRenderSystem : public IDekiRenderSystem
     void Render(Scene* current_scene) override;
     void ClearBuffer(uint8_t r, uint8_t g, uint8_t b);
     void ClearBuffer(const Deki::Color& color);
+    /// Fill [x, x+w) x [y, y+h) of the framebuffer (clipped) with a colour.
+    void ClearRect(int32_t x, int32_t y, int32_t w, int32_t h, uint8_t r, uint8_t g, uint8_t b);
+
+    // Dirty-rect present. Setup() reads the project setting; hosts and tests
+    // can override it here (resets the history, so the next frame is full).
+    void SetDirtyTracking(bool enabled, int32_t alignment);
+    bool IsDirtyTracking() const { return m_TrackDirty; }
+    void MarkAllDirty() override { m_ForceFull = true; }
+    const DekiRect* GetPresentRects(int32_t* count) const override;
 
     // Renderer management
     void SetRenderer(DekiRenderer* renderer) override { m_Renderer = renderer; }

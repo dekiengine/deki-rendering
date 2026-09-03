@@ -1,6 +1,7 @@
 #pragma once
 
 #include "DekiRenderer.h"
+#include "DirtyRegion.h"
 #include "RenderPass.h"
 #include "ComponentInterfaceAdapters.h"
 
@@ -45,6 +46,7 @@ public:
     uint32_t GetRendererType() const override { return RendererTypeID; }
 
     void Render(Scene* scene, const RenderContext& ctx) override;
+    const DirtyRegion* GetLastFrameDirty() const override { return m_FrameDirtyValid ? &m_FrameDirty : nullptr; }
 
     /**
      * @brief Add a custom render pass
@@ -83,6 +85,12 @@ private:
     void RebuildHookLists();
 
     std::vector<SortingCallback> m_SortingCallbacks;
+
+    // Pixels of ctx.buffer the last frame changed (ctx.trackDirty renders
+    // only). QuadBlit adds every clipped blit rectangle; a pass that installs
+    // its own frame target makes it full.
+    DirtyRegion m_FrameDirty;
+    bool m_FrameDirtyValid = false;
 
     // What a component type contributes to rendering, resolved once per type
     // (one hash lookup in this DLL per component per frame instead of two
