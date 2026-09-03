@@ -88,8 +88,6 @@ bool DekiRenderSystem::Setup(int32_t width, int32_t height, DekiColorFormat form
     m_ScreenWidth = width;
     m_ScreenHeight = height;
     m_ColorFormat = format;
-    m_CachedCamera = nullptr;
-    m_CachedCameraScene = nullptr;
 
     // Prefer a display-provided internal RAM buffer (avoids a memcpy in Present).
     if (TryAdoptDisplayBuffer())
@@ -162,46 +160,39 @@ void DekiRenderSystem::Render(Scene* current_scene)
         return;
     }
 
-    // Use cached camera when scene hasn't changed; re-search on first frame or scene switch
-    if (m_CachedCameraScene != current_scene)
+    // Find the scene's camera. Every frame, not cached: the cache used to be
+    // keyed on the Scene pointer, which a new scene at the same address (a
+    // tool rendering scenes in a loop) or a CameraComponent removed at
+    // runtime turned into a dangling component. The walk is a few hundred
+    // component-list checks against a frame of blits.
+    CameraComponent* camera = nullptr;
+    for (DekiObject* obj : current_scene->GetObjects())
     {
-        m_CachedCamera = nullptr;
-        m_CachedCameraScene = current_scene;
-    }
-
-    if (!m_CachedCamera)
-    {
-        // Search recursively through scene objects
-        for (DekiObject* obj : current_scene->GetObjects())
+        DekiObject* holder = FindInSubtree(obj, [](DekiObject* o)
+                                           { return o->GetComponent<CameraComponent>() != nullptr; });
+        if (holder)
         {
-            DekiObject* holder = FindInSubtree(obj, [](DekiObject* o)
-                                               { return o->GetComponent<CameraComponent>() != nullptr; });
-            if (holder)
-            {
-                m_CachedCamera = holder->GetComponent<CameraComponent>();
-                break;
-            }
+            camera = holder->GetComponent<CameraComponent>();
+            break;
         }
-
+    }
+    if (!camera)
+    {
         // Fall back to Persistent objects
-        if (!m_CachedCamera)
+        const auto& persistentObjects = DekiEngine::GetInstance().GetSceneSystem().GetPersistentObjects();
+        for (DekiObject* obj : persistentObjects)
         {
-            const auto& persistentObjects = DekiEngine::GetInstance().GetSceneSystem().GetPersistentObjects();
-            for (DekiObject* obj : persistentObjects)
-            {
-                m_CachedCamera = obj->GetComponent<CameraComponent>();
-                if (m_CachedCamera) break;
-            }
+            camera = obj->GetComponent<CameraComponent>();
+            if (camera) break;
         }
     }
 
     // No camera = nothing to render
-    if (!m_CachedCamera)
+    if (!camera)
     {
         return;
     }
 
-    CameraComponent* camera = m_CachedCamera;
 
     // ---- dirty-rect present -------------------------------------------------
     // Anything the bookkeeping cannot vouch for (first use of a buffer, a

@@ -28,10 +28,6 @@ class DekiRenderSystem : public IDekiRenderSystem
     // Active renderer (non-owning — caller manages lifetime)
     DekiRenderer* m_Renderer = nullptr;
 
-    // Cached camera (searched once, invalidated on scene change)
-    CameraComponent* m_CachedCamera = nullptr;
-    Scene* m_CachedCameraScene = nullptr;
-
     // ---- dirty-rect present (RenderingProjectSettings::dirtyTileTracking) ----
     // With tracking on, a frame clears only what the previous frame on the
     // same buffer drew, and the present covers this frame's draws plus the
