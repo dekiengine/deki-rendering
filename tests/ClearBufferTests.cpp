@@ -16,21 +16,21 @@
 namespace
 {
 
-std::vector<uint8_t> ExpectedPixel(DekiColorFormat f, uint8_t r, uint8_t g, uint8_t b)
+std::vector<uint8_t> ExpectedPixel(Deki::ColorFormat f, uint8_t r, uint8_t g, uint8_t b)
 {
     const uint16_t v = static_cast<uint16_t>(((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3));
     switch (f)
     {
-    case DekiColorFormat::RGB565: return { static_cast<uint8_t>(v & 0xFF), static_cast<uint8_t>(v >> 8) };
-    case DekiColorFormat::RGB888: return { r, g, b };
-    case DekiColorFormat::ARGB8888: return { b, g, r, 0xFF };  // little-endian 0xFFRRGGBB
-    case DekiColorFormat::RGB565A8: return { static_cast<uint8_t>(v & 0xFF), static_cast<uint8_t>(v >> 8), 0xFF };
+    case Deki::ColorFormat::RGB565: return { static_cast<uint8_t>(v & 0xFF), static_cast<uint8_t>(v >> 8) };
+    case Deki::ColorFormat::RGB888: return { r, g, b };
+    case Deki::ColorFormat::ARGB8888: return { b, g, r, 0xFF };  // little-endian 0xFFRRGGBB
+    case Deki::ColorFormat::RGB565A8: return { static_cast<uint8_t>(v & 0xFF), static_cast<uint8_t>(v >> 8), 0xFF };
     }
     return {};
 }
 
-const DekiColorFormat kFormats[] = { DekiColorFormat::RGB565, DekiColorFormat::RGB888,
-                                     DekiColorFormat::ARGB8888, DekiColorFormat::RGB565A8 };
+const Deki::ColorFormat kFormats[] = { Deki::ColorFormat::RGB565, Deki::ColorFormat::RGB888,
+                                     Deki::ColorFormat::ARGB8888, Deki::ColorFormat::RGB565A8 };
 
 // Every pixel of the framebuffer equals `px` inside the rect and `outside`
 // elsewhere.
@@ -57,7 +57,7 @@ void ExpectFill(const DekiRenderSystem& rs, int w, int h, int l, int t, int r, i
 
 TEST(ClearBuffer, EveryFormatFillsExactly)
 {
-    for (DekiColorFormat f : kFormats)
+    for (Deki::ColorFormat f : kFormats)
     {
         DekiRenderSystem rs;
         ASSERT_TRUE(rs.Setup(37, 11, f));  // odd width: the row doubling must stop exactly
@@ -69,7 +69,7 @@ TEST(ClearBuffer, EveryFormatFillsExactly)
 
 TEST(ClearBuffer, ClearRectTouchesOnlyItsRectangle)
 {
-    for (DekiColorFormat f : kFormats)
+    for (Deki::ColorFormat f : kFormats)
     {
         DekiRenderSystem rs;
         ASSERT_TRUE(rs.Setup(40, 30, f));
@@ -82,7 +82,7 @@ TEST(ClearBuffer, ClearRectTouchesOnlyItsRectangle)
 TEST(ClearBuffer, ClearRectClipsToTheFramebuffer)
 {
     DekiRenderSystem rs;
-    ASSERT_TRUE(rs.Setup(16, 12, DekiColorFormat::RGB565));
+    ASSERT_TRUE(rs.Setup(16, 12, Deki::ColorFormat::RGB565));
     rs.ClearBuffer(0, 0, 0);
     rs.ClearRect(-4, -4, 8, 8, 255, 255, 255);      // top-left corner, partly outside
     rs.ClearRect(12, 8, 100, 100, 255, 255, 255);    // bottom-right corner, partly outside

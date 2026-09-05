@@ -16,25 +16,25 @@ class RenderSystemBPPTest : public ::testing::Test {};
 TEST_F(RenderSystemBPPTest, RGB565_Returns2)
 {
     DekiRenderSystem rs;
-    EXPECT_EQ(rs.GetBytesPerPixel(DekiColorFormat::RGB565), 2);
+    EXPECT_EQ(rs.GetBytesPerPixel(Deki::ColorFormat::RGB565), 2);
 }
 
 TEST_F(RenderSystemBPPTest, RGB888_Returns3)
 {
     DekiRenderSystem rs;
-    EXPECT_EQ(rs.GetBytesPerPixel(DekiColorFormat::RGB888), 3);
+    EXPECT_EQ(rs.GetBytesPerPixel(Deki::ColorFormat::RGB888), 3);
 }
 
 TEST_F(RenderSystemBPPTest, ARGB8888_Returns4)
 {
     DekiRenderSystem rs;
-    EXPECT_EQ(rs.GetBytesPerPixel(DekiColorFormat::ARGB8888), 4);
+    EXPECT_EQ(rs.GetBytesPerPixel(Deki::ColorFormat::ARGB8888), 4);
 }
 
 TEST_F(RenderSystemBPPTest, RGB565A8_Returns3)
 {
     DekiRenderSystem rs;
-    EXPECT_EQ(rs.GetBytesPerPixel(DekiColorFormat::RGB565A8), 3);
+    EXPECT_EQ(rs.GetBytesPerPixel(Deki::ColorFormat::RGB565A8), 3);
 }
 
 // ============================================================================
@@ -52,45 +52,45 @@ protected:
 TEST_F(RenderSystemSetupTest, SetupAllocatesBuffer)
 {
     DekiRenderSystem rs;
-    EXPECT_TRUE(rs.Setup(32, 24, DekiColorFormat::RGB565));
+    EXPECT_TRUE(rs.Setup(32, 24, Deki::ColorFormat::RGB565));
 
     EXPECT_EQ(rs.GetScreenWidth(), 32);
     EXPECT_EQ(rs.GetScreenHeight(), 24);
-    EXPECT_EQ(rs.GetColorFormat(), DekiColorFormat::RGB565);
+    EXPECT_EQ(rs.GetColorFormat(), Deki::ColorFormat::RGB565);
     EXPECT_NE(rs.GetFrameBuffer(), nullptr);
 }
 
 TEST_F(RenderSystemSetupTest, SetupRGB888)
 {
     DekiRenderSystem rs;
-    EXPECT_TRUE(rs.Setup(16, 16, DekiColorFormat::RGB888));
+    EXPECT_TRUE(rs.Setup(16, 16, Deki::ColorFormat::RGB888));
 
     EXPECT_EQ(rs.GetScreenWidth(), 16);
     EXPECT_EQ(rs.GetScreenHeight(), 16);
-    EXPECT_EQ(rs.GetColorFormat(), DekiColorFormat::RGB888);
+    EXPECT_EQ(rs.GetColorFormat(), Deki::ColorFormat::RGB888);
     EXPECT_NE(rs.GetFrameBuffer(), nullptr);
 }
 
 TEST_F(RenderSystemSetupTest, SetupARGB8888)
 {
     DekiRenderSystem rs;
-    EXPECT_TRUE(rs.Setup(8, 8, DekiColorFormat::ARGB8888));
+    EXPECT_TRUE(rs.Setup(8, 8, Deki::ColorFormat::ARGB8888));
 
     EXPECT_EQ(rs.GetScreenWidth(), 8);
     EXPECT_EQ(rs.GetScreenHeight(), 8);
-    EXPECT_EQ(rs.GetColorFormat(), DekiColorFormat::ARGB8888);
+    EXPECT_EQ(rs.GetColorFormat(), Deki::ColorFormat::ARGB8888);
     EXPECT_NE(rs.GetFrameBuffer(), nullptr);
 }
 
 TEST_F(RenderSystemSetupTest, SetupCanBeCalledTwice)
 {
     DekiRenderSystem rs;
-    EXPECT_TRUE(rs.Setup(32, 24, DekiColorFormat::RGB565));
-    EXPECT_TRUE(rs.Setup(64, 48, DekiColorFormat::RGB888));
+    EXPECT_TRUE(rs.Setup(32, 24, Deki::ColorFormat::RGB565));
+    EXPECT_TRUE(rs.Setup(64, 48, Deki::ColorFormat::RGB888));
 
     EXPECT_EQ(rs.GetScreenWidth(), 64);
     EXPECT_EQ(rs.GetScreenHeight(), 48);
-    EXPECT_EQ(rs.GetColorFormat(), DekiColorFormat::RGB888);
+    EXPECT_EQ(rs.GetColorFormat(), Deki::ColorFormat::RGB888);
 }
 
 // ============================================================================
@@ -100,7 +100,7 @@ TEST_F(RenderSystemSetupTest, SetupCanBeCalledTwice)
 TEST_F(RenderSystemSetupTest, ClearBuffer_RGB565)
 {
     DekiRenderSystem rs;
-    rs.Setup(4, 4, DekiColorFormat::RGB565);
+    rs.Setup(4, 4, Deki::ColorFormat::RGB565);
 
     rs.ClearBuffer(255, 0, 0);  // Red
 
@@ -120,7 +120,7 @@ TEST_F(RenderSystemSetupTest, ClearBuffer_RGB565)
 TEST_F(RenderSystemSetupTest, ClearBuffer_RGB888)
 {
     DekiRenderSystem rs;
-    rs.Setup(4, 4, DekiColorFormat::RGB888);
+    rs.Setup(4, 4, Deki::ColorFormat::RGB888);
 
     rs.ClearBuffer(0, 128, 255);
 
@@ -134,7 +134,7 @@ TEST_F(RenderSystemSetupTest, ClearBuffer_RGB888)
 TEST_F(RenderSystemSetupTest, ClearBuffer_ARGB8888)
 {
     DekiRenderSystem rs;
-    rs.Setup(4, 4, DekiColorFormat::ARGB8888);
+    rs.Setup(4, 4, Deki::ColorFormat::ARGB8888);
 
     rs.ClearBuffer(64, 128, 192);
 
@@ -148,18 +148,18 @@ TEST_F(RenderSystemSetupTest, ClearBuffer_ARGB8888)
 TEST_F(RenderSystemSetupTest, Setup_RGB565A8)
 {
     DekiRenderSystem rs;
-    EXPECT_TRUE(rs.Setup(8, 8, DekiColorFormat::RGB565A8));
+    EXPECT_TRUE(rs.Setup(8, 8, Deki::ColorFormat::RGB565A8));
 
     EXPECT_EQ(rs.GetScreenWidth(), 8);
     EXPECT_EQ(rs.GetScreenHeight(), 8);
-    EXPECT_EQ(rs.GetColorFormat(), DekiColorFormat::RGB565A8);
+    EXPECT_EQ(rs.GetColorFormat(), Deki::ColorFormat::RGB565A8);
     EXPECT_NE(rs.GetFrameBuffer(), nullptr);
 }
 
 TEST_F(RenderSystemSetupTest, ClearBuffer_RGB565A8_RoundTripsRGB)
 {
     DekiRenderSystem rs;
-    rs.Setup(4, 4, DekiColorFormat::RGB565A8);
+    rs.Setup(4, 4, Deki::ColorFormat::RGB565A8);
 
     // ClearBuffer writes RGB565 + alpha=0xFF per pixel.
     rs.ClearBuffer(0, 128, 255);
@@ -180,7 +180,7 @@ TEST_F(RenderSystemSetupTest, ClearBuffer_RGB565A8_RoundTripsRGB)
 TEST_F(RenderSystemSetupTest, GetPixel_OutOfBounds_ReturnsBlack)
 {
     DekiRenderSystem rs;
-    rs.Setup(4, 4, DekiColorFormat::RGB565);
+    rs.Setup(4, 4, Deki::ColorFormat::RGB565);
     rs.ClearBuffer(255, 255, 255);
 
     uint8_t r, g, b;
@@ -214,7 +214,7 @@ TEST_F(RenderSystemSetupTest, GetPixel_NullBuffer_ReturnsBlack)
 TEST_F(RenderSystemSetupTest, GetPixel_ColorOverload)
 {
     DekiRenderSystem rs;
-    rs.Setup(4, 4, DekiColorFormat::RGB888);
+    rs.Setup(4, 4, Deki::ColorFormat::RGB888);
     rs.ClearBuffer(100, 150, 200);
 
     Deki::Color c = rs.GetPixel(0, 0);
@@ -241,7 +241,7 @@ TEST_F(RenderSystemSetupTest, SetRenderer_GetRenderer)
 TEST_F(RenderSystemSetupTest, RenderWithNullScene_NoOp)
 {
     DekiRenderSystem rs;
-    rs.Setup(4, 4, DekiColorFormat::RGB565);
+    rs.Setup(4, 4, Deki::ColorFormat::RGB565);
 
     // Should not crash
     rs.Render(nullptr);
@@ -250,7 +250,7 @@ TEST_F(RenderSystemSetupTest, RenderWithNullScene_NoOp)
 TEST_F(RenderSystemSetupTest, RenderWithNoRenderer_NoOp)
 {
     DekiRenderSystem rs;
-    rs.Setup(4, 4, DekiColorFormat::RGB565);
+    rs.Setup(4, 4, Deki::ColorFormat::RGB565);
     rs.SetRenderer(nullptr);
 
     // Should not crash (no renderer set)

@@ -13,10 +13,10 @@
  * format, so they stay). halfWidthFramebuffer and interlaced60hz have no
  * implementation yet; DekiRenderSystem::Setup logs when they are set.
  */
-class RenderingProjectSettings : public DekiComponent
+class RenderingProjectSettings : public Deki::Component
 {
 public:
-    DEKI_COMPONENT(RenderingProjectSettings, DekiComponent, "Settings",
+    DEKI_COMPONENT(RenderingProjectSettings, Deki::Component, "Settings",
                    "f8a3c891-9b4d-4e2a-9f81-3c5b2d8e4a17", "")
     DEKI_PROJECT_SETTINGS_SECTION("Rendering")
 

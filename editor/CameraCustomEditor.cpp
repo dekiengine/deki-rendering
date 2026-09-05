@@ -15,7 +15,7 @@ class CameraCustomEditor : public CustomEditor
 public:
     const char* GetComponentName() const override { return "CameraComponent"; }
 
-    bool GetDisplaySize(DekiComponent* comp, float& outWidth, float& outHeight) override
+    bool GetDisplaySize(Deki::Component* comp, float& outWidth, float& outHeight) override
     {
         // Match the SpriteComponent convention: return size in BUFFER pixels
         // (= source pixels at unit sprite scale). The camera's "size" in the
@@ -32,7 +32,7 @@ public:
         return true;
     }
 
-    void OnDrawGizmos(DekiComponent* comp) override
+    void OnDrawGizmos(Deki::Component* comp) override
     {
         auto& view = SceneView::Get();
 

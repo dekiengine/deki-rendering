@@ -9,21 +9,21 @@
 
 
 // Forward declarations
-class DekiObject;
+namespace Deki { class Object; }
 class CameraComponent;
 class DekiRenderer;
 
-class DekiRenderSystem : public IDekiRenderSystem
+class DekiRenderSystem : public Deki::IRenderSystem
 {
    private:
     uint8_t* m_RenderBuffer;
     int32_t m_ScreenWidth;
     int32_t m_ScreenHeight;
-    DekiColorFormat m_ColorFormat;
+    Deki::ColorFormat m_ColorFormat;
     bool m_OwnsBuffer = true;
     // Display whose GetRenderBuffer() was last offered to us; adoption is
     // attempted once per display so Render() does not re-query when owning.
-    class IDekiDisplay* m_AdoptionCheckedDisplay = nullptr;
+    class Deki::IDisplay* m_AdoptionCheckedDisplay = nullptr;
 
     // Active renderer (non-owning — caller manages lifetime)
     DekiRenderer* m_Renderer = nullptr;
@@ -51,7 +51,7 @@ class DekiRenderSystem : public IDekiRenderSystem
     bool m_HaveClearColor = false;
     DirtyRegion m_DrawnScratch;
     DirtyRegion m_PresentScratch;
-    std::vector<DekiRect> m_PresentRects;
+    std::vector<Deki::Rect> m_PresentRects;
     int32_t m_PresentCount = -1;
 
     BufferHistory& HistoryFor(const uint8_t* buffer);
@@ -60,11 +60,11 @@ class DekiRenderSystem : public IDekiRenderSystem
    public:
     DekiRenderSystem();
     ~DekiRenderSystem() override;
-    bool Setup(int32_t width, int32_t height, DekiColorFormat format) override;
+    bool Setup(int32_t width, int32_t height, Deki::ColorFormat format) override;
     /// Switch to the display's internal buffer when it exists and matches our
     /// size. Returns true when the render buffer now points at the display's.
     bool TryAdoptDisplayBuffer();
-    void Render(Scene* current_scene) override;
+    void Render(Deki::Scene* current_scene) override;
     void ClearBuffer(uint8_t r, uint8_t g, uint8_t b);
     void ClearBuffer(const Deki::Color& color);
     /// Fill [x, x+w) x [y, y+h) of the framebuffer (clipped) with a colour.
@@ -75,7 +75,7 @@ class DekiRenderSystem : public IDekiRenderSystem
     void SetDirtyTracking(bool enabled, int32_t alignment);
     bool IsDirtyTracking() const { return m_TrackDirty; }
     void MarkAllDirty() override { m_ForceFull = true; }
-    const DekiRect* GetPresentRects(int32_t* count) const override;
+    const Deki::Rect* GetPresentRects(int32_t* count) const override;
 
     // Renderer management
     void SetRenderer(DekiRenderer* renderer) override { m_Renderer = renderer; }
@@ -85,21 +85,21 @@ class DekiRenderSystem : public IDekiRenderSystem
     const uint8_t* GetFrameBuffer() const override { return m_RenderBuffer; }
     int32_t GetScreenWidth() const override { return m_ScreenWidth; }
     int32_t GetScreenHeight() const override { return m_ScreenHeight; }
-    DekiColorFormat GetColorFormat() const override { return m_ColorFormat; }
+    Deki::ColorFormat GetColorFormat() const override { return m_ColorFormat; }
 
     // Pixel operations (optimized for fast execution)
     void GetPixel(int32_t x, int32_t y, uint8_t* r, uint8_t* g, uint8_t* b) const;
     Deki::Color GetPixel(int32_t x, int32_t y) const;
 
-    int GetBytesPerPixel(DekiColorFormat format);
+    int GetBytesPerPixel(Deki::ColorFormat format);
 
-    // IDekiRenderSystem interface — delegates to the static implementation
-    void RenderToBuffer(Scene* scene, ICamera* camera,
+    // Deki::IRenderSystem interface — delegates to the static implementation
+    void RenderToBuffer(Deki::Scene* scene, Deki::ICamera* camera,
                         uint8_t* buffer, int32_t width, int32_t height,
-                        DekiColorFormat format) override;
+                        Deki::ColorFormat format) override;
 
     // Static render function (the actual implementation)
-    static void RenderToBufferStatic(Scene* scene, ICamera* camera,
+    static void RenderToBufferStatic(Deki::Scene* scene, Deki::ICamera* camera,
                                      uint8_t* buffer, int32_t width, int32_t height,
-                                     DekiColorFormat format);
+                                     Deki::ColorFormat format);
 };

@@ -227,7 +227,7 @@ TEST_F(QuadBlitPixelTest, BlitScaled_RGB565_1x1_Opaque)
     uint8_t target[W * H * 2] = {0};
 
     // Blit at (1, 1), no scaling
-    QuadBlit::BlitScaled(src, target, W, H, DekiColorFormat::RGB565,
+    QuadBlit::BlitScaled(src, target, W, H, Deki::ColorFormat::RGB565,
                          1, 1, 1, 1);
 
     // Pixel at (1,1) should be red
@@ -253,7 +253,7 @@ TEST_F(QuadBlitPixelTest, BlitScaled_RGB565_2x2_AtOrigin)
     const int W = 4, H = 4;
     uint8_t target[W * H * 2] = {0};
 
-    QuadBlit::BlitScaled(src, target, W, H, DekiColorFormat::RGB565,
+    QuadBlit::BlitScaled(src, target, W, H, Deki::ColorFormat::RGB565,
                          0, 0, 2, 2);
 
     EXPECT_EQ(ReadRGB565(target, W, 0, 0), srcPixels[0]);
@@ -275,7 +275,7 @@ TEST_F(QuadBlitPixelTest, BlitScaled_FullyOutOfBounds_NoWrite)
     uint8_t target[W * H * 2] = {0};
 
     // Blit at (10, 10) — completely outside 4x4 buffer
-    QuadBlit::BlitScaled(src, target, W, H, DekiColorFormat::RGB565,
+    QuadBlit::BlitScaled(src, target, W, H, Deki::ColorFormat::RGB565,
                          10, 10, 1, 1);
 
     // All pixels should remain black
@@ -296,7 +296,7 @@ TEST_F(QuadBlitPixelTest, Blit_WithTintAlphaZero_NoWrite)
     uint8_t target[W * H * 2] = {0};
 
     // Blit with tintA=0 (invisible)
-    QuadBlit::Blit(src, target, W, H, DekiColorFormat::RGB565,
+    QuadBlit::Blit(src, target, W, H, Deki::ColorFormat::RGB565,
                    1, 1, 1.0f, 1.0f, 0.0f, 0.0f, 0.0f,
                    255, 255, 255, 0);
 
@@ -321,7 +321,7 @@ TEST_F(QuadBlitPixelTest, BlitScaled_ClipRectRestrictsOutput)
     // Clip to only (0,0)→(1,1) — only top-left pixel should be written
     QuadBlit::PushClipRect(0, 0, 1, 1);
 
-    QuadBlit::BlitScaled(src, target, W, H, DekiColorFormat::RGB565,
+    QuadBlit::BlitScaled(src, target, W, H, Deki::ColorFormat::RGB565,
                          0, 0, 2, 2);
 
     // (0,0) should be red (inside clip)
@@ -344,7 +344,7 @@ TEST_F(QuadBlitPixelTest, BlitScaled_1x1_To_2x2_Upscale)
     uint8_t target[W * H * 2] = {0};
 
     // Scale 1x1 to 2x2 at (0,0)
-    QuadBlit::BlitScaled(src, target, W, H, DekiColorFormat::RGB565,
+    QuadBlit::BlitScaled(src, target, W, H, Deki::ColorFormat::RGB565,
                          0, 0, 2, 2);
 
     // All 4 pixels in the 2x2 dest should be green
@@ -456,7 +456,7 @@ TEST_F(QuadBlitKernelDispatchTest, RGB565CopyRow_UsesKernel_WhenAligned)
     QuadBlit::RegisterKernel(QuadBlit::KernelOp::RGB565_Copy_Row, &KernelProbe::CopyRowMarker);
 
     QuadBlit::Source src = QuadBlit::MakeSource(srcBuf.aligned, W, H, 2, false, true, false);
-    QuadBlit::BlitScaled(src, dstBuf.aligned, W, H, DekiColorFormat::RGB565,
+    QuadBlit::BlitScaled(src, dstBuf.aligned, W, H, Deki::ColorFormat::RGB565,
                          0, 0, W, H);
 
     EXPECT_EQ(KernelProbe::s_callCount, H);
@@ -482,7 +482,7 @@ TEST_F(QuadBlitKernelDispatchTest, RGB565CopyRow_SkipsKernel_WhenSourceMisaligne
     QuadBlit::RegisterKernel(QuadBlit::KernelOp::RGB565_Copy_Row, &KernelProbe::CopyRowMarker);
 
     QuadBlit::Source src = QuadBlit::MakeSource(srcMisaligned, W, H, 2, false, true, false);
-    QuadBlit::BlitScaled(src, dstBuf.aligned, W, H, DekiColorFormat::RGB565,
+    QuadBlit::BlitScaled(src, dstBuf.aligned, W, H, Deki::ColorFormat::RGB565,
                          0, 0, W, H);
 
     // Kernel must NOT have been called — alignment precondition failed.
@@ -504,7 +504,7 @@ TEST_F(QuadBlitKernelDispatchTest, RGB565CopyRow_NoKernel_RunsScalar)
         srcPx[i] = MakeRGB565Free(static_cast<uint8_t>(i * 16), 0, 0);
 
     QuadBlit::Source src = QuadBlit::MakeSource(srcBuf.aligned, W, H, 2, false, true, false);
-    QuadBlit::BlitScaled(src, dstBuf.aligned, W, H, DekiColorFormat::RGB565,
+    QuadBlit::BlitScaled(src, dstBuf.aligned, W, H, Deki::ColorFormat::RGB565,
                          0, 0, W, H);
 
     EXPECT_EQ(KernelProbe::s_callCount, 0);
@@ -533,7 +533,7 @@ TEST_F(QuadBlitKernelDispatchTest, RGB565A8BlendRow_UsesKernel_WhenAligned_AndUn
     QuadBlit::RegisterKernel(QuadBlit::KernelOp::RGB565A8_Blend_Row, &KernelProbe::BlendRowMarker);
 
     QuadBlit::Source src = QuadBlit::MakeSource(srcBuf.aligned, W, H, 3, /*hasAlpha=*/true, /*isRGB565=*/true, false);
-    QuadBlit::BlitScaled(src, dstBuf.aligned, W, H, DekiColorFormat::RGB565,
+    QuadBlit::BlitScaled(src, dstBuf.aligned, W, H, Deki::ColorFormat::RGB565,
                          0, 0, W, H);
 
     EXPECT_EQ(KernelProbe::s_callCount, H);
@@ -561,7 +561,7 @@ TEST_F(QuadBlitKernelDispatchTest, RGB565A8BlendRow_SkipsKernel_WhenTinted)
 
     QuadBlit::Source src = QuadBlit::MakeSource(srcBuf.aligned, W, H, 3, true, true, false);
     // Apply a non-identity tint -> precondition fails -> kernel must not run.
-    QuadBlit::BlitScaled(src, dstBuf.aligned, W, H, DekiColorFormat::RGB565,
+    QuadBlit::BlitScaled(src, dstBuf.aligned, W, H, Deki::ColorFormat::RGB565,
                          0, 0, W, H, 128, 128, 128, 255);
 
     EXPECT_EQ(KernelProbe::s_callCount, 0);
@@ -604,7 +604,7 @@ TEST_F(QuadBlitRGB565A8TargetTest, RGB565A8_to_RGB565A8_Opaque_Copies_RGB_AndSet
     uint8_t target[W * H * 3] = {0};
 
     QuadBlit::Source s = QuadBlit::MakeSource(src, W, H, 3, /*hasAlpha=*/true, /*isRGB565=*/true, false);
-    QuadBlit::BlitScaled(s, target, W, H, DekiColorFormat::RGB565A8, 0, 0, W, H);
+    QuadBlit::BlitScaled(s, target, W, H, Deki::ColorFormat::RGB565A8, 0, 0, W, H);
 
     EXPECT_EQ(target[0], src[0]);
     EXPECT_EQ(target[1], src[1]);
@@ -625,7 +625,7 @@ TEST_F(QuadBlitRGB565A8TargetTest, RGB565A8_to_RGB565A8_AlphaZero_LeavesTargetUn
     uint8_t target[W * H * 3] = { 0xAB, 0xCD, 0xEF };
 
     QuadBlit::Source s = QuadBlit::MakeSource(src, W, H, 3, true, true, false);
-    QuadBlit::BlitScaled(s, target, W, H, DekiColorFormat::RGB565A8, 0, 0, W, H);
+    QuadBlit::BlitScaled(s, target, W, H, Deki::ColorFormat::RGB565A8, 0, 0, W, H);
 
     EXPECT_EQ(target[0], 0xAB);
     EXPECT_EQ(target[1], 0xCD);
@@ -642,7 +642,7 @@ TEST_F(QuadBlitRGB565A8TargetTest, RGB565A8_to_RGB565A8_PartialAlpha_OntoCleared
     uint8_t target[W * H * 3] = {0};
 
     QuadBlit::Source s = QuadBlit::MakeSource(src, W, H, 3, true, true, false);
-    QuadBlit::BlitScaled(s, target, W, H, DekiColorFormat::RGB565A8, 0, 0, W, H);
+    QuadBlit::BlitScaled(s, target, W, H, Deki::ColorFormat::RGB565A8, 0, 0, W, H);
 
     EXPECT_EQ(target[2], 128) << "out.a should equal src.a when dst.a was 0";
 }
@@ -659,7 +659,7 @@ TEST_F(QuadBlitRGB565A8TargetTest, RGB565_to_RGB565A8_SetsAlphaTo255)
 
     QuadBlit::Source s = QuadBlit::MakeSource(
         reinterpret_cast<const uint8_t*>(srcPx), W, H, 2, /*hasAlpha=*/false, /*isRGB565=*/true, false);
-    QuadBlit::BlitScaled(s, target, W, H, DekiColorFormat::RGB565A8, 0, 0, W, H);
+    QuadBlit::BlitScaled(s, target, W, H, Deki::ColorFormat::RGB565A8, 0, 0, W, H);
 
     EXPECT_EQ(target[0], (uint8_t)(srcPx[0] & 0xFF));
     EXPECT_EQ(target[1], (uint8_t)((srcPx[0] >> 8) & 0xFF));
@@ -714,7 +714,7 @@ TEST_F(QuadBlitRGB565A8TargetTest, RGB565A8CopyRow_KernelInvoked_WhenAlignedAndO
 
     QuadBlit::Source s = QuadBlit::MakeSource(srcBuf.aligned, W, H, 3,
                                               /*hasAlpha=*/false, /*isRGB565=*/true, false);
-    QuadBlit::BlitScaled(s, dstBuf.aligned, W, H, DekiColorFormat::RGB565A8, 0, 0, W, H);
+    QuadBlit::BlitScaled(s, dstBuf.aligned, W, H, Deki::ColorFormat::RGB565A8, 0, 0, W, H);
 
     EXPECT_EQ(RGB565A8KernelProbe::s_callCount, H);
     EXPECT_EQ(RGB565A8KernelProbe::s_lastPixelCount, W);
@@ -739,7 +739,7 @@ TEST_F(QuadBlitRGB565A8TargetTest, RGB565A8BlendRow_KernelInvoked_WhenAlignedAnd
     QuadBlit::RegisterKernel(QuadBlit::KernelOp::RGB565A8_Blend_Row_Dest_RGB565A8, &RGB565A8KernelProbe::Run);
 
     QuadBlit::Source s = QuadBlit::MakeSource(srcBuf.aligned, W, H, 3, true, true, false);
-    QuadBlit::BlitScaled(s, dstBuf.aligned, W, H, DekiColorFormat::RGB565A8, 0, 0, W, H);
+    QuadBlit::BlitScaled(s, dstBuf.aligned, W, H, Deki::ColorFormat::RGB565A8, 0, 0, W, H);
 
     EXPECT_EQ(RGB565A8KernelProbe::s_callCount, H);
     EXPECT_EQ(RGB565A8KernelProbe::s_lastPixelCount, W);
@@ -759,7 +759,7 @@ TEST_F(QuadBlitRGB565A8TargetTest, RGB565ToRGB565A8_KernelInvoked_WhenAligned)
 
     QuadBlit::Source s = QuadBlit::MakeSource(srcBuf.aligned, W, H, 2,
                                               /*hasAlpha=*/false, /*isRGB565=*/true, false);
-    QuadBlit::BlitScaled(s, dstBuf.aligned, W, H, DekiColorFormat::RGB565A8, 0, 0, W, H);
+    QuadBlit::BlitScaled(s, dstBuf.aligned, W, H, Deki::ColorFormat::RGB565A8, 0, 0, W, H);
 
     EXPECT_EQ(RGB565A8KernelProbe::s_callCount, H);
     EXPECT_EQ(RGB565A8KernelProbe::s_lastPixelCount, W);
@@ -794,7 +794,7 @@ TEST_F(QuadBlitDitherTest, OpaqueSrc_WritesAllPixels_RGB565A8_to_RGB565)
     uint8_t target[W * H * 2] = {0};
 
     QuadBlit::Source s = QuadBlit::MakeSource(src, W, H, 3, /*hasAlpha=*/true, /*isRGB565=*/true, false);
-    QuadBlit::BlitScaled(s, target, W, H, DekiColorFormat::RGB565,
+    QuadBlit::BlitScaled(s, target, W, H, Deki::ColorFormat::RGB565,
                          0, 0, W, H, 255, 255, 255, 255, /*useOrderedDither=*/true);
 
     auto* dst = reinterpret_cast<uint16_t*>(target);
@@ -817,7 +817,7 @@ TEST_F(QuadBlitDitherTest, ZeroAlphaSrc_LeavesTargetUnchanged)
     uint16_t target[W * H] = { pre, pre };
 
     QuadBlit::Source s = QuadBlit::MakeSource(src, W, H, 3, true, true, false);
-    QuadBlit::BlitScaled(s, reinterpret_cast<uint8_t*>(target), W, H, DekiColorFormat::RGB565,
+    QuadBlit::BlitScaled(s, reinterpret_cast<uint8_t*>(target), W, H, Deki::ColorFormat::RGB565,
                          0, 0, W, H, 255, 255, 255, 255, /*useOrderedDither=*/true);
 
     EXPECT_EQ(target[0], pre);
@@ -843,7 +843,7 @@ TEST_F(QuadBlitDitherTest, PartialAlpha_FollowsBayerThreshold)
     for (int i = 0; i < W * H; ++i) target[i] = bg;
 
     QuadBlit::Source s = QuadBlit::MakeSource(src, W, H, 3, true, true, false);
-    QuadBlit::BlitScaled(s, reinterpret_cast<uint8_t*>(target), W, H, DekiColorFormat::RGB565,
+    QuadBlit::BlitScaled(s, reinterpret_cast<uint8_t*>(target), W, H, Deki::ColorFormat::RGB565,
                          0, 0, W, H, 255, 255, 255, 255, /*useOrderedDither=*/true);
 
     int wrote = 0, kept = 0;
@@ -870,7 +870,7 @@ TEST_F(QuadBlitDitherTest, GenericPath_RGB565A8_to_RGB565A8)
     uint8_t target[W * H * 3] = { 0x11, 0x22, 0x33,  0x44, 0x55, 0x66 };
 
     QuadBlit::Source s = QuadBlit::MakeSource(src, W, H, 3, true, true, false);
-    QuadBlit::BlitScaled(s, target, W, H, DekiColorFormat::RGB565A8,
+    QuadBlit::BlitScaled(s, target, W, H, Deki::ColorFormat::RGB565A8,
                          0, 0, W, H, 255, 255, 255, 255, /*useOrderedDither=*/true);
 
     EXPECT_EQ(target[0], 0x00);  // opaque pixel: src bytes written
@@ -926,8 +926,8 @@ TEST_F(QuadBlitSpanRegressionTest, EmptyOpaqueSpan_BlendsEachPixelOnce)
     uint8_t withSpans[W * 2] = {0}, withoutSpans[W * 2] = {0};
     QuadBlit::Source spanned = QuadBlit::MakeSource(src, W, 1, 3, true, true, false, emptySpan);
     QuadBlit::Source plain = QuadBlit::MakeSource(src, W, 1, 3, true, true, false, nullptr);
-    QuadBlit::BlitScaled(spanned, withSpans, W, 1, DekiColorFormat::RGB565, 0, 0, W, 1);
-    QuadBlit::BlitScaled(plain, withoutSpans, W, 1, DekiColorFormat::RGB565, 0, 0, W, 1);
+    QuadBlit::BlitScaled(spanned, withSpans, W, 1, Deki::ColorFormat::RGB565, 0, 0, W, 1);
+    QuadBlit::BlitScaled(plain, withoutSpans, W, 1, Deki::ColorFormat::RGB565, 0, 0, W, 1);
 
     for (int x = 0; x < W; x++)
         EXPECT_EQ(Read565(withSpans, W, x, 0), Read565(withoutSpans, W, x, 0)) << "x=" << x;
@@ -947,7 +947,7 @@ TEST_F(QuadBlitSpanRegressionTest, RightAlphaRegion_RespectsClipLeftEdge)
 
     uint8_t target[W * 2] = {0};
     QuadBlit::PushClipRect(2, 0, W, 1);
-    QuadBlit::BlitScaled(spanned, target, W, 1, DekiColorFormat::RGB565, 0, 0, W, 1);
+    QuadBlit::BlitScaled(spanned, target, W, 1, Deki::ColorFormat::RGB565, 0, 0, W, 1);
     QuadBlit::PopClipRect();
 
     EXPECT_EQ(Read565(target, W, 0, 0), 0u) << "left of the clip rect must stay untouched";
@@ -997,9 +997,9 @@ TEST_F(QuadBlitSpanRegressionTest, RotationPath_TintsSourceBeforeBlend)
         reinterpret_cast<uint16_t*>(turned)[i] = Pack565(0, 0, 255);
     }
     const float fullTurn = 6.28318530718f;
-    QuadBlit::Blit(source, straight, W, H, DekiColorFormat::RGB565, 4, 4, 1.0f, 1.0f, 0.0f, 0.5f, 0.5f,
+    QuadBlit::Blit(source, straight, W, H, Deki::ColorFormat::RGB565, 4, 4, 1.0f, 1.0f, 0.0f, 0.5f, 0.5f,
                    255, 0, 0, 255);
-    QuadBlit::Blit(source, turned, W, H, DekiColorFormat::RGB565, 4, 4, 1.0f, 1.0f, fullTurn, 0.5f, 0.5f,
+    QuadBlit::Blit(source, turned, W, H, Deki::ColorFormat::RGB565, 4, 4, 1.0f, 1.0f, fullTurn, 0.5f, 0.5f,
                    255, 0, 0, 255);
 
     EXPECT_EQ(Read565(turned, W, 4, 4), Read565(straight, W, 4, 4));
@@ -1015,7 +1015,7 @@ TEST_F(QuadBlitSpanRegressionTest, FlipH_MirrorsColumns)
     QuadBlit::Source s = QuadBlit::MakeSource(reinterpret_cast<const uint8_t*>(src), 2, 1, 2, false, true, false);
     s.flipH = true;
     uint8_t target[2 * 2] = {0};
-    QuadBlit::BlitScaled(s, target, 2, 1, DekiColorFormat::RGB565, 0, 0, 2, 1);
+    QuadBlit::BlitScaled(s, target, 2, 1, Deki::ColorFormat::RGB565, 0, 0, 2, 1);
     EXPECT_EQ(Read565(target, 2, 0, 0), src[1]);
     EXPECT_EQ(Read565(target, 2, 1, 0), src[0]);
 }
@@ -1026,7 +1026,7 @@ TEST_F(QuadBlitSpanRegressionTest, FlipV_MirrorsRows)
     QuadBlit::Source s = QuadBlit::MakeSource(reinterpret_cast<const uint8_t*>(src), 1, 2, 2, false, true, false);
     s.flipV = true;
     uint8_t target[1 * 2 * 2] = {0};
-    QuadBlit::BlitScaled(s, target, 1, 2, DekiColorFormat::RGB565, 0, 0, 1, 2);
+    QuadBlit::BlitScaled(s, target, 1, 2, Deki::ColorFormat::RGB565, 0, 0, 1, 2);
     EXPECT_EQ(Read565(target, 1, 0, 0), src[1]);
     EXPECT_EQ(Read565(target, 1, 0, 1), src[0]);
 }
@@ -1038,7 +1038,7 @@ TEST_F(QuadBlitSpanRegressionTest, FlipD_Transposes)
     QuadBlit::Source s = QuadBlit::MakeSource(reinterpret_cast<const uint8_t*>(src), 2, 2, 2, false, true, false);
     s.flipD = true;
     uint8_t target[2 * 2 * 2] = {0};
-    QuadBlit::BlitScaled(s, target, 2, 2, DekiColorFormat::RGB565, 0, 0, 2, 2);
+    QuadBlit::BlitScaled(s, target, 2, 2, Deki::ColorFormat::RGB565, 0, 0, 2, 2);
     EXPECT_EQ(Read565(target, 2, 0, 0), src[0]);
     EXPECT_EQ(Read565(target, 2, 1, 0), src[2]);  // (1,0) samples source (0,1)
     EXPECT_EQ(Read565(target, 2, 0, 1), src[1]);
@@ -1050,7 +1050,7 @@ TEST_F(QuadBlitSpanRegressionTest, NegativeSize_IsStillRejected)
     uint16_t src[1] = { Pack565(255, 0, 0) };
     QuadBlit::Source s = QuadBlit::MakeSource(reinterpret_cast<const uint8_t*>(src), 1, 1, 2, false, true, false);
     uint8_t target[2] = {0};
-    QuadBlit::BlitScaled(s, target, 1, 1, DekiColorFormat::RGB565, 0, 0, -1, 1);
+    QuadBlit::BlitScaled(s, target, 1, 1, Deki::ColorFormat::RGB565, 0, 0, -1, 1);
     EXPECT_EQ(Read565(target, 1, 0, 0), 0u);
 }
 
@@ -1061,7 +1061,7 @@ TEST_F(QuadBlitSpanRegressionTest, RotationPath_HalfTurnRotatesThePattern)
     QuadBlit::Source s = QuadBlit::MakeSource(reinterpret_cast<const uint8_t*>(src), 2, 2, 2, false, true, false);
     const int W = 5, H = 5;
     uint8_t target[W * H * 2] = {0};
-    QuadBlit::Blit(s, target, W, H, DekiColorFormat::RGB565, 2, 2, 1.0f, 1.0f, 3.14159265f, 0.5f, 0.5f);
+    QuadBlit::Blit(s, target, W, H, Deki::ColorFormat::RGB565, 2, 2, 1.0f, 1.0f, 3.14159265f, 0.5f, 0.5f);
     // Same corner-sampled geometry as the float version: the rotated quad
     // lands on columns/rows 2..3 with the pattern turned by 180 degrees.
     EXPECT_EQ(Read565(target, W, 2, 2), src[3]);
@@ -1086,8 +1086,8 @@ TEST_F(QuadBlitSpanRegressionTest, RotationPath_ARGBTargetMatchesRGB565)
         reinterpret_cast<uint16_t*>(t565)[i] = Pack565(0, 0, 255);
         reinterpret_cast<uint32_t*>(t888)[i] = 0xFF0000FFu;
     }
-    QuadBlit::Blit(source, t565, W, H, DekiColorFormat::RGB565, 4, 4, 1.0f, 1.0f, 0.7f, 0.5f, 0.5f, 255, 0, 0, 255);
-    QuadBlit::Blit(source, t888, W, H, DekiColorFormat::ARGB8888, 4, 4, 1.0f, 1.0f, 0.7f, 0.5f, 0.5f, 255, 0, 0, 255);
+    QuadBlit::Blit(source, t565, W, H, Deki::ColorFormat::RGB565, 4, 4, 1.0f, 1.0f, 0.7f, 0.5f, 0.5f, 255, 0, 0, 255);
+    QuadBlit::Blit(source, t888, W, H, Deki::ColorFormat::ARGB8888, 4, 4, 1.0f, 1.0f, 0.7f, 0.5f, 0.5f, 255, 0, 0, 255);
     const uint16_t c565 = Read565(t565, W, 4, 4);
     const uint32_t c888 = reinterpret_cast<const uint32_t*>(t888)[4 * W + 4];
     // Both blends of half-alpha red over blue: red ~128, blue ~127 (5/6/5 quantised).

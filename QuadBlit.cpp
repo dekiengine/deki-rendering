@@ -6,7 +6,7 @@
 #include <cstring>
 #include <vector>
 
-// DekiColorFormat comes from the engine header. The editor build used to re-declare it
+// Deki::ColorFormat comes from the engine header. The editor build used to re-declare it
 // locally instead of including this; that is a second definition of the same type, which
 // is a redefinition error the moment this file shares a translation unit with one that
 // includes DekiEngine.h (unity build) — and its sibling RendererComponent.cpp already
@@ -313,20 +313,20 @@ static inline void ReadSrcPixel(const uint8_t* p, bool hasAlpha, uint8_t& r, uin
 }
 
 // Destination read: colour plus coverage alpha (255 for formats without one).
-template <DekiColorFormat F>
+template <Deki::ColorFormat F>
 static inline void ReadDstPixel(const uint8_t* target, size_t idx, uint8_t& r, uint8_t& g, uint8_t& b, uint8_t& a)
 {
-    if constexpr (F == DekiColorFormat::RGB565)
+    if constexpr (F == Deki::ColorFormat::RGB565)
     {
         UnpackRGB565(((const uint16_t*)target)[idx], r, g, b);
         a = 255;
     }
-    else if constexpr (F == DekiColorFormat::RGB888)
+    else if constexpr (F == Deki::ColorFormat::RGB888)
     {
         r = target[idx * 3]; g = target[idx * 3 + 1]; b = target[idx * 3 + 2];
         a = 255;
     }
-    else if constexpr (F == DekiColorFormat::ARGB8888)
+    else if constexpr (F == Deki::ColorFormat::ARGB8888)
     {
         const uint32_t v = ((const uint32_t*)target)[idx];
         r = (v >> 16) & 0xFF; g = (v >> 8) & 0xFF; b = v & 0xFF;
@@ -342,20 +342,20 @@ static inline void ReadDstPixel(const uint8_t* target, size_t idx, uint8_t& r, u
 
 // Destination write with the coverage alpha the format keeps (ignored by the
 // formats without one).
-template <DekiColorFormat F>
+template <Deki::ColorFormat F>
 static inline void WriteDstPixel(uint8_t* target, size_t idx, uint8_t r, uint8_t g, uint8_t b, uint8_t a)
 {
-    if constexpr (F == DekiColorFormat::RGB565)
+    if constexpr (F == Deki::ColorFormat::RGB565)
     {
         ((uint16_t*)target)[idx] = PackRGB565(r, g, b);
         (void)a;
     }
-    else if constexpr (F == DekiColorFormat::RGB888)
+    else if constexpr (F == Deki::ColorFormat::RGB888)
     {
         target[idx * 3] = r; target[idx * 3 + 1] = g; target[idx * 3 + 2] = b;
         (void)a;
     }
-    else if constexpr (F == DekiColorFormat::ARGB8888)
+    else if constexpr (F == Deki::ColorFormat::ARGB8888)
     {
         ((uint32_t*)target)[idx] = (0xFFu << 24) | ((uint32_t)r << 16) | ((uint32_t)g << 8) | b;
         (void)a;
@@ -387,7 +387,7 @@ struct BlitParams
 // One source pixel at `sp` onto destination pixel `idx` (at px, py for the
 // dither threshold). Plain = no tint, no alpha tint, no key, no dither: the
 // tight loop for the common sprite blit.
-template <SrcKind SK, DekiColorFormat F, bool Plain>
+template <SrcKind SK, Deki::ColorFormat F, bool Plain>
 static inline void CompositePixel(const Source& source, const uint8_t* sp, uint8_t* target, size_t idx,
                                   int32_t px, int32_t py, const BlitParams& P)
 {
@@ -539,7 +539,7 @@ static DEKI_FAST_ATTR bool BlendRows_RGB565A8_to_RGB565(const Source& source, ui
 
             // Left alpha region
             for (int32_t sx = srcStartX; sx < clampedStart && sx < srcEndX; sx++)
-                CompositePixel<SrcKind::RGB565A8, DekiColorFormat::RGB565, true>(
+                CompositePixel<SrcKind::RGB565A8, Deki::ColorFormat::RGB565, true>(
                     source, rowBase + sx * bpp, (uint8_t*)target16, rowIdx + destX + sx, destX + sx, py, plain);
 
             // Opaque middle: direct copy, no alpha checks
@@ -551,7 +551,7 @@ static DEKI_FAST_ATTR bool BlendRows_RGB565A8_to_RGB565(const Source& source, ui
             // ends before it (or is empty): starting at opaqueEnd wrote pixels
             // the clip rect had excluded.
             for (int32_t sx = std::max(clampedEnd, srcStartX); sx < srcEndX; sx++)
-                CompositePixel<SrcKind::RGB565A8, DekiColorFormat::RGB565, true>(
+                CompositePixel<SrcKind::RGB565A8, Deki::ColorFormat::RGB565, true>(
                     source, rowBase + sx * bpp, (uint8_t*)target16, rowIdx + destX + sx, destX + sx, py, plain);
             continue;
         }
@@ -564,7 +564,7 @@ static DEKI_FAST_ATTR bool BlendRows_RGB565A8_to_RGB565(const Source& source, ui
             continue;
         }
         for (int32_t px = b.startX; px < b.endX; px++, srcPtr += bpp)
-            CompositePixel<SrcKind::RGB565A8, DekiColorFormat::RGB565, true>(
+            CompositePixel<SrcKind::RGB565A8, Deki::ColorFormat::RGB565, true>(
                 source, srcPtr, (uint8_t*)target16, rowIdx + px, px, py, plain);
     }
     return true;
@@ -635,7 +635,7 @@ static DEKI_FAST_ATTR bool Rows_RGB565A8_to_RGB565A8(const Source& source, uint8
         }
         const size_t rowIdx = (size_t)py * (size_t)targetWidth;
         for (int32_t px = b.startX; px < b.endX; px++, srcPtr += 3)
-            CompositePixel<SrcKind::RGB565A8, DekiColorFormat::RGB565A8, true>(source, srcPtr, target, rowIdx + px, px, py, plain);
+            CompositePixel<SrcKind::RGB565A8, Deki::ColorFormat::RGB565A8, true>(source, srcPtr, target, rowIdx + px, px, py, plain);
     }
     return true;
 }
@@ -644,7 +644,7 @@ static DEKI_FAST_ATTR bool Rows_RGB565A8_to_RGB565A8(const Source& source, uint8
 // Scaled blit: 16.16 fixed-point stepping (1:1 is the step 65536 case)
 // ============================================================================
 
-template <SrcKind SK, DekiColorFormat F, bool Plain>
+template <SrcKind SK, Deki::ColorFormat F, bool Plain>
 static DEKI_FAST_ATTR void BlitRows(const Source& source, uint8_t* target, int32_t targetWidth,
                                     int32_t destX, int32_t destY, int32_t destWidth, int32_t destHeight,
                                     const BlitBounds& b, const BlitParams& P)
@@ -689,7 +689,7 @@ static DEKI_FAST_ATTR void BlitRows(const Source& source, uint8_t* target, int32
     }
 }
 
-template <DekiColorFormat F, bool Plain>
+template <Deki::ColorFormat F, bool Plain>
 static void BlitRowsForTarget(SrcKind kind, const Source& source, uint8_t* target, int32_t targetWidth,
                               int32_t destX, int32_t destY, int32_t destWidth, int32_t destHeight,
                               const BlitBounds& b, const BlitParams& P)
@@ -705,16 +705,16 @@ static void BlitRowsForTarget(SrcKind kind, const Source& source, uint8_t* targe
 }
 
 template <bool Plain>
-static void BlitRowsDispatch(SrcKind kind, DekiColorFormat targetFormat, const Source& source, uint8_t* target,
+static void BlitRowsDispatch(SrcKind kind, Deki::ColorFormat targetFormat, const Source& source, uint8_t* target,
                              int32_t targetWidth, int32_t destX, int32_t destY, int32_t destWidth, int32_t destHeight,
                              const BlitBounds& b, const BlitParams& P)
 {
     switch (targetFormat)
     {
-        case DekiColorFormat::RGB565:   BlitRowsForTarget<DekiColorFormat::RGB565, Plain>(kind, source, target, targetWidth, destX, destY, destWidth, destHeight, b, P); break;
-        case DekiColorFormat::RGB888:   BlitRowsForTarget<DekiColorFormat::RGB888, Plain>(kind, source, target, targetWidth, destX, destY, destWidth, destHeight, b, P); break;
-        case DekiColorFormat::ARGB8888: BlitRowsForTarget<DekiColorFormat::ARGB8888, Plain>(kind, source, target, targetWidth, destX, destY, destWidth, destHeight, b, P); break;
-        case DekiColorFormat::RGB565A8: BlitRowsForTarget<DekiColorFormat::RGB565A8, Plain>(kind, source, target, targetWidth, destX, destY, destWidth, destHeight, b, P); break;
+        case Deki::ColorFormat::RGB565:   BlitRowsForTarget<Deki::ColorFormat::RGB565, Plain>(kind, source, target, targetWidth, destX, destY, destWidth, destHeight, b, P); break;
+        case Deki::ColorFormat::RGB888:   BlitRowsForTarget<Deki::ColorFormat::RGB888, Plain>(kind, source, target, targetWidth, destX, destY, destWidth, destHeight, b, P); break;
+        case Deki::ColorFormat::ARGB8888: BlitRowsForTarget<Deki::ColorFormat::ARGB8888, Plain>(kind, source, target, targetWidth, destX, destY, destWidth, destHeight, b, P); break;
+        case Deki::ColorFormat::RGB565A8: BlitRowsForTarget<Deki::ColorFormat::RGB565A8, Plain>(kind, source, target, targetWidth, destX, destY, destWidth, destHeight, b, P); break;
     }
 }
 
@@ -722,7 +722,7 @@ void BlitScaled(const Source& source,
                 uint8_t* target,
                 int32_t targetWidth,
                 int32_t targetHeight,
-                DekiColorFormat targetFormat,
+                Deki::ColorFormat targetFormat,
                 int32_t destX,
                 int32_t destY,
                 int32_t destWidth,
@@ -762,7 +762,7 @@ void BlitScaled(const Source& source,
     // 1:1 row fast paths (same pixels as the pipeline, fewer instructions).
     if (oneToOne && !P.hasTint && !P.hasAlphaTint && !P.dither && !P.flips)
     {
-        if (targetFormat == DekiColorFormat::RGB565)
+        if (targetFormat == Deki::ColorFormat::RGB565)
         {
             uint16_t* target16 = (uint16_t*)target;
             if (kind == SrcKind::RGB565 && P.hasKey && source.chromaRowSpans)
@@ -781,7 +781,7 @@ void BlitScaled(const Source& source,
                 return;
             }
         }
-        else if (targetFormat == DekiColorFormat::RGB565A8 && plain)
+        else if (targetFormat == Deki::ColorFormat::RGB565A8 && plain)
         {
             if (kind == SrcKind::RGB565)
             {
@@ -814,7 +814,7 @@ struct RotatedBlitArgs
     int32_t dSxDy, dSyDy;                // per-row source step
 };
 
-template <SrcKind SK, DekiColorFormat F>
+template <SrcKind SK, Deki::ColorFormat F>
 static DEKI_FAST_ATTR void RotatedBlitT(const Source& source, uint8_t* target, int32_t targetWidth,
                                         const RotatedBlitArgs& a, const BlitParams& P)
 {
@@ -840,7 +840,7 @@ static DEKI_FAST_ATTR void RotatedBlitT(const Source& source, uint8_t* target, i
     }
 }
 
-template <DekiColorFormat F>
+template <Deki::ColorFormat F>
 static void RotatedBlitForTarget(SrcKind kind, const Source& source, uint8_t* target, int32_t targetWidth,
                                  const RotatedBlitArgs& a, const BlitParams& P)
 {
@@ -858,7 +858,7 @@ void Blit(const Source& source,
           uint8_t* target,
           int32_t targetWidth,
           int32_t targetHeight,
-          DekiColorFormat targetFormat,
+          Deki::ColorFormat targetFormat,
           int32_t screenX,
           int32_t screenY,
           float scaleX,
@@ -972,10 +972,10 @@ void Blit(const Source& source,
     const SrcKind kind = KindOf(source);
     switch (targetFormat)
     {
-        case DekiColorFormat::RGB565:   RotatedBlitForTarget<DekiColorFormat::RGB565>(kind, source, target, targetWidth, args, P); break;
-        case DekiColorFormat::RGB888:   RotatedBlitForTarget<DekiColorFormat::RGB888>(kind, source, target, targetWidth, args, P); break;
-        case DekiColorFormat::ARGB8888: RotatedBlitForTarget<DekiColorFormat::ARGB8888>(kind, source, target, targetWidth, args, P); break;
-        case DekiColorFormat::RGB565A8: RotatedBlitForTarget<DekiColorFormat::RGB565A8>(kind, source, target, targetWidth, args, P); break;
+        case Deki::ColorFormat::RGB565:   RotatedBlitForTarget<Deki::ColorFormat::RGB565>(kind, source, target, targetWidth, args, P); break;
+        case Deki::ColorFormat::RGB888:   RotatedBlitForTarget<Deki::ColorFormat::RGB888>(kind, source, target, targetWidth, args, P); break;
+        case Deki::ColorFormat::ARGB8888: RotatedBlitForTarget<Deki::ColorFormat::ARGB8888>(kind, source, target, targetWidth, args, P); break;
+        case Deki::ColorFormat::RGB565A8: RotatedBlitForTarget<Deki::ColorFormat::RGB565A8>(kind, source, target, targetWidth, args, P); break;
     }
 }
 

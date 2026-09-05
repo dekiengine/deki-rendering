@@ -28,9 +28,9 @@ public:
 
     uint32_t HookMask() const override { return mask; }
     void BeginFrame(RenderContext&) override { ++begin; }
-    void PreExecute(DekiObject*, RenderContext&) override { ++pre; }
-    void Execute(DekiObject*, RenderContext&) override { ++exec; }
-    void PostExecute(DekiObject*, RenderContext&) override { ++post; }
+    void PreExecute(Deki::Object*, RenderContext&) override { ++pre; }
+    void Execute(Deki::Object*, RenderContext&) override { ++exec; }
+    void PostExecute(Deki::Object*, RenderContext&) override { ++post; }
     void EndFrame(RenderContext&) override { ++end; }
 };
 
@@ -40,7 +40,7 @@ class DotRenderer : public RendererComponent
 {
 public:
     DECLARE_COMPONENT_TYPE(DotRenderer, RendererComponent)
-    bool RenderContent(const DekiObject*, QuadBlit::Source& out, float& px, float& py,
+    bool RenderContent(const Deki::Object*, QuadBlit::Source& out, float& px, float& py,
                        uint8_t& r, uint8_t& g, uint8_t& b, uint8_t& a) override
     {
         out = QuadBlit::MakeSource(m_Pixel, 1, 1, 2, false, true, false, nullptr);
@@ -54,19 +54,19 @@ private:
 
 struct HookScene
 {
-    Scene scene;
+    Deki::Scene scene;
     CameraComponent* camera;
     std::vector<uint8_t> target;
     static constexpr int kObjects = 5;
 
     HookScene() : target(32 * 32 * 2, 0)
     {
-        auto* camObj = new DekiObject("Camera");
+        auto* camObj = new Deki::Object("Camera");
         camera = camObj->AddComponent<CameraComponent>();
         scene.AddObject(camObj);
         for (int i = 0; i < kObjects; ++i)
         {
-            auto* o = new DekiObject("dot");
+            auto* o = new Deki::Object("dot");
             o->AddComponent<DotRenderer>();
             scene.AddObject(o);
         }
@@ -74,7 +74,7 @@ struct HookScene
 
     void Render(Standard2DRenderer& renderer)
     {
-        RenderContext ctx{ camera, target.data(), 32, 32, DekiColorFormat::RGB565 };
+        RenderContext ctx{ camera, target.data(), 32, 32, Deki::ColorFormat::RGB565 };
         renderer.Render(&scene, ctx);
         QuadBlit::ClearClipStack();
     }
@@ -146,7 +146,7 @@ TEST(RenderPassHooks, FrameCameraIsCapturedForPasses)
         bool valid = false;
         float halfW = 0.0f;
         uint32_t HookMask() const override { return RenderPassHooks::Execute; }
-        void Execute(DekiObject*, RenderContext& ctx) override { valid = ctx.cam.valid; halfW = ctx.cam.halfW; }
+        void Execute(Deki::Object*, RenderContext& ctx) override { valid = ctx.cam.valid; halfW = ctx.cam.halfW; }
     };
     HookScene s;
     Standard2DRenderer renderer;

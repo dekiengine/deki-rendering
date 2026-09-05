@@ -6,7 +6,7 @@
  *
  * Packages self-register their renderers at static init time.
  * The rendering system creates the configured renderer at startup
- * by looking up the name from ProjectSettings.
+ * by looking up the name from Deki::ProjectSettings.
  *
  * Usage:
  * @code

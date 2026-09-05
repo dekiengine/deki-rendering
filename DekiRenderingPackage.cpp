@@ -2,7 +2,7 @@
  * @file DekiRenderingPackage.cpp
  * @brief Package entry point for deki-rendering DLL
  *
- * Registers the rendering subsystem with DekiEngine.
+ * Registers the rendering subsystem with Deki::Engine.
  * For editor builds, this is a separate DLL that can be hot-reloaded.
  * For runtime builds, sources are statically linked into the engine.
  */
@@ -23,7 +23,7 @@
 // Auto-generated registration helpers (standalone DLL only)
 extern void DekiRendering_RegisterComponents();
 extern int DekiRendering_GetAutoComponentCount();
-extern const DekiComponentMeta* DekiRendering_GetAutoComponentMeta(int index);
+extern const Deki::ComponentMeta* DekiRendering_GetAutoComponentMeta(int index);
 
 static bool s_Registered = false;
 
@@ -39,7 +39,7 @@ DEKI_RENDERING_API int DekiRendering_EnsureRegistered(void)
     DekiRendering_RegisterComponents();
 
     // Initialize the rendering system (idempotent — may already be initialized
-    // by deki_init_package_systems() during DekiEngine::Initialize())
+    // by deki_init_package_systems() during Deki::Engine::Initialize())
     DekiRendering_InitSystem();
 
     return DekiRendering_GetAutoComponentCount();
@@ -86,7 +86,7 @@ DEKI_PLUGIN_API int DekiPlugin_GetComponentCount(void)
     return DekiRendering_GetAutoComponentCount();
 }
 
-DEKI_PLUGIN_API const DekiComponentMeta* DekiPlugin_GetComponentMeta(int index)
+DEKI_PLUGIN_API const Deki::ComponentMeta* DekiPlugin_GetComponentMeta(int index)
 {
     return DekiRendering_GetAutoComponentMeta(index);
 }

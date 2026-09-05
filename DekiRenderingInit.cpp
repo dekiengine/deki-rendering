@@ -46,7 +46,7 @@ void DekiRendering_InitSystem()
     s_RenderSystem = new DekiRenderSystem();
 
     // 2. Create renderer from project settings
-    const char* rendererName = ProjectSettings::GetRenderPipeline();
+    const char* rendererName = Deki::ProjectSettings::GetRenderPipeline();
     s_Renderer = DekiRendererRegistry::Create(rendererName);
     if (s_Renderer)
     {
@@ -60,13 +60,13 @@ void DekiRendering_InitSystem()
 
     // 3. Create and add passes from project settings
     //    Safe downcast via GetRendererType() — no RTTI needed.
-    int passCount = ProjectSettings::GetPassCount();
+    int passCount = Deki::ProjectSettings::GetPassCount();
     if (s_Renderer && s_Renderer->GetRendererType() == Standard2DRenderer::RendererTypeID)
         s_PassReceiver = static_cast<Standard2DRenderer*>(s_Renderer);
 
     for (int i = 0; i < passCount; i++)
     {
-        const char* passName = ProjectSettings::GetPassName(i);
+        const char* passName = Deki::ProjectSettings::GetPassName(i);
         const RenderPassInfo* info = DekiRenderPassRegistry::Get(passName);
         if (info && info->factory)
             AttachPass(passName, *info);
@@ -110,7 +110,7 @@ void DekiRendering_InitSystem()
     }
 
     // 5. Register with engine
-    DekiEngine::GetInstance().SetRenderSystem(s_RenderSystem);
+    Deki::Engine::GetInstance().SetRenderSystem(s_RenderSystem);
     DEKI_LOG_INTERNAL("DekiRendering: Init complete (renderer=%p, %d passes)", (void*)s_Renderer, (int)s_Passes.size());
 }
 
@@ -132,7 +132,7 @@ void DekiRendering_DetachPass(const char* name)
 
 void DekiRendering_ShutdownSystem()
 {
-    DekiEngine::GetInstance().SetRenderSystem(nullptr);
+    Deki::Engine::GetInstance().SetRenderSystem(nullptr);
 
     // Drop the late-attach hook so a stale lambda doesn't reference a freed
     // renderer if a package re-registers after shutdown.

@@ -4,7 +4,7 @@
  * @file DekiRenderingInit.h
  * @brief Rendering package system initialization
  *
- * Creates the render system, renderer, and passes based on ProjectSettings.
+ * Creates the render system, renderer, and passes based on Deki::ProjectSettings.
  * Called by the auto-generated deki_init_package_systems() on all platforms.
  * In editor builds, also called from DekiRendering_EnsureRegistered().
  *

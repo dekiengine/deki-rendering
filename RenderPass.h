@@ -2,7 +2,7 @@
 #include <cstdint>
 
 // Forward declarations
-class DekiObject;
+namespace Deki { class Object; }
 struct RenderContext;
 
 /**
@@ -17,7 +17,7 @@ struct RenderContext;
  * Usage:
  * @code
  * class MyEffectPass : public RenderPass {
- *     void Execute(DekiObject* obj, RenderContext& ctx) override {
+ *     void Execute(Deki::Object* obj, RenderContext& ctx) override {
  *         auto* effect = obj->GetComponent<MyEffectComponent>();
  *         if (!effect) return;
  *         // Apply effect...
@@ -82,21 +82,21 @@ public:
      * Use this to redirect a single object's blit by mutating ctx.buffer
      * (and width/height/format if needed). Restore in PostExecute.
      */
-    virtual void PreExecute(DekiObject* obj, RenderContext& ctx) {}
+    virtual void PreExecute(Deki::Object* obj, RenderContext& ctx) {}
 
     /**
      * @brief Called per-object before children are rendered (after built-in render)
      * @param obj The current object being rendered
      * @param ctx Render context with camera, buffer, and format info
      */
-    virtual void Execute(DekiObject* obj, RenderContext& ctx) {}
+    virtual void Execute(Deki::Object* obj, RenderContext& ctx) {}
 
     /**
      * @brief Called per-object after children are rendered
      * @param obj The current object being rendered
      * @param ctx Render context with camera, buffer, and format info
      */
-    virtual void PostExecute(DekiObject* obj, RenderContext& ctx) {}
+    virtual void PostExecute(Deki::Object* obj, RenderContext& ctx) {}
 
     /**
      * @brief Called once per frame, after all objects have rendered.
@@ -114,6 +114,6 @@ public:
  * Returns true if the object is a sortable render item, setting outOrder.
  * Register on Standard2DRenderer via AddSortingCallback().
  */
-using SortingCallback = bool(*)(DekiObject* obj, int32_t& outOrder);
+using SortingCallback = bool(*)(Deki::Object* obj, int32_t& outOrder);
 
 // 

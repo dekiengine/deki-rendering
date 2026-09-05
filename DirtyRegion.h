@@ -42,7 +42,7 @@ public:
     /// Add [left, right) x [top, bottom), clipped to the target; empty
     /// rectangles are ignored.
     void Add(int32_t left, int32_t top, int32_t right, int32_t bottom);
-    void Add(const DekiRect& r) { Add(r.left, r.top, r.right, r.bottom); }
+    void Add(const Deki::Rect& r) { Add(r.left, r.top, r.right, r.bottom); }
 
     /// This = this ∪ other (other's target size must match; a full other makes
     /// this full).
@@ -58,7 +58,7 @@ public:
     int64_t CoveredArea() const;
 
     /// The rectangles. Empty when the region is empty OR full: check IsFull().
-    const std::vector<DekiRect>& Rects() const { return m_Rects; }
+    const std::vector<Deki::Rect>& Rects() const { return m_Rects; }
 
     // Policies (see the class comment). Defaults: 24 rectangles, 0.8.
     void SetMergeThreshold(size_t maxRects) { m_MergeThreshold = maxRects < 1 ? 1 : maxRects; }
@@ -77,7 +77,7 @@ private:
     int32_t m_Width = 0;
     int32_t m_Height = 0;
     bool m_Full = false;
-    std::vector<DekiRect> m_Rects;
+    std::vector<Deki::Rect> m_Rects;
     size_t m_MergeThreshold = 24;
     float m_FullRatio = 0.8f;
 };

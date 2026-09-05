@@ -70,37 +70,37 @@ void Standard2DRenderer::RebuildHookLists()
 
 // --- Component classification ---
 
-const Standard2DRenderer::TypeTraits& Standard2DRenderer::TraitsFor(const DekiComponent* comp)
+const Standard2DRenderer::TypeTraits& Standard2DRenderer::TraitsFor(const Deki::Component* comp)
 {
-    const ComponentType type = comp->GetType();
+    const Deki::ComponentType type = comp->GetType();
     auto it = m_TypeTraits.find(type);
     if (it != m_TypeTraits.end())
         return it->second;
 
-    // Same predicates as DekiObject::GetComponent<RendererComponent>() and
+    // Same predicates as Deki::Object::GetComponent<RendererComponent>() and
     // FindInterface<T>() (exact type, then one base level), evaluated once.
-    const ComponentType base = comp->GetBaseType();
+    const Deki::ComponentType base = comp->GetBaseType();
     TypeTraits traits;
     traits.isRenderer = (type == RendererComponent::StaticType || base == RendererComponent::StaticType);
-    traits.clipAdapter = ComponentInterfaceAdapters::Find(IClipProvider::InterfaceID, type, base);
-    traits.sortableAdapter = ComponentInterfaceAdapters::Find(ISortableProvider::InterfaceID, type, base);
+    traits.clipAdapter = Deki::ComponentInterfaceAdapters::Find(Deki::IClipProvider::InterfaceID, type, base);
+    traits.sortableAdapter = Deki::ComponentInterfaceAdapters::Find(Deki::ISortableProvider::InterfaceID, type, base);
     return m_TypeTraits.emplace(type, traits).first->second;
 }
 
-Standard2DRenderer::Renderables Standard2DRenderer::ResolveRenderables(DekiObject* obj)
+Standard2DRenderer::Renderables Standard2DRenderer::ResolveRenderables(Deki::Object* obj)
 {
     // One walk of the component list; first match wins per role, exactly as
     // the separate GetComponent / FindInterface lookups did.
     Renderables r{ nullptr, nullptr, nullptr };
-    for (DekiComponent* comp : obj->GetComponents())
+    for (Deki::Component* comp : obj->GetComponents())
     {
         const TypeTraits& t = TraitsFor(comp);
         if (t.isRenderer && !r.renderer)
             r.renderer = static_cast<RendererComponent*>(comp);
         if (t.clipAdapter && !r.clip)
-            r.clip = static_cast<IClipProvider*>(t.clipAdapter(comp));
+            r.clip = static_cast<Deki::IClipProvider*>(t.clipAdapter(comp));
         if (t.sortableAdapter && !r.sortable)
-            r.sortable = static_cast<ISortableProvider*>(t.sortableAdapter(comp));
+            r.sortable = static_cast<Deki::ISortableProvider*>(t.sortableAdapter(comp));
     }
     return r;
 }
@@ -109,8 +109,8 @@ Standard2DRenderer::Renderables Standard2DRenderer::ResolveRenderables(DekiObjec
 
 void Standard2DRenderer::ExecuteBuiltins(const SortItem& item, RenderContext& ctx)
 {
-    DekiObject* obj = item.obj;
-    const DekiWorldTransform wt = obj->GetWorldTransform();  // one dirty check for all five values
+    Deki::Object* obj = item.obj;
+    const Deki::WorldTransform wt = obj->GetWorldTransform();  // one dirty check for all five values
 
     // Clip: push clip rect if IClipProvider is present
     if (item.clip)
@@ -260,7 +260,7 @@ void Standard2DRenderer::SortItems(std::vector<SortItem>& items)
               { return a.order != b.order ? a.order < b.order : a.seq < b.seq; });
 }
 
-void Standard2DRenderer::CollectSortableItems(DekiObject* obj, std::vector<SortItem>& items)
+void Standard2DRenderer::CollectSortableItems(Deki::Object* obj, std::vector<SortItem>& items)
 {
     // Every object reaching the sort is active and was reached through active
     // parents (the walk starts at the scene roots), so RenderObject needs no
@@ -300,7 +300,7 @@ void Standard2DRenderer::CollectSortableItems(DekiObject* obj, std::vector<SortI
 
 // --- Main render loop ---
 
-void Standard2DRenderer::Render(Scene* scene, const RenderContext& ctx)
+void Standard2DRenderer::Render(Deki::Scene* scene, const RenderContext& ctx)
 {
     if (!scene || !ctx.camera || !ctx.buffer)
         return;
@@ -309,7 +309,7 @@ void Standard2DRenderer::Render(Scene* scene, const RenderContext& ctx)
 
     // A package that loaded (or reloaded) since the last frame may have
     // registered adapters for types already classified: start over.
-    const uint32_t adapterVersion = ComponentInterfaceAdapters::Version();
+    const uint32_t adapterVersion = Deki::ComponentInterfaceAdapters::Version();
     if (adapterVersion != m_TraitsVersion)
     {
         m_TypeTraits.clear();
@@ -345,12 +345,12 @@ void Standard2DRenderer::Render(Scene* scene, const RenderContext& ctx)
     m_SortDepth = 0;
     std::vector<SortItem>& sortableItems = SortListForDepth(0);
 
-    for (DekiObject* obj : scene->GetObjects())
+    for (Deki::Object* obj : scene->GetObjects())
         CollectSortableItems(obj, sortableItems);
 
     // Also collect persistent objects
-    const auto& persistentObjects = DekiEngine::GetInstance().GetSceneSystem().GetPersistentObjects();
-    for (DekiObject* obj : persistentObjects)
+    const auto& persistentObjects = Deki::Engine::GetInstance().GetSceneSystem().GetPersistentObjects();
+    for (Deki::Object* obj : persistentObjects)
         CollectSortableItems(obj, sortableItems);
 
     // Sort by sortingOrder (lower = behind)
@@ -371,7 +371,7 @@ void Standard2DRenderer::Render(Scene* scene, const RenderContext& ctx)
 
 void Standard2DRenderer::RenderObject(const SortItem& item, const RenderContext& ctx)
 {
-    DekiObject* obj = item.obj;
+    Deki::Object* obj = item.obj;
     RenderContext objCtx = ctx;
 
     // Phase 1: Pre-execute custom passes (may redirect ctx.buffer for this object)

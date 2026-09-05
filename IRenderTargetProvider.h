@@ -15,15 +15,15 @@
  *
  * Usage in your component:
  * @code
- * class MyTagComponent : public DekiComponent, public IRenderTargetProvider {
+ * class MyTagComponent : public Deki::Component, public IRenderTargetProvider {
  *     std::string tag;
  *     const char* GetRenderTargetTag() const override { return tag.c_str(); }
  * };
  *
  * // In MyTagComponent.cpp:
- * ComponentInterfaceAdapters::Register(
+ * Deki::ComponentInterfaceAdapters::Register(
  *     IRenderTargetProvider::InterfaceID, MyTagComponent::StaticType,
- *     [](DekiComponent* c) -> void* {
+ *     [](Deki::Component* c) -> void* {
  *         return static_cast<IRenderTargetProvider*>(static_cast<MyTagComponent*>(c));
  *     });
  * @endcode

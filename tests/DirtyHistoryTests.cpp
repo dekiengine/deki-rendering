@@ -29,16 +29,16 @@ constexpr int kW = 64, kH = 48;
 class ScriptedRenderer : public DekiRenderer
 {
 public:
-    std::vector<DekiRect> draws;
+    std::vector<Deki::Rect> draws;
     bool unknown = false;   // report nothing (like a renderer that cannot track)
     bool sawTracking = false;
 
     uint32_t GetRendererType() const override { return 0x54455354; }
-    void Render(Scene*, const RenderContext& ctx) override
+    void Render(Deki::Scene*, const RenderContext& ctx) override
     {
         sawTracking = ctx.trackDirty;
         m_Dirty.Reset(ctx.width, ctx.height);
-        for (const DekiRect& r : draws)
+        for (const Deki::Rect& r : draws)
         {
             for (int32_t y = std::max<int32_t>(r.top, 0); y < std::min<int32_t>(r.bottom, ctx.height); ++y)
                 for (int32_t x = std::max<int32_t>(r.left, 0); x < std::min<int32_t>(r.right, ctx.width); ++x)
@@ -53,7 +53,7 @@ private:
 };
 
 // A display with two framebuffers handed out in turn, like a double-buffered LCD.
-class TwoBufferDisplay : public IDekiDisplay
+class TwoBufferDisplay : public Deki::IDisplay
 {
 public:
     std::vector<uint8_t> bufs[2] = { std::vector<uint8_t>(kW * kH * 2, 0), std::vector<uint8_t>(kW * kH * 2, 0) };
@@ -83,7 +83,7 @@ public:
 
 struct Fixture
 {
-    Scene scene;
+    Deki::Scene scene;
     CameraComponent* camera = nullptr;
     ScriptedRenderer renderer;   // tracked system under test
     ScriptedRenderer reference;  // same draws, tracking off
@@ -92,20 +92,20 @@ struct Fixture
 
     Fixture(int alignment = 8)
     {
-        auto* camObj = new DekiObject("Camera");
+        auto* camObj = new Deki::Object("Camera");
         camera = camObj->AddComponent<CameraComponent>();
         scene.AddObject(camObj);
-        EXPECT_TRUE(tracked.Setup(kW, kH, DekiColorFormat::RGB565));
+        EXPECT_TRUE(tracked.Setup(kW, kH, Deki::ColorFormat::RGB565));
         tracked.SetRenderer(&renderer);
         tracked.SetDirtyTracking(true, alignment);
-        EXPECT_TRUE(plain.Setup(kW, kH, DekiColorFormat::RGB565));
+        EXPECT_TRUE(plain.Setup(kW, kH, Deki::ColorFormat::RGB565));
         plain.SetRenderer(&reference);
         plain.SetDirtyTracking(false, 1);
     }
 
     // Render one frame on both systems; returns the tracked present count and
     // checks the tracked framebuffer equals a fresh full-clear render.
-    int32_t Frame(const std::vector<DekiRect>& draws)
+    int32_t Frame(const std::vector<Deki::Rect>& draws)
     {
         renderer.draws = draws;
         reference.draws = draws;
@@ -121,7 +121,7 @@ struct Fixture
     DirtyRegion PresentRegion()
     {
         int32_t count = 0;
-        const DekiRect* rects = tracked.GetPresentRects(&count);
+        const Deki::Rect* rects = tracked.GetPresentRects(&count);
         DirtyRegion r;
         r.Reset(kW, kH);
         r.SetFullCoverageRatio(2.0f);
@@ -131,7 +131,7 @@ struct Fixture
     }
 };
 
-bool RegionCovers(const DirtyRegion& r, const DekiRect& q)
+bool RegionCovers(const DirtyRegion& r, const Deki::Rect& q)
 {
     for (int32_t y = q.top; y < q.bottom; ++y)
         for (int32_t x = q.left; x < q.right; ++x)
@@ -170,7 +170,7 @@ TEST(DirtyHistory, RectanglesAreAligned)
     f.Frame({ { 5, 5, 9, 9 } });
     f.Frame({ { 5, 5, 9, 9 } });
     int32_t count = 0;
-    const DekiRect* rects = f.tracked.GetPresentRects(&count);
+    const Deki::Rect* rects = f.tracked.GetPresentRects(&count);
     ASSERT_EQ(count, 1);
     EXPECT_EQ(rects[0].left, 0);
     EXPECT_EQ(rects[0].top, 0);
@@ -228,29 +228,29 @@ TEST(DirtyHistory, LargeCoverageCollapsesToFull)
 TEST(DirtyHistory, DoubleBufferedDisplayKeepsPerBufferHistory)
 {
     TwoBufferDisplay display;
-    DekiEngine& engine = DekiEngine::GetInstance();
-    IDekiDisplay* prev = engine.GetDisplay();
+    Deki::Engine& engine = Deki::Engine::GetInstance();
+    Deki::IDisplay* prev = engine.GetDisplay();
     engine.SetDisplay(&display, "two-buffer");
 
-    Scene scene;
-    auto* camObj = new DekiObject("Camera");
+    Deki::Scene scene;
+    auto* camObj = new Deki::Object("Camera");
     CameraComponent* camera = camObj->AddComponent<CameraComponent>();
     scene.AddObject(camObj);
     (void)camera;
 
     ScriptedRenderer renderer, reference;
     DekiRenderSystem tracked, plain;
-    ASSERT_TRUE(tracked.Setup(kW, kH, DekiColorFormat::RGB565));  // adopts the display's buffer
+    ASSERT_TRUE(tracked.Setup(kW, kH, Deki::ColorFormat::RGB565));  // adopts the display's buffer
     tracked.SetRenderer(&renderer);
     tracked.SetDirtyTracking(true, 8);
-    ASSERT_TRUE(plain.Setup(kW, kH, DekiColorFormat::RGB565));
+    ASSERT_TRUE(plain.Setup(kW, kH, Deki::ColorFormat::RGB565));
     plain.SetRenderer(&reference);
     plain.SetDirtyTracking(false, 1);
     // The reference system must not adopt the display's buffer: give it its own.
     engine.SetDisplay(nullptr, "");
     engine.SetDisplay(&display, "two-buffer");
 
-    auto frame = [&](const std::vector<DekiRect>& draws) {
+    auto frame = [&](const std::vector<Deki::Rect>& draws) {
         renderer.draws = draws;
         reference.draws = draws;
         tracked.Render(&scene);
@@ -259,7 +259,7 @@ TEST(DirtyHistory, DoubleBufferedDisplayKeepsPerBufferHistory)
         EXPECT_EQ(tracked.GetFrameBuffer(), display.bufs[display.index].data()) << "renders into the display's current buffer";
         EXPECT_EQ(std::memcmp(tracked.GetFrameBuffer(), plain.GetFrameBuffer(), kW * kH * 2), 0);
         int32_t count = -2;
-        const DekiRect* rects = tracked.GetPresentRects(&count);
+        const Deki::Rect* rects = tracked.GetPresentRects(&count);
         DirtyRegion r;
         r.Reset(kW, kH);
         r.SetFullCoverageRatio(2.0f);

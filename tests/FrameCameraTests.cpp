@@ -18,9 +18,9 @@ namespace
 
 struct CameraFixture
 {
-    DekiObject* owner;
+    Deki::Object* owner;
     CameraComponent* camera;
-    CameraFixture() : owner(new DekiObject("cam")), camera(owner->AddComponent<CameraComponent>()) {}
+    CameraFixture() : owner(new Deki::Object("cam")), camera(owner->AddComponent<CameraComponent>()) {}
     ~CameraFixture() { delete owner; }
 };
 
@@ -86,12 +86,12 @@ TEST(FrameCamera, MatchesCameraWithPixelSnap)
 TEST(FrameCamera, ParentedCameraUsesWorldPosition)
 {
     CameraFixture f;
-    auto* rig = new DekiObject("rig");
+    auto* rig = new Deki::Object("rig");
     rig->SetX(10.0f);
     rig->SetScale(2.0f, 2.0f);
     // Re-parent: the fixture deletes `owner` through `rig` afterwards, so hand
     // ownership over and clear the fixture's pointer.
-    DekiObject* cam = f.owner;
+    Deki::Object* cam = f.owner;
     f.owner = rig;
     rig->AddChild(cam);
     cam->SetX(0.5f);  // world 11.0

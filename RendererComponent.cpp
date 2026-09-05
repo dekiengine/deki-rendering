@@ -11,10 +11,10 @@
 // Register ISortableProvider adapter for sorting order queries
 static struct RendererSortableRegistrar {
     RendererSortableRegistrar() {
-        ComponentInterfaceAdapters::Register(
-            ISortableProvider::InterfaceID, RendererComponent::StaticType,
-            [](DekiComponent* c) -> void* {
-                return static_cast<ISortableProvider*>(static_cast<RendererComponent*>(c));
+        Deki::ComponentInterfaceAdapters::Register(
+            Deki::ISortableProvider::InterfaceID, RendererComponent::StaticType,
+            [](Deki::Component* c) -> void* {
+                return static_cast<Deki::ISortableProvider*>(static_cast<RendererComponent*>(c));
             });
     }
 } s_rendererSortableReg;

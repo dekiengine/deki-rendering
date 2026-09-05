@@ -2,7 +2,7 @@
 #include <cstdint>
 
 // Forward declarations
-enum class DekiColorFormat;
+namespace Deki { enum class ColorFormat; }
 class DirtyRegion;
 
 /**
@@ -184,7 +184,7 @@ namespace QuadBlit
               uint8_t* target,
               int32_t targetWidth,
               int32_t targetHeight,
-              DekiColorFormat targetFormat,
+              Deki::ColorFormat targetFormat,
               int32_t screenX,
               int32_t screenY,
               float scaleX,
@@ -216,7 +216,7 @@ namespace QuadBlit
                     uint8_t* target,
                     int32_t targetWidth,
                     int32_t targetHeight,
-                    DekiColorFormat targetFormat,
+                    Deki::ColorFormat targetFormat,
                     int32_t destX,
                     int32_t destY,
                     int32_t destWidth,

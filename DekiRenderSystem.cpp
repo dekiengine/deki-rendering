@@ -21,7 +21,7 @@ DekiRenderSystem::DekiRenderSystem()
 : m_RenderBuffer(nullptr)
 , m_ScreenWidth(0)
 , m_ScreenHeight(0)
-, m_ColorFormat(DekiColorFormat::RGB565)
+, m_ColorFormat(Deki::ColorFormat::RGB565)
 {
 }
 
@@ -29,12 +29,12 @@ DekiRenderSystem::~DekiRenderSystem()
 {
     if (m_RenderBuffer && m_OwnsBuffer)
     {
-        DekiMemory::FreeInternal(m_RenderBuffer);
+        Deki::Memory::FreeInternal(m_RenderBuffer);
     }
     m_RenderBuffer = nullptr;
 }
 
-bool DekiRenderSystem::Setup(int32_t width, int32_t height, DekiColorFormat format)
+bool DekiRenderSystem::Setup(int32_t width, int32_t height, Deki::ColorFormat format)
 {
     // Project-wide rendering settings. In the editor the registry holds the
     // hydrated instance; on device there is no registry, so the values come
@@ -43,7 +43,7 @@ bool DekiRenderSystem::Setup(int32_t width, int32_t height, DekiColorFormat form
     m_TrackDirty = false;
     m_DirtyAlign = 32;
     bool halfWidth = false, interlaced = false;
-    if (auto* rs = DekiSettingsRegistry::Instance().Get<RenderingProjectSettings>())
+    if (auto* rs = Deki::SettingsRegistry::Instance().Get<RenderingProjectSettings>())
     {
         m_TrackDirty = rs->dirtyTileTracking;
         m_DirtyAlign = rs->dirtyTileSize;
@@ -55,15 +55,15 @@ bool DekiRenderSystem::Setup(int32_t width, int32_t height, DekiColorFormat form
         // "Rendering" is RenderingProjectSettings' DEKI_PROJECT_SETTINGS_SECTION.
         bool b = false;
         int32_t a = 0;
-        if (ProjectSettings::ReadPackageSettingBool("Rendering", "dirtyTileTracking", b)) m_TrackDirty = b;
-        if (ProjectSettings::ReadPackageSettingInt32("Rendering", "dirtyTileSize", a)) m_DirtyAlign = a;
-        if (ProjectSettings::ReadPackageSettingBool("Rendering", "halfWidthFramebuffer", b)) halfWidth = b;
-        if (ProjectSettings::ReadPackageSettingBool("Rendering", "interlaced60hz", b)) interlaced = b;
+        if (Deki::ProjectSettings::ReadPackageSettingBool("Rendering", "dirtyTileTracking", b)) m_TrackDirty = b;
+        if (Deki::ProjectSettings::ReadPackageSettingInt32("Rendering", "dirtyTileSize", a)) m_DirtyAlign = a;
+        if (Deki::ProjectSettings::ReadPackageSettingBool("Rendering", "halfWidthFramebuffer", b)) halfWidth = b;
+        if (Deki::ProjectSettings::ReadPackageSettingBool("Rendering", "interlaced60hz", b)) interlaced = b;
     }
     if (m_DirtyAlign < 1) m_DirtyAlign = 1;
     if (halfWidth || interlaced)
     {
-        DEKI_LOG(LogLevel::Info, "[Rendering] settings: half_width=%d interlaced=%d (no implementation yet)",
+        DEKI_LOG(Deki::LogLevel::Info, "[Rendering] settings: half_width=%d interlaced=%d (no implementation yet)",
                  (int)halfWidth, (int)interlaced);
     }
     if (m_TrackDirty)
@@ -79,7 +79,7 @@ bool DekiRenderSystem::Setup(int32_t width, int32_t height, DekiColorFormat form
     // Clean up existing buffers if any
     if (m_RenderBuffer && m_OwnsBuffer)
     {
-        DekiMemory::FreeInternal(m_RenderBuffer);
+        Deki::Memory::FreeInternal(m_RenderBuffer);
     }
     m_RenderBuffer = nullptr;
     m_OwnsBuffer = true;
@@ -100,7 +100,7 @@ bool DekiRenderSystem::Setup(int32_t width, int32_t height, DekiColorFormat form
     // with no error. Now Setup either yields a usable buffer or says so.
     int bytes_per_pixel = GetBytesPerPixel(format);
     size_t buffer_size = (size_t)width * (size_t)height * (size_t)bytes_per_pixel;
-    m_RenderBuffer = (uint8_t*)DekiMemory::AllocateInternal(buffer_size, "DekiRenderSystem::Setup-framebuffer");
+    m_RenderBuffer = (uint8_t*)Deki::Memory::AllocateInternal(buffer_size, "DekiRenderSystem::Setup-framebuffer");
     if (!m_RenderBuffer)
     {
         DEKI_LOG_ERROR("DekiRenderSystem::Setup: failed to allocate %zu-byte framebuffer (%dx%d)",
@@ -112,7 +112,7 @@ bool DekiRenderSystem::Setup(int32_t width, int32_t height, DekiColorFormat form
 
 bool DekiRenderSystem::TryAdoptDisplayBuffer()
 {
-    IDekiDisplay* display = DekiEngine::GetInstance().GetDisplay();
+    Deki::IDisplay* display = Deki::Engine::GetInstance().GetDisplay();
     if (!display || display == m_AdoptionCheckedDisplay)
         return false;
     m_AdoptionCheckedDisplay = display;
@@ -123,13 +123,13 @@ bool DekiRenderSystem::TryAdoptDisplayBuffer()
         return false;
 
     if (m_RenderBuffer && m_OwnsBuffer)
-        DekiMemory::FreeInternal(m_RenderBuffer);
+        Deki::Memory::FreeInternal(m_RenderBuffer);
     m_RenderBuffer = directBuf;
     m_OwnsBuffer = false;
     return true;
 }
 
-void DekiRenderSystem::Render(Scene* current_scene)
+void DekiRenderSystem::Render(Deki::Scene* current_scene)
 {
     if (!current_scene || !m_Renderer)
     {
@@ -145,7 +145,7 @@ void DekiRenderSystem::Render(Scene* current_scene)
     }
     else
     {
-        IDekiDisplay* display = DekiEngine::GetInstance().GetDisplay();
+        Deki::IDisplay* display = Deki::Engine::GetInstance().GetDisplay();
         if (display)
         {
             int32_t dw = 0, dh = 0;
@@ -166,9 +166,9 @@ void DekiRenderSystem::Render(Scene* current_scene)
     // runtime turned into a dangling component. The walk is a few hundred
     // component-list checks against a frame of blits.
     CameraComponent* camera = nullptr;
-    for (DekiObject* obj : current_scene->GetObjects())
+    for (Deki::Object* obj : current_scene->GetObjects())
     {
-        DekiObject* holder = FindInSubtree(obj, [](DekiObject* o)
+        Deki::Object* holder = FindInSubtree(obj, [](Deki::Object* o)
                                            { return o->GetComponent<CameraComponent>() != nullptr; });
         if (holder)
         {
@@ -179,8 +179,8 @@ void DekiRenderSystem::Render(Scene* current_scene)
     if (!camera)
     {
         // Fall back to Persistent objects
-        const auto& persistentObjects = DekiEngine::GetInstance().GetSceneSystem().GetPersistentObjects();
-        for (DekiObject* obj : persistentObjects)
+        const auto& persistentObjects = Deki::Engine::GetInstance().GetSceneSystem().GetPersistentObjects();
+        for (Deki::Object* obj : persistentObjects)
         {
             camera = obj->GetComponent<CameraComponent>();
             if (camera) break;
@@ -219,7 +219,7 @@ void DekiRenderSystem::Render(Scene* current_scene)
         if (full || hist->lastDrawn.IsFull())
             ClearBuffer(clear);
         else
-            for (const DekiRect& r : hist->lastDrawn.Rects())
+            for (const Deki::Rect& r : hist->lastDrawn.Rects())
                 ClearRect(r.left, r.top, r.Width(), r.Height(), clear.r, clear.g, clear.b);
     }
 
@@ -301,28 +301,28 @@ void DekiRenderSystem::SetDirtyTracking(bool enabled, int32_t alignment)
     ResetDirtyHistory();
 }
 
-const DekiRect* DekiRenderSystem::GetPresentRects(int32_t* count) const
+const Deki::Rect* DekiRenderSystem::GetPresentRects(int32_t* count) const
 {
     if (count) *count = m_PresentCount;
     return m_PresentCount > 0 ? m_PresentRects.data() : nullptr;
 }
 
-void DekiRenderSystem::RenderToBuffer(Scene* scene, ICamera* camera,
+void DekiRenderSystem::RenderToBuffer(Deki::Scene* scene, Deki::ICamera* camera,
                                        uint8_t* buffer, int32_t width, int32_t height,
-                                       DekiColorFormat format)
+                                       Deki::ColorFormat format)
 {
     RenderToBufferStatic(scene, camera, buffer, width, height, format);
 }
 
-void DekiRenderSystem::RenderToBufferStatic(Scene* scene, ICamera* camera,
+void DekiRenderSystem::RenderToBufferStatic(Deki::Scene* scene, Deki::ICamera* camera,
                                              uint8_t* buffer, int32_t width, int32_t height,
-                                             DekiColorFormat format)
+                                             Deki::ColorFormat format)
 {
     if (!scene || !camera || !buffer)
         return;
 
     // Get the renderer from the engine's render system
-    DekiRenderer* renderer = DekiEngine::GetInstance().GetRenderSystem()->GetRenderer();
+    DekiRenderer* renderer = Deki::Engine::GetInstance().GetRenderSystem()->GetRenderer();
     if (!renderer)
         return;
 
@@ -335,26 +335,26 @@ void DekiRenderSystem::RenderToBufferStatic(Scene* scene, ICamera* camera,
 namespace
 {
 // One pixel of `format` at p; returns its size in bytes.
-inline size_t WritePixel(uint8_t* p, DekiColorFormat format, uint8_t r, uint8_t g, uint8_t b)
+inline size_t WritePixel(uint8_t* p, Deki::ColorFormat format, uint8_t r, uint8_t g, uint8_t b)
 {
     switch (format)
     {
-        case DekiColorFormat::RGB565:
+        case Deki::ColorFormat::RGB565:
         {
             const uint16_t v = static_cast<uint16_t>(((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3));
             memcpy(p, &v, 2);
             return 2;
         }
-        case DekiColorFormat::RGB888:
+        case Deki::ColorFormat::RGB888:
             p[0] = r; p[1] = g; p[2] = b;
             return 3;
-        case DekiColorFormat::ARGB8888:
+        case Deki::ColorFormat::ARGB8888:
         {
             const uint32_t v = (0xFFu << 24) | (static_cast<uint32_t>(r) << 16) | (static_cast<uint32_t>(g) << 8) | b;
             memcpy(p, &v, 4);
             return 4;
         }
-        case DekiColorFormat::RGB565A8:
+        case Deki::ColorFormat::RGB565A8:
         {
             const uint16_t v = static_cast<uint16_t>(((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3));
             p[0] = static_cast<uint8_t>(v & 0xFF);
@@ -419,7 +419,7 @@ DEKI_FAST_ATTR void DekiRenderSystem::GetPixel(int32_t x, int32_t y, uint8_t* r,
     // Get pixel from render buffer based on format
     switch (m_ColorFormat)
     {
-        case DekiColorFormat::RGB565:
+        case Deki::ColorFormat::RGB565:
         {
             size_t pixel_index = (y * m_ScreenWidth + x) * 2;
             uint16_t pixel = *((uint16_t*)(m_RenderBuffer + pixel_index));
@@ -428,7 +428,7 @@ DEKI_FAST_ATTR void DekiRenderSystem::GetPixel(int32_t x, int32_t y, uint8_t* r,
             *b = (pixel & 0x1F) << 3;  // 5 bits -> 8 bits
             break;
         }
-        case DekiColorFormat::RGB888:
+        case Deki::ColorFormat::RGB888:
         {
             size_t pixel_index = (y * m_ScreenWidth + x) * 3;
             *r = m_RenderBuffer[pixel_index];
@@ -436,7 +436,7 @@ DEKI_FAST_ATTR void DekiRenderSystem::GetPixel(int32_t x, int32_t y, uint8_t* r,
             *b = m_RenderBuffer[pixel_index + 2];
             break;
         }
-        case DekiColorFormat::ARGB8888:
+        case Deki::ColorFormat::ARGB8888:
         {
             size_t pixel_index = (y * m_ScreenWidth + x) * 4;
             uint32_t pixel = *((uint32_t*)(m_RenderBuffer + pixel_index));
@@ -445,7 +445,7 @@ DEKI_FAST_ATTR void DekiRenderSystem::GetPixel(int32_t x, int32_t y, uint8_t* r,
             *b = pixel & 0xFF;
             break;
         }
-        case DekiColorFormat::RGB565A8:
+        case Deki::ColorFormat::RGB565A8:
         {
             size_t pixel_index = (y * m_ScreenWidth + x) * 3;
             uint16_t pixel = *((uint16_t*)(m_RenderBuffer + pixel_index));
@@ -464,17 +464,17 @@ DEKI_FAST_ATTR Deki::Color DekiRenderSystem::GetPixel(int32_t x, int32_t y) cons
     return Deki::Color(r, g, b);
 }
 
-int DekiRenderSystem::GetBytesPerPixel(DekiColorFormat format)
+int DekiRenderSystem::GetBytesPerPixel(Deki::ColorFormat format)
 {
     switch (format)
     {
-        case DekiColorFormat::RGB565:
+        case Deki::ColorFormat::RGB565:
             return 2;
-        case DekiColorFormat::RGB888:
+        case Deki::ColorFormat::RGB888:
             return 3;
-        case DekiColorFormat::ARGB8888:
+        case Deki::ColorFormat::ARGB8888:
             return 4;
-        case DekiColorFormat::RGB565A8:
+        case Deki::ColorFormat::RGB565A8:
             return 3;
     }
     return 2;

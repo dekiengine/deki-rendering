@@ -58,7 +58,7 @@ public:
         return true;
     }
 
-    bool RenderContent(const DekiObject*, QuadBlit::Source& outSource, float& outPivotX, float& outPivotY,
+    bool RenderContent(const Deki::Object*, QuadBlit::Source& outSource, float& outPivotX, float& outPivotY,
                        uint8_t& tr, uint8_t& tg, uint8_t& tb, uint8_t& ta) override
     {
         for (int i = 0; i < 16; ++i)
@@ -91,10 +91,10 @@ private:
 };
 
 // A clip region that also sorts (like ClipComponent).
-class TestClip : public DekiComponent, public IClipProvider, public ISortableProvider
+class TestClip : public Deki::Component, public Deki::IClipProvider, public Deki::ISortableProvider
 {
 public:
-    DECLARE_COMPONENT_TYPE(TestClip, DekiComponent)
+    DECLARE_COMPONENT_TYPE(TestClip, Deki::Component)
     float width = 1.0f, height = 1.0f;
     int32_t order = 0;
     float GetClipWidth() const override { return width; }
@@ -103,10 +103,10 @@ public:
 };
 
 // A sorting group without any drawing (like SortingGroupComponent).
-class TestSortGroup : public DekiComponent, public ISortableProvider
+class TestSortGroup : public Deki::Component, public Deki::ISortableProvider
 {
 public:
-    DECLARE_COMPONENT_TYPE(TestSortGroup, DekiComponent)
+    DECLARE_COMPONENT_TYPE(TestSortGroup, Deki::Component)
     int32_t order = 0;
     int32_t GetSortingOrder() const override { return order; }
 };
@@ -116,31 +116,31 @@ void RegisterTestAdapters()
     static bool done = false;
     if (done) return;
     done = true;
-    ComponentInterfaceAdapters::Register(IClipProvider::InterfaceID, TestClip::StaticType,
-                                         [](DekiComponent* c) -> void* { return static_cast<IClipProvider*>(static_cast<TestClip*>(c)); });
-    ComponentInterfaceAdapters::Register(ISortableProvider::InterfaceID, TestClip::StaticType,
-                                         [](DekiComponent* c) -> void* { return static_cast<ISortableProvider*>(static_cast<TestClip*>(c)); });
-    ComponentInterfaceAdapters::Register(ISortableProvider::InterfaceID, TestSortGroup::StaticType,
-                                         [](DekiComponent* c) -> void* { return static_cast<ISortableProvider*>(static_cast<TestSortGroup*>(c)); });
+    Deki::ComponentInterfaceAdapters::Register(Deki::IClipProvider::InterfaceID, TestClip::StaticType,
+                                         [](Deki::Component* c) -> void* { return static_cast<Deki::IClipProvider*>(static_cast<TestClip*>(c)); });
+    Deki::ComponentInterfaceAdapters::Register(Deki::ISortableProvider::InterfaceID, TestClip::StaticType,
+                                         [](Deki::Component* c) -> void* { return static_cast<Deki::ISortableProvider*>(static_cast<TestClip*>(c)); });
+    Deki::ComponentInterfaceAdapters::Register(Deki::ISortableProvider::InterfaceID, TestSortGroup::StaticType,
+                                         [](Deki::Component* c) -> void* { return static_cast<Deki::ISortableProvider*>(static_cast<TestSortGroup*>(c)); });
 }
 
 // ---------------------------------------------------------------- scene helpers
 
 struct SceneBuilder
 {
-    Scene scene;
+    Deki::Scene scene;
     CameraComponent* camera = nullptr;
 
     SceneBuilder()
     {
-        auto* camObj = new DekiObject("Camera");
+        auto* camObj = new Deki::Object("Camera");
         camera = camObj->AddComponent<CameraComponent>();
         scene.AddObject(camObj);
     }
 
-    DekiObject* Object(const char* name, float x, float y, DekiObject* parent = nullptr)
+    Deki::Object* Object(const char* name, float x, float y, Deki::Object* parent = nullptr)
     {
-        auto* o = new DekiObject(name);
+        auto* o = new Deki::Object(name);
         o->SetX(x);
         o->SetY(y);
         if (parent) parent->AddChild(o);
@@ -148,7 +148,7 @@ struct SceneBuilder
         return o;
     }
 
-    TestRenderer* Sprite(const char* name, float x, float y, uint16_t colour, int order, DekiObject* parent = nullptr)
+    TestRenderer* Sprite(const char* name, float x, float y, uint16_t colour, int order, Deki::Object* parent = nullptr)
     {
         auto* o = Object(name, x, y, parent);
         auto* r = o->AddComponent<TestRenderer>();
@@ -168,14 +168,14 @@ uint64_t Fnv(const std::vector<uint8_t>& bytes, uint64_t h)
     return h;
 }
 
-int TargetBpp(DekiColorFormat f)
+int TargetBpp(Deki::ColorFormat f)
 {
     switch (f)
     {
-    case DekiColorFormat::RGB565: return 2;
-    case DekiColorFormat::RGB888: return 3;
-    case DekiColorFormat::ARGB8888: return 4;
-    case DekiColorFormat::RGB565A8: return 3;
+    case Deki::ColorFormat::RGB565: return 2;
+    case Deki::ColorFormat::RGB888: return 3;
+    case Deki::ColorFormat::ARGB8888: return 4;
+    case Deki::ColorFormat::RGB565A8: return 3;
     }
     return 0;
 }
@@ -215,7 +215,7 @@ const Case kCases[] = {
         b.Sprite("hidden", 0.0f, 0.0f, 0xF800, 0, off);
         b.Sprite("shown", 0.3f, 0.0f, 0x07E0, 0); } },
     { "nested clips depth 3", [](SceneBuilder& b) {
-        DekiObject* parent = nullptr;
+        Deki::Object* parent = nullptr;
         for (int i = 0; i < 3; ++i)
         {
             auto* c = b.Object("clip", i == 0 ? 0.0f : 0.05f, 0.0f, parent);
@@ -228,7 +228,7 @@ const Case kCases[] = {
         big->sourcePpm = 4.0f;  // 4 px == 1 m: larger than every clip
     } },
     { "nested clips depth 40", [](SceneBuilder& b) {
-        DekiObject* parent = nullptr;
+        Deki::Object* parent = nullptr;
         for (int i = 0; i < 40; ++i)
         {
             auto* c = b.Object("clip", 0.0f, 0.0f, parent);
@@ -290,10 +290,10 @@ const Case kCases[] = {
         edge->alpha = 200; } },
 };
 
-const DekiColorFormat kDstFmts[] = { DekiColorFormat::RGB565, DekiColorFormat::RGB888,
-                                     DekiColorFormat::ARGB8888, DekiColorFormat::RGB565A8 };
+const Deki::ColorFormat kDstFmts[] = { Deki::ColorFormat::RGB565, Deki::ColorFormat::RGB888,
+                                     Deki::ColorFormat::ARGB8888, Deki::ColorFormat::RGB565A8 };
 
-uint64_t RunTarget(DekiColorFormat fmt, bool print)
+uint64_t RunTarget(Deki::ColorFormat fmt, bool print)
 {
     RegisterTestAdapters();
     uint64_t hash = 0xcbf29ce484222325ULL;
@@ -316,15 +316,15 @@ uint64_t RunTarget(DekiColorFormat fmt, bool print)
 }
 
 // 0 means "not captured yet": the test prints the actual value and fails.
-struct Expected { DekiColorFormat fmt; const char* name; uint64_t hash; };
+struct Expected { Deki::ColorFormat fmt; const char* name; uint64_t hash; };
 const Expected kExpected[] = {
     // Re-pinned 2026-09-03 when the QuadBlit clip stack lost its 16-slot cap: only
     // the "nested clips depth 40" case changed (levels 17..40 used to be clipped
     // by level 16's rect); every other case hash is identical to the first pin.
-    { DekiColorFormat::RGB565,   "RGB565",   0x1d8eb3cd8824484dULL },
-    { DekiColorFormat::RGB888,   "RGB888",   0x57549d41cf335c9bULL },
-    { DekiColorFormat::ARGB8888, "ARGB8888", 0x99d8e38d9ca41e9fULL },
-    { DekiColorFormat::RGB565A8, "RGB565A8", 0xb9a61fd457e7a6cfULL },
+    { Deki::ColorFormat::RGB565,   "RGB565",   0x1d8eb3cd8824484dULL },
+    { Deki::ColorFormat::RGB888,   "RGB888",   0x57549d41cf335c9bULL },
+    { Deki::ColorFormat::ARGB8888, "ARGB8888", 0x99d8e38d9ca41e9fULL },
+    { Deki::ColorFormat::RGB565A8, "RGB565A8", 0xb9a61fd457e7a6cfULL },
 };
 
 }  // namespace
@@ -357,7 +357,7 @@ TEST(RendererGoldenTest, ClipStackBalancedAfterDeepNesting)
     kCases[6].build(b);  // nested clips depth 40
     std::vector<uint8_t> target(static_cast<size_t>(kW) * kH * 2, 0);
     Standard2DRenderer renderer;
-    RenderContext ctx{ b.camera, target.data(), kW, kH, DekiColorFormat::RGB565 };
+    RenderContext ctx{ b.camera, target.data(), kW, kH, Deki::ColorFormat::RGB565 };
     renderer.Render(&b.scene, ctx);
     EXPECT_EQ(QuadBlit::GetClipStackDepth(), 0);
 }
@@ -370,7 +370,7 @@ TEST(RendererGoldenTest, ClipAndRendererOnOneObjectMatchesParentChildForm)
     RegisterTestAdapters();
     auto render = [](bool sameObject) {
         SceneBuilder b;
-        DekiObject* holder = b.Object("holder", 0.1f, -0.05f);
+        Deki::Object* holder = b.Object("holder", 0.1f, -0.05f);
         auto* clip = holder->AddComponent<TestClip>();
         clip->width = 0.15f;
         clip->height = 0.15f;
@@ -380,7 +380,7 @@ TEST(RendererGoldenTest, ClipAndRendererOnOneObjectMatchesParentChildForm)
         r->sourcePpm = 4.0f;  // 1 m square: far larger than the clip
         std::vector<uint8_t> target(static_cast<size_t>(kW) * kH * 2, 0);
         Standard2DRenderer renderer;
-        RenderContext ctx{ b.camera, target.data(), kW, kH, DekiColorFormat::RGB565 };
+        RenderContext ctx{ b.camera, target.data(), kW, kH, Deki::ColorFormat::RGB565 };
         renderer.Render(&b.scene, ctx);
         QuadBlit::ClearClipStack();
         return target;
@@ -399,10 +399,10 @@ TEST(RendererGoldenTest, ClipAndRendererOnOneObjectMatchesParentChildForm)
 // A component type that gains an IClipProvider adapter AFTER the renderer has
 // already classified it (a package loading later) must clip from the next
 // frame on: the per-type cache is dropped when the adapter registry changes.
-class TestLateClip : public DekiComponent, public IClipProvider
+class TestLateClip : public Deki::Component, public Deki::IClipProvider
 {
 public:
-    DECLARE_COMPONENT_TYPE(TestLateClip, DekiComponent)
+    DECLARE_COMPONENT_TYPE(TestLateClip, Deki::Component)
     float GetClipWidth() const override { return 0.15f; }
     float GetClipHeight() const override { return 0.15f; }
 };
@@ -411,7 +411,7 @@ TEST(RendererGoldenTest, AdapterRegisteredAfterFirstFrameTakesEffect)
 {
     RegisterTestAdapters();
     SceneBuilder b;
-    DekiObject* holder = b.Object("holder", 0.0f, 0.0f);
+    Deki::Object* holder = b.Object("holder", 0.0f, 0.0f);
     holder->AddComponent<TestLateClip>();
     // Like ClipComponent, a real clip is also sortable so the renderer claims
     // it; an unclaimed container's clip is never pushed (containers only
@@ -422,15 +422,15 @@ TEST(RendererGoldenTest, AdapterRegisteredAfterFirstFrameTakesEffect)
 
     Standard2DRenderer renderer;
     std::vector<uint8_t> target(static_cast<size_t>(kW) * kH * 2, 0);
-    RenderContext ctx{ b.camera, target.data(), kW, kH, DekiColorFormat::RGB565 };
+    RenderContext ctx{ b.camera, target.data(), kW, kH, Deki::ColorFormat::RGB565 };
     renderer.Render(&b.scene, ctx);
     QuadBlit::ClearClipStack();
     // 6 px from the centre: inside the 16 px sprite, outside the 2.4 px clip.
     const size_t corner = (static_cast<size_t>(kH / 2 - 6) * kW + kW / 2 - 6) * 2;
     EXPECT_EQ(target[corner] | (target[corner + 1] << 8), 0xF800) << "no adapter yet: unclipped";
 
-    ComponentInterfaceAdapters::Register(IClipProvider::InterfaceID, TestLateClip::StaticType,
-                                         [](DekiComponent* c) -> void* { return static_cast<IClipProvider*>(static_cast<TestLateClip*>(c)); });
+    Deki::ComponentInterfaceAdapters::Register(Deki::IClipProvider::InterfaceID, TestLateClip::StaticType,
+                                         [](Deki::Component* c) -> void* { return static_cast<Deki::IClipProvider*>(static_cast<TestLateClip*>(c)); });
     std::fill(target.begin(), target.end(), 0);
     renderer.Render(&b.scene, ctx);
     EXPECT_EQ(QuadBlit::GetClipStackDepth(), 0);
@@ -452,13 +452,13 @@ TEST(RendererGoldenTest, DirtyTrackingIsPixelIdenticalAndCoversEveryDrawnPixel)
         std::vector<uint8_t> tracked(static_cast<size_t>(kW) * kH * 2, 0);
 
         Standard2DRenderer r1;
-        RenderContext c1{ b.camera, plain.data(), kW, kH, DekiColorFormat::RGB565 };
+        RenderContext c1{ b.camera, plain.data(), kW, kH, Deki::ColorFormat::RGB565 };
         r1.Render(&b.scene, c1);
         QuadBlit::ClearClipStack();
         EXPECT_EQ(r1.GetLastFrameDirty(), nullptr) << c.name << ": untracked render reports nothing";
 
         Standard2DRenderer r2;
-        RenderContext c2{ b.camera, tracked.data(), kW, kH, DekiColorFormat::RGB565 };
+        RenderContext c2{ b.camera, tracked.data(), kW, kH, Deki::ColorFormat::RGB565 };
         c2.trackDirty = true;
         r2.Render(&b.scene, c2);
         QuadBlit::ClearClipStack();

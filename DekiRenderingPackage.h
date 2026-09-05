@@ -29,7 +29,7 @@
 #include <cstdint>
 
 // Forward declarations
-struct DekiComponentMeta;
+namespace Deki { struct ComponentMeta; }
 
 extern "C" {
 

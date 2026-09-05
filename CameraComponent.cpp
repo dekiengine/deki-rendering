@@ -13,10 +13,10 @@
 // Register ICamera adapter so editor can use FindInterface<ICamera>()
 static struct CameraInterfaceRegistrar {
     CameraInterfaceRegistrar() {
-        ComponentInterfaceAdapters::Register(
-            ICamera::InterfaceID, CameraComponent::StaticType,
-            [](DekiComponent* c) -> void* {
-                return static_cast<ICamera*>(static_cast<CameraComponent*>(c));
+        Deki::ComponentInterfaceAdapters::Register(
+            Deki::ICamera::InterfaceID, CameraComponent::StaticType,
+            [](Deki::Component* c) -> void* {
+                return static_cast<Deki::ICamera*>(static_cast<CameraComponent*>(c));
             });
     }
 } s_cameraInterfaceReg;
@@ -32,7 +32,7 @@ float CameraComponent::GetPixelsPerMeter() const
 {
     if (pixelsPerMeter > 0.0f)
         return pixelsPerMeter;
-    const float global = DekiEngineSettings::Global().pixelsPerMeter;
+    const float global = Deki::EngineSettings::Global().pixelsPerMeter;
     return global > 0.0f ? global : 1.0f;
 }
 
@@ -43,13 +43,13 @@ void CameraComponent::SetPixelsPerMeter(float ppm)
 
 float CameraComponent::GetPositionX() const
 {
-    DekiObject* owner = GetOwner();
+    Deki::Object* owner = GetOwner();
     return owner ? owner->GetWorldX() : 0.0f;
 }
 
 float CameraComponent::GetPositionY() const
 {
-    DekiObject* owner = GetOwner();
+    Deki::Object* owner = GetOwner();
     return owner ? owner->GetWorldY() : 0.0f;
 }
 

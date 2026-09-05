@@ -54,10 +54,10 @@ TEST(DirtyRegion, MergeThresholdKeepsTheSetSmallAndStillCovering)
     r.Reset(200, 200);
     r.SetMergeThreshold(3);
     r.SetFullCoverageRatio(2.0f);  // never collapse in this test
-    const DekiRect added[] = { { 0, 0, 10, 10 }, { 12, 0, 22, 10 }, { 100, 100, 110, 110 }, { 150, 150, 160, 160 }, { 14, 12, 20, 18 } };
-    for (const DekiRect& a : added) r.Add(a);
+    const Deki::Rect added[] = { { 0, 0, 10, 10 }, { 12, 0, 22, 10 }, { 100, 100, 110, 110 }, { 150, 150, 160, 160 }, { 14, 12, 20, 18 } };
+    for (const Deki::Rect& a : added) r.Add(a);
     EXPECT_LE(r.Rects().size(), 3u);
-    for (const DekiRect& a : added)
+    for (const Deki::Rect& a : added)
         EXPECT_TRUE(Covers(r, a.left, a.top, a.right, a.bottom));
     EXPECT_FALSE(r.IsFull());
     // The two neighbours at the top-left merged with each other, not with a far one.

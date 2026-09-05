@@ -29,7 +29,7 @@ void DirtyRegion::Add(int32_t left, int32_t top, int32_t right, int32_t bottom)
     // an existing rectangle replaces it. Both are common (a sprite drawn
     // twice, a clip child inside its parent's area) and keep the set small
     // without a merge.
-    for (DekiRect& r : m_Rects)
+    for (Deki::Rect& r : m_Rects)
     {
         if (left >= r.left && top >= r.top && right <= r.right && bottom <= r.bottom)
             return;
@@ -55,14 +55,14 @@ void DirtyRegion::Union(const DirtyRegion& other)
         SetFull();
         return;
     }
-    for (const DekiRect& r : other.m_Rects)
+    for (const Deki::Rect& r : other.m_Rects)
         Add(r.left, r.top, r.right, r.bottom);
 }
 
 void DirtyRegion::Align(int32_t granularity)
 {
     if (m_Full || granularity <= 1) return;
-    for (DekiRect& r : m_Rects)
+    for (Deki::Rect& r : m_Rects)
     {
         r.left = (r.left / granularity) * granularity;
         r.top = (r.top / granularity) * granularity;
@@ -70,9 +70,9 @@ void DirtyRegion::Align(int32_t granularity)
         r.bottom = std::min<int32_t>(((r.bottom + granularity - 1) / granularity) * granularity, m_Height);
     }
     // Alignment can make neighbours identical or nested; fold those.
-    std::vector<DekiRect> aligned;
+    std::vector<Deki::Rect> aligned;
     aligned.swap(m_Rects);
-    for (const DekiRect& r : aligned)
+    for (const Deki::Rect& r : aligned)
         Add(r.left, r.top, r.right, r.bottom);
 }
 
@@ -80,7 +80,7 @@ int64_t DirtyRegion::CoveredArea() const
 {
     if (m_Full) return static_cast<int64_t>(m_Width) * m_Height;
     int64_t area = 0;
-    for (const DekiRect& r : m_Rects)
+    for (const Deki::Rect& r : m_Rects)
         area += static_cast<int64_t>(r.Width()) * r.Height();
     return area;
 }
@@ -89,7 +89,7 @@ bool DirtyRegion::Contains(int32_t x, int32_t y) const
 {
     if (x < 0 || y < 0 || x >= m_Width || y >= m_Height) return false;
     if (m_Full) return true;
-    for (const DekiRect& r : m_Rects)
+    for (const Deki::Rect& r : m_Rects)
         if (x >= r.left && x < r.right && y >= r.top && y < r.bottom)
             return true;
     return false;
@@ -105,11 +105,11 @@ void DirtyRegion::MergeOnePair()
     int64_t bestGrowth = INT64_MAX;
     for (size_t i = 0; i < n; ++i)
     {
-        const DekiRect& a = m_Rects[i];
+        const Deki::Rect& a = m_Rects[i];
         const int64_t areaA = static_cast<int64_t>(a.Width()) * a.Height();
         for (size_t j = i + 1; j < n; ++j)
         {
-            const DekiRect& b = m_Rects[j];
+            const Deki::Rect& b = m_Rects[j];
             const int32_t l = std::min(a.left, b.left), t = std::min(a.top, b.top);
             const int32_t r = std::max(a.right, b.right), bt = std::max(a.bottom, b.bottom);
             const int64_t unionArea = static_cast<int64_t>(r - l) * (bt - t);
@@ -122,8 +122,8 @@ void DirtyRegion::MergeOnePair()
             }
         }
     }
-    DekiRect& a = m_Rects[bestA];
-    const DekiRect b = m_Rects[bestB];
+    Deki::Rect& a = m_Rects[bestA];
+    const Deki::Rect b = m_Rects[bestB];
     a = { std::min(a.left, b.left), std::min(a.top, b.top), std::max(a.right, b.right), std::max(a.bottom, b.bottom) };
     m_Rects.erase(m_Rects.begin() + static_cast<std::ptrdiff_t>(bestB));
 }

@@ -7,7 +7,7 @@
 #include "QuadBlit.h"
 
 // Forward declarations
-class DekiObject;
+namespace Deki { class Object; }
 class CameraComponent;
 
 #ifdef V_ENGINE_ENABLE_MASK
@@ -39,13 +39,13 @@ enum class AlphaMode : uint8_t
 /**
  * @brief Abstract base class for all renderable components (e.g., sprites, particles)
  *
- * Extends DekiBehaviour to provide lifecycle methods (Start, Update, PreRender)
+ * Extends Deki::Behaviour to provide lifecycle methods (Start, Update, PreRender)
  * in addition to the Render method for drawing.
  */
-class RendererComponent : public DekiBehaviour, public ISortableProvider
+class RendererComponent : public Deki::Behaviour, public Deki::ISortableProvider
 {
    public:
-    DEKI_COMPONENT(RendererComponent, DekiBehaviour, "Core", "9604fa26-8be9-428a-9c29-e67c2d52c913", "")
+    DEKI_COMPONENT(RendererComponent, Deki::Behaviour, "Core", "9604fa26-8be9-428a-9c29-e67c2d52c913", "")
 
     // Pure virtual destructor makes this class abstract
     virtual ~RendererComponent() = 0;
@@ -93,7 +93,7 @@ class RendererComponent : public DekiBehaviour, public ISortableProvider
      * Components that override this method produce raw pixel data.
      * The render loop will use QuadBlit to apply transforms (position, scale, rotation).
      *
-     * @param owner The owning DekiObject
+     * @param owner The owning Deki::Object
      * @param outSource Output QuadBlit::Source descriptor (buffer, dimensions, format)
      * @param outPivotX Output pivot X (0.0-1.0, where 0.5 is center)
      * @param outPivotY Output pivot Y (0.0-1.0, where 0.5 is center)
@@ -121,7 +121,7 @@ class RendererComponent : public DekiBehaviour, public ISortableProvider
         return false;
     }
 
-    virtual bool RenderContent(const DekiObject* owner,
+    virtual bool RenderContent(const Deki::Object* owner,
                                QuadBlit::Source& outSource,
                                float& outPivotX,
                                float& outPivotY,

@@ -73,14 +73,14 @@ int Bpp(SrcFmt f)
     return 0;
 }
 
-int TargetBpp(DekiColorFormat f)
+int TargetBpp(Deki::ColorFormat f)
 {
     switch (f)
     {
-    case DekiColorFormat::RGB565: return 2;
-    case DekiColorFormat::RGB888: return 3;
-    case DekiColorFormat::ARGB8888: return 4;
-    case DekiColorFormat::RGB565A8: return 3;
+    case Deki::ColorFormat::RGB565: return 2;
+    case Deki::ColorFormat::RGB888: return 3;
+    case Deki::ColorFormat::ARGB8888: return 4;
+    case Deki::ColorFormat::RGB565A8: return 3;
     }
     return 0;
 }
@@ -206,10 +206,10 @@ const Case kCases[] = {
 
 const SrcFmt kSrcFmts[] = { SrcFmt::RGB565, SrcFmt::RGB565A8, SrcFmt::RGB565A8_NoAlpha,
                             SrcFmt::RGBA8888, SrcFmt::RGB888, SrcFmt::ALPHA8 };
-const DekiColorFormat kDstFmts[] = { DekiColorFormat::RGB565, DekiColorFormat::RGB888,
-                                     DekiColorFormat::ARGB8888, DekiColorFormat::RGB565A8 };
+const Deki::ColorFormat kDstFmts[] = { Deki::ColorFormat::RGB565, Deki::ColorFormat::RGB888,
+                                     Deki::ColorFormat::ARGB8888, Deki::ColorFormat::RGB565A8 };
 
-uint64_t RunTarget(DekiColorFormat dst, bool print)
+uint64_t RunTarget(Deki::ColorFormat dst, bool print)
 {
     uint64_t hash = 0xcbf29ce484222325ULL;
     const int tbpp = TargetBpp(dst);
@@ -261,12 +261,12 @@ uint64_t RunTarget(DekiColorFormat dst, bool print)
 // specialised kernels always did instead of writing 0xFF. Every other case
 // is bit-identical. 0 means "not captured yet": the test then prints the
 // actual value and fails.
-struct Expected { DekiColorFormat fmt; const char* name; uint64_t hash; };
+struct Expected { Deki::ColorFormat fmt; const char* name; uint64_t hash; };
 const Expected kExpected[] = {
-    { DekiColorFormat::RGB565,   "RGB565",   0x0a31383163f71c2bULL },
-    { DekiColorFormat::RGB888,   "RGB888",   0x2f1126ce6004d7f7ULL },
-    { DekiColorFormat::ARGB8888, "ARGB8888", 0xc80bf916f6efe40bULL },
-    { DekiColorFormat::RGB565A8, "RGB565A8", 0xd8f3d76abf379d7aULL },
+    { Deki::ColorFormat::RGB565,   "RGB565",   0x0a31383163f71c2bULL },
+    { Deki::ColorFormat::RGB888,   "RGB888",   0x2f1126ce6004d7f7ULL },
+    { Deki::ColorFormat::ARGB8888, "ARGB8888", 0xc80bf916f6efe40bULL },
+    { Deki::ColorFormat::RGB565A8, "RGB565A8", 0xd8f3d76abf379d7aULL },
 };
 
 }  // namespace

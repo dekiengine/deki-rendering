@@ -11,11 +11,11 @@
 #include <vector>
 
 // Forward declarations
-class DekiObject;
-class DekiComponent;
+namespace Deki { class Object; }
+namespace Deki { class Component; }
 class RendererComponent;
-class IClipProvider;
-class ISortableProvider;
+namespace Deki { class IClipProvider; }
+namespace Deki { class ISortableProvider; }
 
 /**
  * @brief Standard 2D renderer with built-in support for sprites, clipping, and sorting groups
@@ -45,7 +45,7 @@ public:
     static constexpr uint32_t RendererTypeID = 0x53324452; // "S2DR"
     uint32_t GetRendererType() const override { return RendererTypeID; }
 
-    void Render(Scene* scene, const RenderContext& ctx) override;
+    void Render(Deki::Scene* scene, const RenderContext& ctx) override;
     const DirtyRegion* GetLastFrameDirty() const override { return m_FrameDirtyValid ? &m_FrameDirty : nullptr; }
 
     /**
@@ -95,25 +95,25 @@ private:
     // What a component type contributes to rendering, resolved once per type
     // (one hash lookup in this DLL per component per frame instead of two
     // engine-registry probes per interface per component). Dropped whenever
-    // ComponentInterfaceAdapters::Version() changes, i.e. a package registered
+    // Deki::ComponentInterfaceAdapters::Version() changes, i.e. a package registered
     // an adapter after the cache was filled.
     struct TypeTraits
     {
         bool isRenderer;
-        InterfaceAdapter clipAdapter;      // null when the type is not an IClipProvider
-        InterfaceAdapter sortableAdapter;  // null when the type is not an ISortableProvider
+        Deki::InterfaceAdapter clipAdapter;      // null when the type is not an IClipProvider
+        Deki::InterfaceAdapter sortableAdapter;  // null when the type is not an ISortableProvider
     };
-    std::unordered_map<ComponentType, TypeTraits> m_TypeTraits;
+    std::unordered_map<Deki::ComponentType, TypeTraits> m_TypeTraits;
     uint32_t m_TraitsVersion = 0;
-    const TypeTraits& TraitsFor(const DekiComponent* comp);
+    const TypeTraits& TraitsFor(const Deki::Component* comp);
 
     struct Renderables
     {
         RendererComponent* renderer;
-        IClipProvider* clip;
-        ISortableProvider* sortable;
+        Deki::IClipProvider* clip;
+        Deki::ISortableProvider* sortable;
     };
-    Renderables ResolveRenderables(DekiObject* obj);
+    Renderables ResolveRenderables(Deki::Object* obj);
 
     // One renderable claimed by a component, with the components already
     // resolved and its insertion order so the sort is stable without
@@ -121,9 +121,9 @@ private:
     // parent per frame).
     struct SortItem
     {
-        DekiObject* obj;
+        Deki::Object* obj;
         RendererComponent* renderer;  // may be null (sort group, clip-only, callback-claimed)
-        IClipProvider* clip;          // may be null
+        Deki::IClipProvider* clip;          // may be null
         int32_t order;
         uint32_t seq;
     };
@@ -137,7 +137,7 @@ private:
     std::vector<SortItem>& SortListForDepth(int depth);
     static void SortItems(std::vector<SortItem>& items);
 
-    void CollectSortableItems(DekiObject* obj, std::vector<SortItem>& items);
+    void CollectSortableItems(Deki::Object* obj, std::vector<SortItem>& items);
     void RenderObject(const SortItem& item, const RenderContext& ctx);
 
     // Built-in component handling

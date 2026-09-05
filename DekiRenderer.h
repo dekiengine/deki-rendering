@@ -5,7 +5,7 @@
 #include "FrameCamera.h"
 
 // Forward declarations
-class Scene;
+namespace Deki { class Scene; }
 class CameraComponent;
 class DirtyRegion;
 
@@ -20,7 +20,7 @@ struct RenderContext
     uint8_t* buffer;
     int32_t width;
     int32_t height;
-    DekiColorFormat format;
+    Deki::ColorFormat format;
     // World-to-screen snapshot for this frame, captured by Standard2DRenderer
     // after the passes' BeginFrame from `camera` and the target size. Use it
     // instead of camera->WorldToScreen in per-object / per-tile code. Trailing
@@ -71,7 +71,7 @@ public:
      * @param scene The scene to render
      * @param ctx Render context with camera, buffer, and format info
      */
-    virtual void Render(Scene* scene, const RenderContext& ctx) = 0;
+    virtual void Render(Deki::Scene* scene, const RenderContext& ctx) = 0;
 
     /**
      * @brief The pixels the last Render() changed in ctx.buffer, when that
