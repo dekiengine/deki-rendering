@@ -27,8 +27,7 @@ var NAVTREE =
   [ "deki-rendering", "index.html", [
     [ "Components", "index.html#autotoc_md0", null ],
     [ "Component reference", "index.html#autotoc_md1", [
-      [ "CameraComponent (Camera Component)", "index.html#c-cameracomponent", null ],
-      [ "RenderingProjectSettings (Rendering Project Settings)", "index.html#c-renderingprojectsettings", null ]
+      [ "CameraComponent", "index.html#c-cameracomponent", null ]
     ] ],
     [ "Project settings", "index.html#autotoc_md2", [
       [ "Rendering settings", "index.html#s-rendering-settings", null ]

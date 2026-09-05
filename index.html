@@ -89,42 +89,25 @@ Components</h1>
 <tr class="markdownTableHead">
 <th class="markdownTableHeadNone">Component  </th><th class="markdownTableHeadNone">Category  </th><th class="markdownTableHeadNone">Description  </th></tr>
 <tr class="markdownTableRowOdd">
-<td class="markdownTableBodyNone"><a class="el" href="#c-cameracomponent" title="CameraComponent (Camera Component)">CameraComponent</a>  </td><td class="markdownTableBodyNone">Core  </td><td class="markdownTableBodyNone">The view: clear color, zoom (pixels per meter) and pixel snap.  </td></tr>
-<tr class="markdownTableRowEven">
-<td class="markdownTableBodyNone"><a class="el" href="#c-renderingprojectsettings" title="RenderingProjectSettings (Rendering Project Settings)">RenderingProjectSettings</a>  </td><td class="markdownTableBodyNone">Settings  </td><td class="markdownTableBodyNone"></td></tr>
+<td class="markdownTableBodyNone"><a class="el" href="#c-cameracomponent" title="CameraComponent">CameraComponent</a>  </td><td class="markdownTableBodyNone">Core  </td><td class="markdownTableBodyNone">The view: clear color, zoom (pixels per meter) and pixel snap.  </td></tr>
 </table>
 <h1 class="doxsection"><a class="anchor" id="autotoc_md1"></a>
 Component reference</h1>
 <h2 class="doxsection"><a class="anchor" id="c-cameracomponent"></a>
-CameraComponent (Camera Component)</h2>
+CameraComponent</h2>
 <p>The view: clear color, zoom (pixels per meter) and pixel snap.</p>
-<p>Category: Core · Type GUID: <span class="tt">146999a7-398f-4e52-a7c7-1e6a78bfb9c4</span></p>
+<p>Inspector name: Camera Component · Category: Core · Type GUID: <span class="tt">146999a7-398f-4e52-a7c7-1e6a78bfb9c4</span></p>
 <table class="markdownTable">
 <tr class="markdownTableHead">
-<th class="markdownTableHeadNone">Property  </th><th class="markdownTableHeadNone">Type  </th><th class="markdownTableHeadNone">Default  </th><th class="markdownTableHeadNone">Notes  </th></tr>
+<th class="markdownTableHeadNone">Property  </th><th class="markdownTableHeadNone">Type  </th><th class="markdownTableHeadNone">Default  </th><th class="markdownTableHeadNone">Constraints  </th><th class="markdownTableHeadNone">Description  </th></tr>
 <tr class="markdownTableRowOdd">
-<td class="markdownTableBodyNone"><span class="tt">clearColor</span>  </td><td class="markdownTableBodyNone">Color  </td><td class="markdownTableBodyNone"><span class="tt">0x314D79FF</span>  </td><td class="markdownTableBodyNone"></td></tr>
+<td class="markdownTableBodyNone"><span class="tt">clearColor</span>  </td><td class="markdownTableBodyNone">Color  </td><td class="markdownTableBodyNone"><span class="tt">0x314D79FF</span>  </td><td class="markdownTableBodyNone"></td><td class="markdownTableBodyNone"></td></tr>
 <tr class="markdownTableRowEven">
-<td class="markdownTableBodyNone"><span class="tt">pixelsPerMeter</span>  </td><td class="markdownTableBodyNone">float  </td><td class="markdownTableBodyNone"><span class="tt">0</span>  </td><td class="markdownTableBodyNone"></td></tr>
+<td class="markdownTableBodyNone"><span class="tt">pixelsPerMeter</span>  </td><td class="markdownTableBodyNone">float  </td><td class="markdownTableBodyNone"><span class="tt">0</span>  </td><td class="markdownTableBodyNone"></td><td class="markdownTableBodyNone"></td></tr>
 <tr class="markdownTableRowOdd">
-<td class="markdownTableBodyNone"><span class="tt">pixelSnap</span>  </td><td class="markdownTableBodyNone">bool  </td><td class="markdownTableBodyNone"><span class="tt">false</span>  </td><td class="markdownTableBodyNone"></td></tr>
+<td class="markdownTableBodyNone"><span class="tt">pixelSnap</span>  </td><td class="markdownTableBodyNone">bool  </td><td class="markdownTableBodyNone"><span class="tt">false</span>  </td><td class="markdownTableBodyNone"></td><td class="markdownTableBodyNone"></td></tr>
 <tr class="markdownTableRowEven">
-<td class="markdownTableBodyNone"><span class="tt">clearEveryFrame</span>  </td><td class="markdownTableBodyNone">bool  </td><td class="markdownTableBodyNone"><span class="tt">true</span>  </td><td class="markdownTableBodyNone">Clear the framebuffer to the clear color before drawing. Turn off when a full-screen background covers everything: saves a full framebuffer write per frame.  </td></tr>
-</table>
-<h2 class="doxsection"><a class="anchor" id="c-renderingprojectsettings"></a>
-RenderingProjectSettings (Rendering Project Settings)</h2>
-<p>Category: Settings · Type GUID: <span class="tt">f8a3c891-9b4d-4e2a-9f81-3c5b2d8e4a17</span></p>
-<table class="markdownTable">
-<tr class="markdownTableHead">
-<th class="markdownTableHeadNone">Property  </th><th class="markdownTableHeadNone">Type  </th><th class="markdownTableHeadNone">Default  </th><th class="markdownTableHeadNone">Notes  </th></tr>
-<tr class="markdownTableRowOdd">
-<td class="markdownTableBodyNone"><span class="tt">halfWidthFramebuffer</span>  </td><td class="markdownTableBodyNone">bool  </td><td class="markdownTableBodyNone"><span class="tt">false</span>  </td><td class="markdownTableBodyNone">Render at half horizontal resolution and double-up at present time. Halves blit cost and framebuffer memory but pixel art looks 2:1-stretched horizontally.  </td></tr>
-<tr class="markdownTableRowEven">
-<td class="markdownTableBodyNone"><span class="tt">interlaced60hz</span>  </td><td class="markdownTableBodyNone">bool  </td><td class="markdownTableBodyNone"><span class="tt">false</span>  </td><td class="markdownTableBodyNone">Render odd scanlines one frame, even the next, at 60Hz. Halves per-frame work but produces visible combing on vertical motion.  </td></tr>
-<tr class="markdownTableRowOdd">
-<td class="markdownTableBodyNone"><span class="tt">dirtyTileTracking</span>  </td><td class="markdownTableBodyNone">bool  </td><td class="markdownTableBodyNone"><span class="tt">false</span>  </td><td class="markdownTableBodyNone">Dirty-rect tracking: record the rectangles each frame draws, clear only those next frame and push only what changed (this frame's and last frame's rectangles) to the display. Big win for mostly-static scenes; small bookkeeping cost for fully-animating ones. Displays that cannot present partial frames still receive whole frames.  </td></tr>
-<tr class="markdownTableRowEven">
-<td class="markdownTableBodyNone"><span class="tt">dirtyTileSize</span>  </td><td class="markdownTableBodyNone">int32  </td><td class="markdownTableBodyNone"><span class="tt">32</span>  </td><td class="markdownTableBodyNone">Alignment of dirty rectangles in pixels: each rectangle is rounded out to multiples of this. Larger = fewer, bigger pushes and a small movement reuses the same rectangle; smaller = tighter rectangles. Range 1 to 256 Shown when <span class="tt">dirtyTileTracking</span> allows it  </td></tr>
+<td class="markdownTableBodyNone"><span class="tt">clearEveryFrame</span>  </td><td class="markdownTableBodyNone">bool  </td><td class="markdownTableBodyNone"><span class="tt">true</span>  </td><td class="markdownTableBodyNone"></td><td class="markdownTableBodyNone">Clear the framebuffer to the clear color before drawing. Turn off when a full-screen background covers everything: saves a full framebuffer write per frame.  </td></tr>
 </table>
 <h1 class="doxsection"><a class="anchor" id="autotoc_md2"></a>
 Project settings</h1>
@@ -134,15 +117,15 @@ Rendering settings</h2>
 <p>Category: Settings · Type GUID: <span class="tt">f8a3c891-9b4d-4e2a-9f81-3c5b2d8e4a17</span></p>
 <table class="markdownTable">
 <tr class="markdownTableHead">
-<th class="markdownTableHeadNone">Property  </th><th class="markdownTableHeadNone">Type  </th><th class="markdownTableHeadNone">Default  </th><th class="markdownTableHeadNone">Notes  </th></tr>
+<th class="markdownTableHeadNone">Property  </th><th class="markdownTableHeadNone">Type  </th><th class="markdownTableHeadNone">Default  </th><th class="markdownTableHeadNone">Constraints  </th><th class="markdownTableHeadNone">Description  </th></tr>
 <tr class="markdownTableRowOdd">
-<td class="markdownTableBodyNone"><span class="tt">halfWidthFramebuffer</span>  </td><td class="markdownTableBodyNone">bool  </td><td class="markdownTableBodyNone"><span class="tt">false</span>  </td><td class="markdownTableBodyNone">Render at half horizontal resolution and double-up at present time. Halves blit cost and framebuffer memory but pixel art looks 2:1-stretched horizontally.  </td></tr>
+<td class="markdownTableBodyNone"><span class="tt">halfWidthFramebuffer</span>  </td><td class="markdownTableBodyNone">bool  </td><td class="markdownTableBodyNone"><span class="tt">false</span>  </td><td class="markdownTableBodyNone"></td><td class="markdownTableBodyNone">Render at half horizontal resolution and double-up at present time. Halves blit cost and framebuffer memory but pixel art looks 2:1-stretched horizontally.  </td></tr>
 <tr class="markdownTableRowEven">
-<td class="markdownTableBodyNone"><span class="tt">interlaced60hz</span>  </td><td class="markdownTableBodyNone">bool  </td><td class="markdownTableBodyNone"><span class="tt">false</span>  </td><td class="markdownTableBodyNone">Render odd scanlines one frame, even the next, at 60Hz. Halves per-frame work but produces visible combing on vertical motion.  </td></tr>
+<td class="markdownTableBodyNone"><span class="tt">interlaced60hz</span>  </td><td class="markdownTableBodyNone">bool  </td><td class="markdownTableBodyNone"><span class="tt">false</span>  </td><td class="markdownTableBodyNone"></td><td class="markdownTableBodyNone">Render odd scanlines one frame, even the next, at 60Hz. Halves per-frame work but produces visible combing on vertical motion.  </td></tr>
 <tr class="markdownTableRowOdd">
-<td class="markdownTableBodyNone"><span class="tt">dirtyTileTracking</span>  </td><td class="markdownTableBodyNone">bool  </td><td class="markdownTableBodyNone"><span class="tt">false</span>  </td><td class="markdownTableBodyNone">Dirty-rect tracking: record the rectangles each frame draws, clear only those next frame and push only what changed (this frame's and last frame's rectangles) to the display. Big win for mostly-static scenes; small bookkeeping cost for fully-animating ones. Displays that cannot present partial frames still receive whole frames.  </td></tr>
+<td class="markdownTableBodyNone"><span class="tt">dirtyTileTracking</span>  </td><td class="markdownTableBodyNone">bool  </td><td class="markdownTableBodyNone"><span class="tt">false</span>  </td><td class="markdownTableBodyNone"></td><td class="markdownTableBodyNone">Dirty-rect tracking: record the rectangles each frame draws, clear only those next frame and push only what changed (this frame's and last frame's rectangles) to the display. Big win for mostly-static scenes; small bookkeeping cost for fully-animating ones. Displays that cannot present partial frames still receive whole frames.  </td></tr>
 <tr class="markdownTableRowEven">
-<td class="markdownTableBodyNone"><span class="tt">dirtyTileSize</span>  </td><td class="markdownTableBodyNone">int32  </td><td class="markdownTableBodyNone"><span class="tt">32</span>  </td><td class="markdownTableBodyNone">Alignment of dirty rectangles in pixels: each rectangle is rounded out to multiples of this. Larger = fewer, bigger pushes and a small movement reuses the same rectangle; smaller = tighter rectangles. Range 1 to 256 Shown when <span class="tt">dirtyTileTracking</span> allows it  </td></tr>
+<td class="markdownTableBodyNone"><span class="tt">dirtyTileSize</span>  </td><td class="markdownTableBodyNone">int32  </td><td class="markdownTableBodyNone"><span class="tt">32</span>  </td><td class="markdownTableBodyNone">1 to 256; shown when <span class="tt">dirtyTileTracking</span> allows  </td><td class="markdownTableBodyNone">Alignment of dirty rectangles in pixels: each rectangle is rounded out to multiples of this. Larger = fewer, bigger pushes and a small movement reuses the same rectangle; smaller = tighter rectangles.  </td></tr>
 </table>
 <hr  />
 <p>Generated from the package's reflection metadata by the Deki documentation build (engine 1.3.0). Reflected property names are the keys scene files use; a rename ships with an alias, see <a href="https://github.com/dekiengine/deki-editor/blob/master/COMPATIBILITY.md">COMPATIBILITY.md</a>. </p>
