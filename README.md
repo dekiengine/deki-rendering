@@ -1,5 +1,7 @@
 # Deki Rendering
 
+Documentation: https://dekiengine.github.io/deki-rendering/ (components and properties, generated from the code)
+
 Core rendering pipeline for the Deki Engine: camera, render system, standard 2D renderer, render passes, and sorting callbacks.
 
 Part of the [Deki Engine](https://github.com/dekiengine/deki-engine) package ecosystem.
