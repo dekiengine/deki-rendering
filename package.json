@@ -1,7 +1,7 @@
 {
   "id": "deki-rendering",
   "displayName": "Rendering",
-  "minEngine": "2.0.0",
+  "minEngine": "0.10.0",
   "buildDefine": "DEKI_PACKAGE_RENDERING",
   "requires": [],
   "features": []
