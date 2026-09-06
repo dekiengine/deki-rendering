@@ -1,0 +1,9 @@
+# Package descriptor for deki-engine auto-discovery
+set(PACKAGE_DISPLAY_NAME "Rendering")
+set(PACKAGE_PREFIX "DekiRendering")
+set(PACKAGE_UPPER "RENDERING")
+set(PACKAGE_TARGET "deki-rendering")
+set(PACKAGE_FILE_PREFIX "Rendering")
+set(PACKAGE_HAS_SYSTEM_INIT ON)
+set(PACKAGE_LINK_DEPS deki-editor)
+set(PACKAGE_ENTRY DekiRenderingPackage.cpp)

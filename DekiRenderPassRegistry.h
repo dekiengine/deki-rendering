@@ -1,0 +1,101 @@
+#pragma once
+
+/**
+ * @file DekiRenderPassRegistry.h
+ * @brief Factory registry for RenderPass implementations
+ *
+ * Packages self-register their render passes at static init time.
+ * The render pipeline asset (.rpipeline) specifies which passes to activate.
+ * At startup, the rendering system creates and adds the configured passes.
+ *
+ * Usage:
+ * @code
+ * // In your render pass .cpp file:
+ * #include "DekiRenderPassRegistry.h"
+ * static struct MyPassRegistrar {
+ *     MyPassRegistrar() {
+ *         DekiRenderPassRegistry::Register("mypass", {
+ *             []() -> RenderPass* { return new MyRenderPass(); },
+ *             &MySortingCallback  // or nullptr if no sorting
+ *         });
+ *     }
+ *     ~MyPassRegistrar() {
+ *         // Required so the registry doesn't outlive this DLL's code.
+ *         DekiRenderPassRegistry::Unregister("mypass");
+ *     }
+ * } s_registrar;
+ * @endcode
+ */
+
+#include "RenderPass.h"
+#include <functional>
+#include <vector>
+#include <string>
+
+using RenderPassFactory = std::function<RenderPass*()>;
+
+/**
+ * @brief Registration info for a render pass type
+ */
+struct RenderPassInfo
+{
+    RenderPassFactory factory;           // Creates a new pass instance
+
+    // If true, the rendering init auto-attaches this pass to the active
+    // Standard2DRenderer when it isn't already listed in the project's
+    // .rpipeline. Use for passes that *must* run whenever their owning package
+    // is loaded (e.g. tilemaps) — avoids forcing every project to know package
+    // pass names. Projects can still override by listing the pass explicitly
+    // in .rpipeline to control ordering relative to other passes.
+    bool autoAttach = false;
+};
+
+namespace DekiRenderPassRegistry {
+
+/**
+ * @brief Register a render pass factory by name
+ * @param name Unique identifier (e.g., "clip2d")
+ * @param info Factory function and optional sorting callback
+ */
+void Register(const char* name, RenderPassInfo info);
+
+/**
+ * @brief Look up a render pass by name
+ * @param name The registered name
+ * @return Pointer to registration info, or nullptr if not found
+ */
+const RenderPassInfo* Get(const char* name);
+
+/**
+ * @brief Remove a previously registered render pass
+ *
+ * Packages that register a pass MUST unregister on DLL detach. Otherwise the
+ * registry holds a std::function whose target lives in the unloaded package's
+ * code; destroying that std::function later (when deki-rendering unloads)
+ * jumps to unmapped memory.
+ *
+ * Also detaches the live pass instance from the active renderer (equivalent
+ * to calling DekiRendering_DetachPass(name)) — the pass's vtable lives in
+ * the caller's DLL, which is typically about to unload, so it must be
+ * destroyed while that DLL's code is still mapped.
+ */
+void Unregister(const char* name);
+
+/**
+ * @brief Get names of all registered render passes
+ * @param outNames Vector to fill with registered pass names
+ */
+void GetAllNames(std::vector<std::string>& outNames);
+
+/**
+ * @brief Install a callback invoked whenever an autoAttach pass is registered.
+ *
+ * DekiRenderingInit installs this after the active renderer is created so a
+ * package that loads after the rendering system inits (e.g. deki-tilemap, which
+ * loads after deki-rendering) still gets its pass attached. Packages don't need
+ * to know about it.
+ */
+using AutoAttachCallback = std::function<void(const char*, const RenderPassInfo&)>;
+void SetAutoAttachCallback(AutoAttachCallback cb);
+
+} // namespace DekiRenderPassRegistry
