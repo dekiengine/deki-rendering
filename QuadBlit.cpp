@@ -483,18 +483,34 @@ static DEKI_FAST_ATTR bool CopyRows_RGB565(const Source& source, uint16_t* targe
 
 // RGB565 -> RGB565 with a chroma key and per-row non-key spans, no tint:
 // inside [start, end) every pixel is non-key (straight copy), outside every
-// pixel is the key (skipped without a read).
+// pixel is the key (skipped without a read). A row recorded as (-1, -1) has a
+// key pixel inside its run and is compared pixel by pixel.
 static DEKI_FAST_ATTR bool CopyRows_RGB565_ChromaSpans(const Source& source, uint16_t* target16, int32_t targetWidth,
                                                        int32_t destX, int32_t destY, const BlitBounds& b)
 {
     const int32_t stride = SourceStride(source);
     const int16_t* spans = source.chromaRowSpans;
     RowKernelFn copyKernel = s_Kernels[(int)KernelOp::RGB565_Copy_Row];
+    // The key is pre-quantized to 5/6/5, so comparing packed pixels is the
+    // same test the per-pixel pipeline makes on the extracted channels.
+    const uint16_t key565 = static_cast<uint16_t>(((source.keyR >> 3) << 11) | ((source.keyG >> 2) << 5) | (source.keyB >> 3));
     for (int32_t py = b.startY; py < b.endY; py++)
     {
         const int32_t srcY = py - destY;
         const int32_t srcStartX = b.startX - destX;
         const int32_t srcEndX = b.endX - destX;
+        if (spans[srcY * 2] < 0)
+        {
+            const uint16_t* srcRow = (const uint16_t*)(source.pixels + srcY * stride);
+            uint16_t* dstRow = target16 + py * targetWidth + destX;
+            for (int32_t x = srcStartX; x < srcEndX; ++x)
+            {
+                const uint16_t v = srcRow[x];
+                if (v != key565)
+                    dstRow[x] = v;
+            }
+            continue;
+        }
         const int32_t clampedStart = std::max<int32_t>(spans[srcY * 2], srcStartX);
         const int32_t clampedEnd = std::min<int32_t>(spans[srcY * 2 + 1], srcEndX);
         if (clampedStart >= clampedEnd)

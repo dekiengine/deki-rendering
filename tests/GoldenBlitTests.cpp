@@ -115,8 +115,12 @@ SrcBuf MakeSrc(SrcFmt f, int w, int h, uint32_t seed, int stridePad, bool chroma
         if (y % 5 == 4) { runStart = w; runEnd = 0; }  // a row with no opaque pixel at all
         out.alphaSpans[y * 2] = static_cast<int16_t>(runStart);
         out.alphaSpans[y * 2 + 1] = static_cast<int16_t>(runEnd);
-        out.chromaSpans[y * 2] = static_cast<int16_t>(runStart);
-        out.chromaSpans[y * 2 + 1] = static_cast<int16_t>(runEnd);
+        // Every third row with room for it gets a key pixel inside its run
+        // (a heart's notch): the span contract marks such a row (-1, -1) and
+        // the blit has to compare it pixel by pixel.
+        const int holeX = (chroma && y % 3 == 1 && runEnd - runStart >= 3) ? (runStart + runEnd) / 2 : -1;
+        out.chromaSpans[y * 2] = static_cast<int16_t>(holeX >= 0 ? -1 : runStart);
+        out.chromaSpans[y * 2 + 1] = static_cast<int16_t>(holeX >= 0 ? -1 : runEnd);
         for (int x = 0; x < w; ++x)
         {
             uint8_t* p = out.px.data() + y * stride + x * bpp;
@@ -127,8 +131,9 @@ SrcBuf MakeSrc(SrcFmt f, int w, int h, uint32_t seed, int stridePad, bool chroma
             if (inRun) a = 255;
             else a = (roll == 0) ? 0 : (roll == 1 ? 255 : rng.Byte());
             // Chroma-keyed sources honour the chromaRowSpans contract: every
-            // pixel outside the run IS the key colour, every pixel inside is not.
-            const bool isKey = chroma && !inRun;
+            // pixel outside the run IS the key colour, every pixel inside is
+            // not, except the hole.
+            const bool isKey = chroma && (!inRun || x == holeX);
             if (isKey) { r = kKeyR; g = kKeyG; b = kKeyB; }
             else if (chroma && r == kKeyR && g == kKeyG && b == kKeyB) { g = 0x40; }
             switch (f)
@@ -261,12 +266,15 @@ uint64_t RunTarget(Deki::ColorFormat dst, bool print)
 // specialised kernels always did instead of writing 0xFF. Every other case
 // is bit-identical. 0 means "not captured yet": the test then prints the
 // actual value and fails.
+//
+// Recaptured when chroma sources gained hole rows (a key pixel inside the
+// run, recorded as a (-1, -1) span): the chroma cases changed, nothing else.
 struct Expected { Deki::ColorFormat fmt; const char* name; uint64_t hash; };
 const Expected kExpected[] = {
-    { Deki::ColorFormat::RGB565,   "RGB565",   0x0a31383163f71c2bULL },
-    { Deki::ColorFormat::RGB888,   "RGB888",   0x2f1126ce6004d7f7ULL },
-    { Deki::ColorFormat::ARGB8888, "ARGB8888", 0xc80bf916f6efe40bULL },
-    { Deki::ColorFormat::RGB565A8, "RGB565A8", 0xd8f3d76abf379d7aULL },
+    { Deki::ColorFormat::RGB565,   "RGB565",   0xdb12edc2ab0dc2d5ULL },
+    { Deki::ColorFormat::RGB888,   "RGB888",   0x31464040e0b65d95ULL },
+    { Deki::ColorFormat::ARGB8888, "ARGB8888", 0xa2e25ce151f2e52bULL },
+    { Deki::ColorFormat::RGB565A8, "RGB565A8", 0x53ebc2f65bbecaddULL },
 };
 
 }  // namespace
@@ -291,3 +299,33 @@ TEST_P(GoldenBlitTest, TargetFormatMatchesGolden)
 }
 
 INSTANTIATE_TEST_SUITE_P(Formats, GoldenBlitTest, ::testing::Values(0, 1, 2, 3));
+
+// The span fast path (1:1, RGB565 -> RGB565, no tint) must write exactly what
+// the per-pixel key compare writes, hole rows included, whether the sprite
+// is fully on screen or hangs off the left edge.
+TEST(ChromaSpans, HoleRowsMatchPerPixelPath)
+{
+    SrcBuf s = MakeSrc(SrcFmt::RGB565, 24, 18, 0x4242u, 0, true);
+    bool anyHole = false;
+    for (int y = 0; y < 18; ++y)
+        if (s.chromaSpans[y * 2] < 0) anyHole = true;
+    ASSERT_TRUE(anyHole) << "the source is meant to carry (-1, -1) rows";
+
+    QuadBlit::Source noSpans = s.src;
+    noSpans.chromaRowSpans = nullptr;
+
+    for (int destX : { 3, -7 })
+    {
+        std::vector<uint8_t> fast(static_cast<size_t>(kTW) * kTH * 2);
+        Lcg noise(7u);
+        for (uint8_t& b : fast) b = noise.Byte();
+        std::vector<uint8_t> slow = fast;
+
+        QuadBlit::ClearClipStack();
+        QuadBlit::BlitScaled(s.src, fast.data(), kTW, kTH, Deki::ColorFormat::RGB565, destX, 5, 24, 18,
+                             255, 255, 255, 255, false);
+        QuadBlit::BlitScaled(noSpans, slow.data(), kTW, kTH, Deki::ColorFormat::RGB565, destX, 5, 24, 18,
+                             255, 255, 255, 255, false);
+        EXPECT_EQ(fast, slow) << "destX " << destX;
+    }
+}

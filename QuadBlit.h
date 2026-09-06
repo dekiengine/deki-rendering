@@ -133,6 +133,8 @@ namespace QuadBlit
         // present, blits in the 1:1 chroma path skip the per-pixel compare —
         // pixels in [start, end) are guaranteed non-key (direct write); pixels
         // outside the range are guaranteed key (skip without reading source).
+        // A row whose run contains a key pixel is recorded as (-1, -1) and is
+        // compared pixel by pixel.
         const int16_t* chromaRowSpans = nullptr;
 
         // Source pixels per world unit. The renderer divides the world→screen
