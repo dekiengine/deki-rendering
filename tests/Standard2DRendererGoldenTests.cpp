@@ -14,6 +14,8 @@
  */
 
 #include <gtest/gtest.h>
+
+#include <deki/reflection/ComponentFactory.h>
 #include <algorithm>
 #include <cstdint>
 #include <cstdio>
@@ -43,7 +45,9 @@ namespace
 class TestRenderer : public RendererComponent
 {
 public:
-    DECLARE_COMPONENT_TYPE(TestRenderer, RendererComponent)
+    // Hand-written (not reflected): the class attaches its own entry.
+    static const Deki::ComponentTypeInfo kTypeInfo;
+    TestRenderer() { SetTypeInfo(&kTypeInfo); }
 
     uint16_t colour = 0xF800;  // RGB565
     uint8_t alpha = 255;       // used when withAlpha
@@ -89,27 +93,34 @@ private:
     uint8_t m_Pixels[16 * 3] = {};
     uint8_t m_Packed[16 * 2] = {};
 };
+const Deki::ComponentTypeInfo TestRenderer::kTypeInfo = Deki::MakeHandWrittenTypeInfo<TestRenderer, RendererComponent>(/*declaresUpdate=*/false);
 
 // A clip region that also sorts (like ClipComponent).
 class TestClip : public Deki::Component, public Deki::IClipProvider, public Deki::ISortableProvider
 {
 public:
-    DECLARE_COMPONENT_TYPE(TestClip, Deki::Component)
+    // Hand-written (not reflected): the class attaches its own entry.
+    static const Deki::ComponentTypeInfo kTypeInfo;
+    TestClip() { SetTypeInfo(&kTypeInfo); }
     float width = 1.0f, height = 1.0f;
     int32_t order = 0;
     float GetClipWidth() const override { return width; }
     float GetClipHeight() const override { return height; }
     int32_t GetSortingOrder() const override { return order; }
 };
+const Deki::ComponentTypeInfo TestClip::kTypeInfo = Deki::MakeHandWrittenTypeInfo<TestClip>(/*declaresUpdate=*/false);
 
 // A sorting group without any drawing (like SortingGroupComponent).
 class TestSortGroup : public Deki::Component, public Deki::ISortableProvider
 {
 public:
-    DECLARE_COMPONENT_TYPE(TestSortGroup, Deki::Component)
+    // Hand-written (not reflected): the class attaches its own entry.
+    static const Deki::ComponentTypeInfo kTypeInfo;
+    TestSortGroup() { SetTypeInfo(&kTypeInfo); }
     int32_t order = 0;
     int32_t GetSortingOrder() const override { return order; }
 };
+const Deki::ComponentTypeInfo TestSortGroup::kTypeInfo = Deki::MakeHandWrittenTypeInfo<TestSortGroup>(/*declaresUpdate=*/false);
 
 void RegisterTestAdapters()
 {
@@ -402,10 +413,13 @@ TEST(RendererGoldenTest, ClipAndRendererOnOneObjectMatchesParentChildForm)
 class TestLateClip : public Deki::Component, public Deki::IClipProvider
 {
 public:
-    DECLARE_COMPONENT_TYPE(TestLateClip, Deki::Component)
+    // Hand-written (not reflected): the class attaches its own entry.
+    static const Deki::ComponentTypeInfo kTypeInfo;
+    TestLateClip() { SetTypeInfo(&kTypeInfo); }
     float GetClipWidth() const override { return 0.15f; }
     float GetClipHeight() const override { return 0.15f; }
 };
+const Deki::ComponentTypeInfo TestLateClip::kTypeInfo = Deki::MakeHandWrittenTypeInfo<TestLateClip>(/*declaresUpdate=*/false);
 
 TEST(RendererGoldenTest, AdapterRegisteredAfterFirstFrameTakesEffect)
 {

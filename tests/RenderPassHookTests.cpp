@@ -6,6 +6,8 @@
  */
 
 #include <gtest/gtest.h>
+
+#include <deki/reflection/ComponentFactory.h>
 #include <cstdint>
 #include <vector>
 
@@ -39,7 +41,9 @@ public:
 class DotRenderer : public RendererComponent
 {
 public:
-    DECLARE_COMPONENT_TYPE(DotRenderer, RendererComponent)
+    // Hand-written (not reflected): the class attaches its own entry.
+    static const Deki::ComponentTypeInfo kTypeInfo;
+    DotRenderer() { SetTypeInfo(&kTypeInfo); }
     bool RenderContent(const Deki::Object*, QuadBlit::Source& out, float& px, float& py,
                        uint8_t& r, uint8_t& g, uint8_t& b, uint8_t& a) override
     {
@@ -51,6 +55,7 @@ public:
 private:
     uint8_t m_Pixel[2] = { 0xFF, 0xFF };
 };
+const Deki::ComponentTypeInfo DotRenderer::kTypeInfo = Deki::MakeHandWrittenTypeInfo<DotRenderer, RendererComponent>(/*declaresUpdate=*/false);
 
 struct HookScene
 {
