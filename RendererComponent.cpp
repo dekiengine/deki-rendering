@@ -12,7 +12,7 @@
 static struct RendererSortableRegistrar {
     RendererSortableRegistrar() {
         Deki::ComponentInterfaceAdapters::Register(
-            Deki::ISortableProvider::InterfaceID, RendererComponent::StaticType,
+            Deki::ISortableProvider::InterfaceID, ::Deki::TypeId<RendererComponent>(),
             [](Deki::Component* c) -> void* {
                 return static_cast<Deki::ISortableProvider*>(static_cast<RendererComponent*>(c));
             });

@@ -14,7 +14,7 @@
 static struct CameraInterfaceRegistrar {
     CameraInterfaceRegistrar() {
         Deki::ComponentInterfaceAdapters::Register(
-            Deki::ICamera::InterfaceID, CameraComponent::StaticType,
+            Deki::ICamera::InterfaceID, ::Deki::TypeId<CameraComponent>(),
             [](Deki::Component* c) -> void* {
                 return static_cast<Deki::ICamera*>(static_cast<CameraComponent*>(c));
             });

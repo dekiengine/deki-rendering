@@ -24,11 +24,11 @@
  * untouched cameras tracking project changes. Setting an explicit value
  * (e.g. via inspector or SetPixelsPerMeter) makes the camera sticky.
  */
+DEKI_CATEGORY("Core")
+DEKI_DESCRIPTION("The view: clear color, zoom (pixels per meter) and pixel snap.")
 class CameraComponent : public Deki::Component, public Deki::ICamera
 {
 public:
-    DEKI_COMPONENT(CameraComponent, Deki::Component, "Core", "146999a7-398f-4e52-a7c7-1e6a78bfb9c4", "")
-    DEKI_DESCRIPTION("The view: clear color, zoom (pixels per meter) and pixel snap.")
 
     DEKI_EXPORT
     Deki::Color clearColor = Deki::Color(49, 77, 121);  // Background clear color
@@ -95,4 +95,3 @@ public:
 };
 
 // Generated property metadata (after class definition for offsetof)
-#include "generated/CameraComponent.gen.h"

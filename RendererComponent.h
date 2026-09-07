@@ -42,10 +42,10 @@ enum class AlphaMode : uint8_t
  * Extends Deki::Behaviour to provide lifecycle methods (Start, Update, PreRender)
  * in addition to the Render method for drawing.
  */
+DEKI_CATEGORY("Core")
 class RendererComponent : public Deki::Behaviour, public Deki::ISortableProvider
 {
    public:
-    DEKI_COMPONENT(RendererComponent, Deki::Behaviour, "Core", "9604fa26-8be9-428a-9c29-e67c2d52c913", "")
 
     // Pure virtual destructor makes this class abstract
     virtual ~RendererComponent() = 0;
@@ -137,4 +137,3 @@ class RendererComponent : public Deki::Behaviour, public Deki::ISortableProvider
 };
 
 // Generated property metadata (after class definition for offsetof)
-#include "generated/RendererComponent.gen.h"

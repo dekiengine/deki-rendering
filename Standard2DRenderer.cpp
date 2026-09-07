@@ -81,7 +81,7 @@ const Standard2DRenderer::TypeTraits& Standard2DRenderer::TraitsFor(const Deki::
     // FindInterface<T>() (exact type, then one base level), evaluated once.
     const Deki::ComponentType base = comp->GetBaseType();
     TypeTraits traits;
-    traits.isRenderer = (type == RendererComponent::StaticType || base == RendererComponent::StaticType);
+    traits.isRenderer = (type == ::Deki::TypeId<RendererComponent>() || base == ::Deki::TypeId<RendererComponent>());
     traits.clipAdapter = Deki::ComponentInterfaceAdapters::Find(Deki::IClipProvider::InterfaceID, type, base);
     traits.sortableAdapter = Deki::ComponentInterfaceAdapters::Find(Deki::ISortableProvider::InterfaceID, type, base);
     return m_TypeTraits.emplace(type, traits).first->second;

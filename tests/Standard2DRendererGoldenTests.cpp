@@ -116,11 +116,11 @@ void RegisterTestAdapters()
     static bool done = false;
     if (done) return;
     done = true;
-    Deki::ComponentInterfaceAdapters::Register(Deki::IClipProvider::InterfaceID, TestClip::StaticType,
+    Deki::ComponentInterfaceAdapters::Register(Deki::IClipProvider::InterfaceID, ::Deki::TypeId<TestClip>(),
                                          [](Deki::Component* c) -> void* { return static_cast<Deki::IClipProvider*>(static_cast<TestClip*>(c)); });
-    Deki::ComponentInterfaceAdapters::Register(Deki::ISortableProvider::InterfaceID, TestClip::StaticType,
+    Deki::ComponentInterfaceAdapters::Register(Deki::ISortableProvider::InterfaceID, ::Deki::TypeId<TestClip>(),
                                          [](Deki::Component* c) -> void* { return static_cast<Deki::ISortableProvider*>(static_cast<TestClip*>(c)); });
-    Deki::ComponentInterfaceAdapters::Register(Deki::ISortableProvider::InterfaceID, TestSortGroup::StaticType,
+    Deki::ComponentInterfaceAdapters::Register(Deki::ISortableProvider::InterfaceID, ::Deki::TypeId<TestSortGroup>(),
                                          [](Deki::Component* c) -> void* { return static_cast<Deki::ISortableProvider*>(static_cast<TestSortGroup*>(c)); });
 }
 
@@ -429,7 +429,7 @@ TEST(RendererGoldenTest, AdapterRegisteredAfterFirstFrameTakesEffect)
     const size_t corner = (static_cast<size_t>(kH / 2 - 6) * kW + kW / 2 - 6) * 2;
     EXPECT_EQ(target[corner] | (target[corner + 1] << 8), 0xF800) << "no adapter yet: unclipped";
 
-    Deki::ComponentInterfaceAdapters::Register(Deki::IClipProvider::InterfaceID, TestLateClip::StaticType,
+    Deki::ComponentInterfaceAdapters::Register(Deki::IClipProvider::InterfaceID, ::Deki::TypeId<TestLateClip>(),
                                          [](Deki::Component* c) -> void* { return static_cast<Deki::IClipProvider*>(static_cast<TestLateClip*>(c)); });
     std::fill(target.begin(), target.end(), 0);
     renderer.Render(&b.scene, ctx);

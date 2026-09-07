@@ -13,12 +13,11 @@
  * format, so they stay). halfWidthFramebuffer and interlaced60hz have no
  * implementation yet; DekiRenderSystem::Setup logs when they are set.
  */
+DEKI_CATEGORY("Settings")
+DEKI_SETTINGS_SECTION("Rendering")
 class RenderingProjectSettings : public Deki::Component
 {
 public:
-    DEKI_COMPONENT(RenderingProjectSettings, Deki::Component, "Settings",
-                   "f8a3c891-9b4d-4e2a-9f81-3c5b2d8e4a17", "")
-    DEKI_PROJECT_SETTINGS_SECTION("Rendering")
 
     DEKI_TOOLTIP("Render at half horizontal resolution and double-up at present time. Halves blit cost and framebuffer memory but pixel art looks 2:1-stretched horizontally.")
     DEKI_EXPORT
@@ -39,4 +38,3 @@ public:
     int32_t dirtyTileSize = 32;
 };
 
-#include "generated/RenderingProjectSettings.gen.h"

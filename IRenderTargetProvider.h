@@ -22,7 +22,7 @@
  *
  * // In MyTagComponent.cpp:
  * Deki::ComponentInterfaceAdapters::Register(
- *     IRenderTargetProvider::InterfaceID, MyTagComponent::StaticType,
+ *     IRenderTargetProvider::InterfaceID, ::Deki::TypeId<MyTagComponent>(),
  *     [](Deki::Component* c) -> void* {
  *         return static_cast<IRenderTargetProvider*>(static_cast<MyTagComponent*>(c));
  *     });
