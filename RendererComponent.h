@@ -1,7 +1,7 @@
 #pragma once
 #include <cstdint>
 
-#include <deki/Behaviour.h>
+#include <deki/Component.h>
 #include <deki/ISortableProvider.h>
 #include <deki/reflection/Property.h>
 #include "QuadBlit.h"
@@ -39,11 +39,11 @@ enum class AlphaMode : uint8_t
 /**
  * @brief Abstract base class for all renderable components (e.g., sprites, particles)
  *
- * Extends Deki::Behaviour to provide lifecycle methods (Start, Update, PreRender)
+ * Extends Deki::Component to provide lifecycle methods (Start, Update, PreRender)
  * in addition to the Render method for drawing.
  */
 DEKI_CATEGORY("Core")
-class RendererComponent : public Deki::Behaviour, public Deki::ISortableProvider
+class RendererComponent : public Deki::Component, public Deki::ISortableProvider
 {
    public:
 
