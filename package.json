@@ -2,6 +2,9 @@
   "id": "deki-rendering",
   "displayName": "Rendering",
   "minEngine": "0.13.0",
+  "tags": [
+    "transform_2d"
+  ],
   "buildDefine": "DEKI_PACKAGE_RENDERING",
   "requires": [],
   "features": []
