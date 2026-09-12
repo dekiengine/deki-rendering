@@ -9,6 +9,7 @@
 #include <deki/LogSystem.h>
 
 #include <algorithm>
+#include <cstring>
 #include <string>
 #include <vector>
 
@@ -24,6 +25,21 @@ struct AttachedPass
     RenderPass* pass;
 };
 static std::vector<AttachedPass> s_Passes;
+
+// Pass names that no package registers because the renderer performs the work
+// itself, and that a pipeline may still list.
+//
+// "clip2d" is the one: clipping became a renderer builtin (Standard2DRenderer
+// pushes and pops a clip rect around any object exposing IClipProvider), but
+// every project scaffolded before that carries a clip2d entry, and the
+// scaffold kept writing one. The result was a warning on the first line of
+// every project's log, for a pipeline that was working correctly — which
+// teaches a new user to ignore warnings. Recognised rather than registered as
+// a no-op pass, so the pipeline stays honest about what actually runs.
+static bool IsBuiltinPassName(const char* name)
+{
+    return name && std::strcmp(name, "clip2d") == 0;
+}
 
 static void AttachPass(const char* name, const RenderPassInfo& info)
 {
@@ -70,6 +86,8 @@ void DekiRendering_InitSystem()
         const RenderPassInfo* info = DekiRenderPassRegistry::Get(passName);
         if (info && info->factory)
             AttachPass(passName, *info);
+        else if (IsBuiltinPassName(passName))
+            continue;  // the renderer does it itself; see IsBuiltinPassName
         else
             DEKI_LOG_WARNING("DekiRendering: No pass registered for '%s'", passName ? passName : "(null)");
     }
