@@ -10,6 +10,7 @@
 #include <deki/Object.h>
 #include <deki/Scene.h>
 #include <deki/LogSystem.h>
+#include <deki/providers/Memory.h>
 
 #include <algorithm>
 #include <cmath>
@@ -226,10 +227,17 @@ void Standard2DRenderer::ExecuteBuiltins(const SortItem& item, RenderContext& ct
             if (renderer->ignoreClip)
                 QuadBlit::SetClipEnabled(wasClipEnabled);
 
-            // Free intermediate buffer if we own it
+            // A component that composed its pixels this frame can hand the
+            // buffer over instead of keeping one; releasing it is then ours.
+            //
+            // Through Deki::Memory, not delete[]: the buffer came from the
+            // engine's allocator (Deki::Buffer<T>::Release(), or Allocate
+            // directly), and delete[] on that pointer walks past a header it
+            // does not know about. Every component in-tree keeps its own
+            // buffer, so this path only runs for third-party ones.
             if (source.ownsPixels && source.pixels)
             {
-                delete[] source.pixels;
+                Deki::Memory::Free(const_cast<uint8_t*>(source.pixels));
             }
         }
     }

@@ -103,9 +103,12 @@ class RendererComponent : public Deki::Component, public Deki::ISortableProvider
      * @param outTintA Output tint alpha (255 = opaque)
      * @return true if content was rendered, false if nothing to render
      *
-     * Ownership: outSource.ownsPixels says whether the renderer must delete[]
-     * outSource.pixels after blitting. Components that own their buffers
-     * (sprites, baked text and gradients) leave it false.
+     * Ownership: outSource.ownsPixels says whether the renderer takes over
+     * outSource.pixels and releases it (through Deki::Memory) after blitting.
+     * Components that own their buffers — sprites, baked text and gradients,
+     * and anything reusing one composite across frames — leave it false,
+     * which is the default. Set it only for a buffer allocated this frame
+     * through Deki::Memory, normally Deki::Buffer<T>::Release().
      */
     /**
      * @brief Conservative world-space size of what RenderContent draws, in

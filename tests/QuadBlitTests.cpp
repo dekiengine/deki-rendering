@@ -147,7 +147,10 @@ TEST_F(QuadBlitSourceTest, RGB565OpaqueSource)
     EXPECT_EQ(src.bytesPerPixel, 2);
     EXPECT_FALSE(src.hasAlpha);
     EXPECT_TRUE(src.isRGB565);
-    EXPECT_TRUE(src.ownsPixels);  // default
+    // Borrowed by default: the renderer releasing a buffer its component is
+    // still using next frame is the worse of the two mistakes, and every
+    // component in-tree keeps its own.
+    EXPECT_FALSE(src.ownsPixels);
     EXPECT_EQ(src.alphaOffset, 0);
 }
 

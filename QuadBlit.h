@@ -110,8 +110,15 @@ namespace QuadBlit
         // Packed int16_t pairs: [opaqueStart, opaqueEnd] per row
         const int16_t* alphaRowSpans;
 
-        // Ownership flag - if true, caller should delete[] pixels after blitting
-        // Sprites set this to false since they own their own pixel data
+        // Ownership transfer. False (the default) means the component keeps
+        // its buffer, which is what every component in-tree does: sprites,
+        // baked text, baked gradients and the particle composite all reuse
+        // one across frames.
+        //
+        // True hands the buffer to the renderer, which releases it through
+        // Deki::Memory after the blit. A buffer transferred that way must
+        // have come from Deki::Memory — Deki::Buffer<T>::Release() is the
+        // normal way to produce one — because that is what frees it.
         bool ownsPixels;
 
         // Bytes per row in source memory. 0 means tightly packed
@@ -155,11 +162,15 @@ namespace QuadBlit
 
     /**
      * @brief Create source descriptor for a given texture format
-     * @param ownsPixels If true, caller should delete[] pixels after use
+     * @param ownsPixels Transfer the buffer to the renderer, which releases
+     *        it through Deki::Memory after the blit. Defaults to false: a
+     *        component that keeps its own buffer is both the common case and
+     *        the safe one, since the other way round frees memory the
+     *        component is still using next frame.
      */
     Source MakeSource(const uint8_t* pixels, int32_t width, int32_t height,
                       int32_t bytesPerPixel, bool hasAlpha, bool isRGB565,
-                      bool ownsPixels = true,
+                      bool ownsPixels = false,
                       const int16_t* alphaRowSpans = nullptr);
 
     /**
