@@ -179,16 +179,15 @@ static inline void NoteBlitRect(const uint8_t* target, int32_t startX, int32_t s
 // ============================================================================
 
 Source MakeSource(const uint8_t* pixels, int32_t width, int32_t height,
-                  int32_t bytesPerPixel, bool hasAlpha, bool isRGB565,
-                  bool ownsPixels, const int16_t* alphaRowSpans)
+                  PixelLayout layout, bool ownsPixels, const int16_t* alphaRowSpans)
 {
     Source src;
     src.pixels = pixels;
     src.width = width;
     src.height = height;
-    src.bytesPerPixel = bytesPerPixel;
-    src.hasAlpha = hasAlpha;
-    src.isRGB565 = isRGB565;
+    src.bytesPerPixel = layout.bytesPerPixel;
+    src.hasAlpha = layout.hasAlpha;
+    src.isRGB565 = layout.isRGB565;
     src.ownsPixels = ownsPixels;
     src.alphaRowSpans = alphaRowSpans;
     src.stride = 0;
@@ -198,8 +197,8 @@ Source MakeSource(const uint8_t* pixels, int32_t width, int32_t height,
     src.keyB = 0;
     src.chromaRowSpans = nullptr;
 
-    if (hasAlpha)
-        src.alphaOffset = isRGB565 ? 2 : 3;
+    if (layout.hasAlpha)
+        src.alphaOffset = layout.isRGB565 ? 2 : 3;
     else
         src.alphaOffset = 0;
 

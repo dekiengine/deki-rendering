@@ -156,7 +156,16 @@ SrcBuf MakeSrc(SrcFmt f, int w, int h, uint32_t seed, int stridePad, bool chroma
     }
     const bool isRGB565 = (f == SrcFmt::RGB565 || f == SrcFmt::RGB565A8 || f == SrcFmt::RGB565A8_NoAlpha);
     const bool hasAlpha = (f == SrcFmt::RGB565A8 || f == SrcFmt::RGBA8888 || f == SrcFmt::ALPHA8);
-    out.src = QuadBlit::MakeSource(out.px.data(), w, h, bpp, hasAlpha, isRGB565, false,
+    // The aggregate rather than a named layout: this harness deliberately
+    // builds shapes that are not one of the asset formats, RGB565A8_NoAlpha
+    // among them. Designated initialisers still name each field at the point
+    // of use, which is the whole point of the change.
+    out.src = QuadBlit::MakeSource(
+        out.px.data(), w, h,
+        QuadBlit::PixelLayout{ .bytesPerPixel = static_cast<int32_t>(bpp),
+                               .hasAlpha = hasAlpha,
+                               .isRGB565 = isRGB565 },
+        false,
                                    hasAlpha ? out.alphaSpans.data() : nullptr);
     out.src.stride = stridePad ? stride : 0;
     if (chroma)

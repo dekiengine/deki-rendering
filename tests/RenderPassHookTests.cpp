@@ -47,7 +47,7 @@ public:
     bool RenderContent(const Deki::Object*, QuadBlit::Source& out, float& px, float& py,
                        uint8_t& r, uint8_t& g, uint8_t& b, uint8_t& a) override
     {
-        out = QuadBlit::MakeSource(m_Pixel, 1, 1, 2, false, true, false, nullptr);
+        out = QuadBlit::MakeSource(m_Pixel, 1, 1, QuadBlit::PixelLayout::RGB565(), false, nullptr);
         px = py = 0.5f;
         r = g = b = a = 255;
         return true;

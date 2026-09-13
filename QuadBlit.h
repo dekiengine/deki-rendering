@@ -1,5 +1,6 @@
 #pragma once
 #include <cstdint>
+#include <deki/assets/Texture2D.h>  // TextureFormat, for PixelLayout::FromTexture
 
 // Forward declarations
 namespace Deki { enum class ColorFormat; }
@@ -92,6 +93,68 @@ namespace QuadBlit
     const uint8_t* GetDirtyTrackedTarget();
 
     /**
+     * @brief How a source buffer stores one pixel
+     *
+     * QuadBlit takes the SHAPE of a source, not a format enum: it lives in
+     * deki-rendering and cannot name deki-2d's Deki::Texture2D::TextureFormat, nor
+     * should it — a blitter needs to know how to read bytes, not which asset
+     * pipeline produced them.
+     *
+     * What it should not take is three loose values in a row. That is what
+     * this replaces: MakeSource(data, w, h, 2, false, true, false), where
+     * transposing hasAlpha and isRGB565 compiles, blits wrong, and is visible
+     * only in a comment beside the call.
+     *
+     * The named layouts are the shapes real sources come in. Anything else is
+     * still expressible — a test reaching for an unusual combination writes
+     * the aggregate with designated initialisers, which names the fields at
+     * the call site just as well.
+     */
+    struct PixelLayout
+    {
+        int32_t bytesPerPixel;
+        bool hasAlpha;
+        bool isRGB565;
+
+        /// 16-bit colour, no alpha. Baked gradients, opaque sprites.
+        static constexpr PixelLayout RGB565() { return { 2, false, true }; }
+
+        /// 16-bit colour plus a separate alpha byte. Sprites with alpha, baked text.
+        static constexpr PixelLayout RGB565A8() { return { 3, true, true }; }
+
+        /// The RGB565A8 byte shape with its alpha ignored.
+        static constexpr PixelLayout RGB565A8NoAlpha() { return { 3, false, true }; }
+
+        /// 32-bit colour with alpha.
+        static constexpr PixelLayout RGBA8888() { return { 4, true, false }; }
+
+        /// 24-bit colour, no alpha.
+        static constexpr PixelLayout RGB888() { return { 3, false, false }; }
+
+        /// A single alpha byte per pixel. Font atlases.
+        static constexpr PixelLayout Alpha8() { return { 1, true, false }; }
+
+        /**
+         * @brief The layout of a texture asset stored in `format`
+         *
+         * `hasAlpha` is separate because it is a property of the asset, not of
+         * the format: a sprite stored as RGB565A8 may still declare itself
+         * opaque, and then the alpha plane is there but ignored.
+         *
+         * This derivation used to be written out at three call sites — in
+         * SpriteComponent, ParticleEmitterComponent and TilemapRenderSystem —
+         * each deciding for itself that RGB565 and RGB565A8 are the 565 ones.
+         */
+        static PixelLayout FromTexture(Deki::Texture2D::TextureFormat format, bool hasAlpha)
+        {
+            const bool isRGB565 = (format == Deki::Texture2D::TextureFormat::RGB565 ||
+                                   format == Deki::Texture2D::TextureFormat::RGB565A8);
+            return { static_cast<int32_t>(Deki::Texture2D::GetBytesPerPixel(format)),
+                     hasAlpha, isRGB565 };
+        }
+    };
+
+    /**
      * @brief Source buffer descriptor
      */
     struct Source
@@ -169,8 +232,7 @@ namespace QuadBlit
      *        component is still using next frame.
      */
     Source MakeSource(const uint8_t* pixels, int32_t width, int32_t height,
-                      int32_t bytesPerPixel, bool hasAlpha, bool isRGB565,
-                      bool ownsPixels = false,
+                      PixelLayout layout, bool ownsPixels = false,
                       const int16_t* alphaRowSpans = nullptr);
 
     /**

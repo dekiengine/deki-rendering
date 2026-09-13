@@ -72,7 +72,7 @@ public:
             m_Pixels[i * 3 + 2] = alpha;
         }
         if (withAlpha)
-            outSource = QuadBlit::MakeSource(m_Pixels, 4, 4, 3, true, true, false, nullptr);
+            outSource = QuadBlit::MakeSource(m_Pixels, 4, 4, QuadBlit::PixelLayout::RGB565A8(), false, nullptr);
         else
         {
             for (int i = 0; i < 16; ++i)
@@ -80,7 +80,7 @@ public:
                 m_Packed[i * 2] = static_cast<uint8_t>(colour & 0xFF);
                 m_Packed[i * 2 + 1] = static_cast<uint8_t>(colour >> 8);
             }
-            outSource = QuadBlit::MakeSource(m_Packed, 4, 4, 2, false, true, false, nullptr);
+            outSource = QuadBlit::MakeSource(m_Packed, 4, 4, QuadBlit::PixelLayout::RGB565(), false, nullptr);
         }
         outSource.pixelsPerMeter = sourcePpm;
         outPivotX = pivotX;
