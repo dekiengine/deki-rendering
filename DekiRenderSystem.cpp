@@ -100,7 +100,7 @@ bool DekiRenderSystem::Setup(int32_t width, int32_t height, Deki::ColorFormat fo
     // with no error. Now Setup either yields a usable buffer or says so.
     int bytes_per_pixel = GetBytesPerPixel(format);
     size_t buffer_size = (size_t)width * (size_t)height * (size_t)bytes_per_pixel;
-    m_RenderBuffer = (uint8_t*)Deki::Memory::AllocateInternal(buffer_size, "DekiRenderSystem::Setup-framebuffer");
+    m_RenderBuffer = (uint8_t*)Deki::Memory::AllocateInternal(buffer_size);
     if (!m_RenderBuffer)
     {
         DEKI_LOG_ERROR("DekiRenderSystem::Setup: failed to allocate %zu-byte framebuffer (%dx%d)",
