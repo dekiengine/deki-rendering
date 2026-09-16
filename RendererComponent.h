@@ -54,10 +54,12 @@ class RendererComponent : public Deki::Component, public Deki::ISortableProvider
     virtual ~RendererComponent() = 0;
 
     DEKI_EXPORT
+    DEKI_TOOLTIP("Draw order against other renderers. Higher draws on top.")
     int sortingOrder = 0;
 
     /** @brief If true, this renderer ignores parent Deki2D::ClipComponent bounds */
     DEKI_EXPORT
+    DEKI_TOOLTIP("Draw even when an ancestor clips its children. For something that must escape its container, like a dropdown.")
     bool ignoreClip = false;
 
     /**
@@ -69,6 +71,7 @@ class RendererComponent : public Deki::Component, public Deki::ISortableProvider
      *        particle effect can coexist in the same scene.
      */
     DEKI_EXPORT
+    DEKI_TOOLTIP("Round the final position to whole pixels. Keeps pixel art crisp; leave it off for something that should move smoothly at small steps.")
     bool pixelSnap = true;
 
     DEKI_TOOLTIP("How partial-alpha pixels are rendered. Blend = smooth alpha blend (slower, no artifacts). OrderedDither = stippling pattern (much faster, visible dither — best for fades and retro pixel art). ")

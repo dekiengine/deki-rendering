@@ -35,10 +35,12 @@ class CameraComponent : public Deki::Component, public Deki::ICamera
 public:
 
     DEKI_EXPORT
+    DEKI_TOOLTIP("Colour the screen is filled with before anything is drawn. What shows wherever nothing covers it.")
     Deki::Color clearColor = Deki::Color(49, 77, 121);  // Background clear color
 
     // Framebuffer pixels per world meter. 0 = inherit project default.
     DEKI_EXPORT
+    DEKI_TOOLTIP("How many framebuffer pixels make up one meter of the world, which is what sets the zoom. Left at 0 the project's own setting is used.")
     float pixelsPerMeter = 0.0f;
 
     // Pixel-perfect rendering. When true, the camera's contribution is
@@ -52,6 +54,7 @@ public:
     // sprite or tilemap): the clear is a full framebuffer write per frame.
     DEKI_TOOLTIP("Clear the framebuffer to the clear color before drawing. Turn off when a full-screen background covers everything: saves a full framebuffer write per frame.")
     DEKI_EXPORT
+    DEKI_TOOLTIP("Clear before each frame. Off, the previous frame stays underneath, which is faster and occasionally what you want for trails.")
     bool clearEveryFrame = true;
 
     // Projection mode (forward-compat hook). Hidden in inspector — only
