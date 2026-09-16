@@ -4,7 +4,7 @@
 
 // Forward declarations
 namespace Deki { enum class ColorFormat; }
-class DirtyRegion;
+namespace DekiRendering { class DirtyRegion; }
 
 /**
  * @brief Centralized quad blitting with full 2D transforms
@@ -73,7 +73,7 @@ namespace QuadBlit
      * Standard2DRenderer sets this for the frame when RenderContext::trackDirty
      * is on and clears it afterwards. Pass nullptr to stop.
      */
-    void SetDirtyTracking(DirtyRegion* region, const uint8_t* trackedTarget);
+    void SetDirtyTracking(DekiRendering::DirtyRegion* region, const uint8_t* trackedTarget);
 
     /**
      * @brief Add a rectangle to the tracked region, for code that writes the
@@ -142,7 +142,7 @@ namespace QuadBlit
          * opaque, and then the alpha plane is there but ignored.
          *
          * This derivation used to be written out at three call sites — in
-         * SpriteComponent, ParticleEmitterComponent and TilemapRenderSystem —
+         * Deki2D::SpriteComponent, ParticleEmitterComponent and TilemapRenderSystem —
          * each deciding for itself that RGB565 and RGB565A8 are the 565 ones.
          */
         static PixelLayout FromTexture(Deki::Texture2D::TextureFormat format, bool hasAlpha)

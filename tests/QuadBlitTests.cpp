@@ -9,6 +9,9 @@
 #include "QuadBlit.h"
 #include <deki/Engine.h>  // For DekiColorFormat
 
+// The package's types moved into its namespace; tests name them unqualified.
+using namespace DekiRendering;
+
 // ============================================================================
 // Clip Rect Stack Tests
 // ============================================================================

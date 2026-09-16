@@ -6,6 +6,9 @@
 
 #include <deki/providers/Rect.h>
 
+namespace DekiRendering
+{
+
 /**
  * @brief The pixels a frame touched, as a small set of rectangles.
  *
@@ -81,3 +84,5 @@ private:
     size_t m_MergeThreshold = 24;
     float m_FullRatio = 0.8f;
 };
+
+}  // namespace DekiRendering

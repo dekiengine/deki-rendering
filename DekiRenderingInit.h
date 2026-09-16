@@ -1,5 +1,8 @@
 #pragma once
 
+namespace DekiRendering
+{
+
 /**
  * @file DekiRenderingInit.h
  * @brief Rendering package system initialization
@@ -24,3 +27,5 @@ void DekiRendering_ShutdownSystem();
  * the factory. Safe to call when no matching pass is attached.
  */
 void DekiRendering_DetachPass(const char* name);
+
+}  // namespace DekiRendering

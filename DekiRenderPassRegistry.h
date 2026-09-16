@@ -32,6 +32,9 @@
 #include <vector>
 #include <string>
 
+namespace DekiRendering
+{
+
 using RenderPassFactory = std::function<RenderPass*()>;
 
 /**
@@ -99,3 +102,5 @@ using AutoAttachCallback = std::function<void(const char*, const RenderPassInfo&
 void SetAutoAttachCallback(AutoAttachCallback cb);
 
 } // namespace DekiRenderPassRegistry
+
+}  // namespace DekiRendering

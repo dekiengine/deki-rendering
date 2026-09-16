@@ -10,6 +10,9 @@
 
 // Forward declarations
 namespace Deki { class Object; }
+
+namespace DekiRendering
+{
 class CameraComponent;
 class DekiRenderer;
 
@@ -103,3 +106,5 @@ class DekiRenderSystem : public Deki::IRenderSystem
                                      uint8_t* buffer, int32_t width, int32_t height,
                                      Deki::ColorFormat format);
 };
+
+}  // namespace DekiRendering

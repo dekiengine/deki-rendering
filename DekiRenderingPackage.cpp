@@ -17,32 +17,41 @@
 #include <deki/reflection/ComponentRegistry.h>
 #include <deki/reflection/ComponentFactory.h>
 
-#ifdef DEKI_EDITOR
-
-#ifndef DEKI_PLUGIN_EXPORTS
-// Auto-generated registration helpers (standalone DLL only)
 extern void DekiRendering_RegisterComponents();
 extern int DekiRendering_GetAutoComponentCount();
 extern const Deki::ComponentMeta* DekiRendering_GetAutoComponentMeta(int index);
 
+namespace DekiRendering
+{
+
+#ifdef DEKI_EDITOR
+
+#ifndef DEKI_PLUGIN_EXPORTS
+// Auto-generated registration helpers (standalone DLL only)
+
 static bool s_Registered = false;
+
+
+// The exports below are C symbols at global scope; the package's own
+// registration helpers and statics live in its namespace.
+using namespace DekiRendering;
 
 extern "C" {
 
 DEKI_RENDERING_API int DekiRendering_EnsureRegistered(void)
 {
     if (s_Registered)
-        return DekiRendering_GetAutoComponentCount();
+        return ::DekiRendering_GetAutoComponentCount();
     s_Registered = true;
 
     // Auto-generated: registers rendering components with ComponentRegistry + ComponentFactory
-    DekiRendering_RegisterComponents();
+    ::DekiRendering_RegisterComponents();
 
     // Initialize the rendering system (idempotent — may already be initialized
     // by deki_init_package_systems() during Deki::Engine::Initialize())
     DekiRendering_InitSystem();
 
-    return DekiRendering_GetAutoComponentCount();
+    return ::DekiRendering_GetAutoComponentCount();
 }
 
 } // extern "C"
@@ -83,12 +92,12 @@ DEKI_PLUGIN_API void DekiPlugin_Shutdown(void)
 
 DEKI_PLUGIN_API int DekiPlugin_GetComponentCount(void)
 {
-    return DekiRendering_GetAutoComponentCount();
+    return ::DekiRendering_GetAutoComponentCount();
 }
 
 DEKI_PLUGIN_API const Deki::ComponentMeta* DekiPlugin_GetComponentMeta(int index)
 {
-    return DekiRendering_GetAutoComponentMeta(index);
+    return ::DekiRendering_GetAutoComponentMeta(index);
 }
 
 DEKI_PLUGIN_API void DekiPlugin_RegisterComponents(void)
@@ -110,3 +119,5 @@ DEKI_RENDERING_API const char* DekiRendering_GetName(void)
 }
 
 #endif // DEKI_EDITOR
+}  // namespace DekiRendering
+

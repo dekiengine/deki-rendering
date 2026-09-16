@@ -8,6 +8,9 @@
 #include <deki/reflection/Property.h>
 #include <deki/Color.h>
 
+namespace DekiRendering
+{
+
 /**
  * @brief 2D Camera component for scene rendering.
  *
@@ -26,6 +29,7 @@
  */
 DEKI_CATEGORY("Core")
 DEKI_DESCRIPTION("The view: clear color, zoom (pixels per meter) and pixel snap.")
+DEKI_FORMER_NAME("CameraComponent")
 class CameraComponent : public Deki::Component, public Deki::ICamera
 {
 public:
@@ -95,3 +99,5 @@ public:
 };
 
 // Generated property metadata (after class definition for offsetof)
+
+}  // namespace DekiRendering

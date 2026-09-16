@@ -20,6 +20,9 @@
 #include "DirtyRegion.h"
 #include <deki/providers/IDisplay.h>
 
+// The package's types moved into its namespace; tests name them unqualified.
+using namespace DekiRendering;
+
 namespace
 {
 

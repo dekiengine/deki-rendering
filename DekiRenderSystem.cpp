@@ -17,6 +17,9 @@
 #include <cstdlib>
 #include <cstring>
 
+namespace DekiRendering
+{
+
 DekiRenderSystem::DekiRenderSystem()
 : m_RenderBuffer(nullptr)
 , m_ScreenWidth(0)
@@ -479,4 +482,6 @@ int DekiRenderSystem::GetBytesPerPixel(Deki::ColorFormat format)
     }
     return 2;
 }
+
+}  // namespace DekiRendering
 

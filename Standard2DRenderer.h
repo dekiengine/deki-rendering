@@ -13,17 +13,21 @@
 // Forward declarations
 namespace Deki { class Object; }
 namespace Deki { class Component; }
-class RendererComponent;
+
 namespace Deki { class IClipProvider; }
 namespace Deki { class ISortableProvider; }
+
+namespace DekiRendering
+{
+class RendererComponent;
 
 /**
  * @brief Standard 2D renderer with built-in support for sprites, clipping, and sorting groups
  *
  * This is the default renderer for 2D scenes. It handles:
  * - RendererComponent: blits content via QuadBlit
- * - ClipComponent: pushes/pops clip rects around children
- * - SortingGroupComponent: groups children for sorting
+ * - Deki2D::ClipComponent: pushes/pops clip rects around children
+ * - Deki2D::SortingGroupComponent: groups children for sorting
  *
  * Extensible via:
  * - AddPass(): register custom RenderPass objects for new component types
@@ -144,3 +148,5 @@ private:
     void ExecuteBuiltins(const SortItem& item, RenderContext& ctx);
     void PostExecuteBuiltins(const SortItem& item);
 };
+
+}  // namespace DekiRendering

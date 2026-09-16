@@ -19,6 +19,9 @@
 #include "Standard2DRenderer.h"
 #include "QuadBlit.h"
 
+// The package's types moved into its namespace; tests name them unqualified.
+using namespace DekiRendering;
+
 namespace
 {
 

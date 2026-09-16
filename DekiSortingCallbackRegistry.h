@@ -22,9 +22,14 @@
 #include "RenderPass.h"  // For SortingCallback typedef
 #include <vector>
 
+namespace DekiRendering
+{
+
 namespace DekiSortingCallbackRegistry {
 
 void Register(const char* name, SortingCallback callback);
 void GetAll(std::vector<SortingCallback>& outCallbacks);
 
 } // namespace DekiSortingCallbackRegistry
+
+}  // namespace DekiRendering

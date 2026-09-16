@@ -2,6 +2,9 @@
 
 #include <algorithm>
 
+namespace DekiRendering
+{
+
 void DirtyRegion::Reset(int32_t width, int32_t height)
 {
     m_Width = width < 0 ? 0 : width;
@@ -135,3 +138,5 @@ void DirtyRegion::CollapseIfCovered()
     if (static_cast<double>(CoveredArea()) >= static_cast<double>(total) * m_FullRatio)
         SetFull();
 }
+
+}  // namespace DekiRendering

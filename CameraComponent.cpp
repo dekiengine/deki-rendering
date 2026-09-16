@@ -4,6 +4,9 @@
 #include <deki/ICamera.h>
 #include <deki/ComponentInterfaceAdapters.h>
 
+namespace DekiRendering
+{
+
 // ============================================================================
 // Component Registration
 // ============================================================================
@@ -110,3 +113,5 @@ void CameraComponent::ScreenToWorld(float screenX, float screenY,
     worldX = rel_x + GetPositionX();
     worldY = -rel_y + GetPositionY(); // Negate Y: screen Y down -> world Y up
 }
+
+}  // namespace DekiRendering

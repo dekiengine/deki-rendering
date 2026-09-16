@@ -8,6 +8,9 @@
 
 // Forward declarations
 namespace Deki { class Object; }
+
+namespace DekiRendering
+{
 class CameraComponent;
 
 #ifdef V_ENGINE_ENABLE_MASK
@@ -53,7 +56,7 @@ class RendererComponent : public Deki::Component, public Deki::ISortableProvider
     DEKI_EXPORT
     int sortingOrder = 0;
 
-    /** @brief If true, this renderer ignores parent ClipComponent bounds */
+    /** @brief If true, this renderer ignores parent Deki2D::ClipComponent bounds */
     DEKI_EXPORT
     bool ignoreClip = false;
 
@@ -140,3 +143,5 @@ class RendererComponent : public Deki::Component, public Deki::ISortableProvider
 };
 
 // Generated property metadata (after class definition for offsetof)
+
+}  // namespace DekiRendering

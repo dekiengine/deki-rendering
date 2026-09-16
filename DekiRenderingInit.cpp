@@ -13,6 +13,9 @@
 #include <string>
 #include <vector>
 
+namespace DekiRendering
+{
+
 static DekiRenderSystem* s_RenderSystem = nullptr;
 static DekiRenderer* s_Renderer = nullptr;
 static Standard2DRenderer* s_PassReceiver = nullptr;
@@ -167,3 +170,5 @@ void DekiRendering_ShutdownSystem()
     delete s_RenderSystem;
     s_RenderSystem = nullptr;
 }
+
+}  // namespace DekiRendering

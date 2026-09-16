@@ -8,6 +8,9 @@
 
 #include "DirtyRegion.h"
 
+// The package's types moved into its namespace; tests name them unqualified.
+using namespace DekiRendering;
+
 namespace
 {
 bool Covers(const DirtyRegion& r, int32_t l, int32_t t, int32_t rt, int32_t b)

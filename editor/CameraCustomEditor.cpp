@@ -7,6 +7,9 @@
 #include <cmath>
 #include <cstdint>
 
+// Editor extensions live in DekiEditor; the package's own types are in DekiRendering.
+using namespace DekiRendering;
+
 namespace DekiEditor
 {
 
@@ -17,7 +20,7 @@ public:
 
     bool GetDisplaySize(Deki::Component* comp, float& outWidth, float& outHeight) override
     {
-        // Match the SpriteComponent convention: return size in BUFFER pixels
+        // Match the Deki2D::SpriteComponent convention: return size in BUFFER pixels
         // (= source pixels at unit sprite scale). The camera's "size" in the
         // gizmo is the project render-target resolution; it's drawn at 1
         // screen pixel per buffer pixel * editor zoom by both

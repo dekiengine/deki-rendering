@@ -2,6 +2,9 @@
 #include <deki/Engine.h>
 #include <deki/ComponentInterfaceAdapters.h>
 
+namespace DekiRendering
+{
+
 // ============================================================================
 // Component Registration
 // ============================================================================
@@ -43,3 +46,5 @@ void RendererComponent::ClearMask()
     stencilId = 0;
 }
 #endif
+
+}  // namespace DekiRendering

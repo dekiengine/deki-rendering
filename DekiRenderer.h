@@ -6,6 +6,9 @@
 
 // Forward declarations
 namespace Deki { class Scene; }
+
+namespace DekiRendering
+{
 class CameraComponent;
 class DirtyRegion;
 
@@ -81,3 +84,5 @@ public:
      */
     virtual const DirtyRegion* GetLastFrameDirty() const { return nullptr; }
 };
+
+}  // namespace DekiRendering

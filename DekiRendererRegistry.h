@@ -25,6 +25,9 @@
 #include <vector>
 #include <string>
 
+namespace DekiRendering
+{
+
 class DekiRenderer;
 
 using DekiRendererFactory = std::function<DekiRenderer*()>;
@@ -52,3 +55,5 @@ DekiRenderer* Create(const char* name);
 void GetAllNames(std::vector<std::string>& outNames);
 
 } // namespace DekiRendererRegistry
+
+}  // namespace DekiRendering

@@ -140,10 +140,10 @@ int GetClipStackDepth()
 // Dirty-rect tracking
 // ============================================================================
 
-static DirtyRegion* s_DirtyRegion = nullptr;
+static DekiRendering::DirtyRegion* s_DirtyRegion = nullptr;
 static const uint8_t* s_DirtyTarget = nullptr;
 
-void SetDirtyTracking(DirtyRegion* region, const uint8_t* trackedTarget)
+void SetDirtyTracking(DekiRendering::DirtyRegion* region, const uint8_t* trackedTarget)
 {
     s_DirtyRegion = region;
     s_DirtyTarget = region ? trackedTarget : nullptr;

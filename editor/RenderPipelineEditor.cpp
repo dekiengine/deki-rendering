@@ -23,6 +23,9 @@
 #include <cstring>
 #include <cstdio>
 
+// Editor extensions live in DekiEditor; the package's own types are in DekiRendering.
+using namespace DekiRendering;
+
 using namespace DekiEditor;
 
 class RenderPipelineEditor : public AssetTypeEditor
@@ -59,7 +62,7 @@ public:
 
         // --- Renderer dropdown ---
         std::vector<std::string> rendererNames;
-        DekiRendererRegistry::GetAllNames(rendererNames);
+        DekiRendering::DekiRendererRegistry::GetAllNames(rendererNames);
 
         std::string currentRenderer = data.value("renderer", "");
         int currentRendererIdx = -1;
@@ -104,7 +107,7 @@ public:
 
         // Cache pass names for dropdowns
         std::vector<std::string> passNames;
-        DekiRenderPassRegistry::GetAllNames(passNames);
+        DekiRendering::DekiRenderPassRegistry::GetAllNames(passNames);
 
         int removeIndex = -1;
         for (int i = 0; i < static_cast<int>(passes.size()); i++)

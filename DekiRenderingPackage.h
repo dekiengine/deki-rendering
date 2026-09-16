@@ -1,5 +1,14 @@
 #pragma once
 
+#ifdef DEKI_EDITOR
+#include <cstdint>
+#endif
+
+namespace Deki { struct ComponentMeta; }
+
+namespace DekiRendering
+{
+
 /**
  * @file DekiRenderingPackage.h
  * @brief Central header for the Deki Rendering Package
@@ -26,10 +35,8 @@
 #endif
 
 #ifdef DEKI_EDITOR
-#include <cstdint>
 
 // Forward declarations
-namespace Deki { struct ComponentMeta; }
 
 extern "C" {
 
@@ -38,3 +45,5 @@ DEKI_RENDERING_API int DekiRendering_EnsureRegistered(void);
 } // extern "C"
 
 #endif // DEKI_EDITOR
+
+}  // namespace DekiRendering

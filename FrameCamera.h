@@ -2,6 +2,9 @@
 
 #include <cstdint>
 
+namespace DekiRendering
+{
+
 /**
  * @brief World-to-screen mapping captured once per frame from the camera.
  *
@@ -34,3 +37,5 @@ struct FrameCamera
         screenY = -rel_y * ppm + halfH;
     }
 };
+
+}  // namespace DekiRendering

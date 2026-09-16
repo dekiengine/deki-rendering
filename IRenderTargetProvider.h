@@ -2,6 +2,9 @@
 
 #include <cstdint>
 
+namespace DekiRendering
+{
+
 /**
  * @file IRenderTargetProvider.h
  * @brief Interface for components that route rendering to a non-default target
@@ -37,3 +40,5 @@ public:
     virtual ~IRenderTargetProvider() = default;
     virtual const char* GetRenderTargetTag() const = 0;
 };
+
+}  // namespace DekiRendering

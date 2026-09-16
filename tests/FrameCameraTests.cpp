@@ -13,6 +13,9 @@
 #include "CameraComponent.h"
 #include "FrameCamera.h"
 
+// The package's types moved into its namespace; tests name them unqualified.
+using namespace DekiRendering;
+
 namespace
 {
 

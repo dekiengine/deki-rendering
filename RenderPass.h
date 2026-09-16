@@ -3,6 +3,9 @@
 
 // Forward declarations
 namespace Deki { class Object; }
+
+namespace DekiRendering
+{
 struct RenderContext;
 
 /**
@@ -117,3 +120,5 @@ public:
 using SortingCallback = bool(*)(Deki::Object* obj, int32_t& outOrder);
 
 // 
+
+}  // namespace DekiRendering

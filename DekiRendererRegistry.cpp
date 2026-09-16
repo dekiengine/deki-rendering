@@ -2,6 +2,9 @@
 #include <unordered_map>
 #include <string>
 
+namespace DekiRendering
+{
+
 namespace DekiRendererRegistry {
 
 // Meyer's singleton — avoids static init order issues across translation units
@@ -38,3 +41,5 @@ void GetAllNames(std::vector<std::string>& outNames)
 }
 
 } // namespace DekiRendererRegistry
+
+}  // namespace DekiRendering

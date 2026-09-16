@@ -4,6 +4,9 @@
 #include <deki/Engine.h>
 #include <deki/reflection/Property.h>
 
+namespace DekiRendering
+{
+
 /**
  * @brief Project-wide rendering tradeoff toggles.
  *
@@ -15,6 +18,7 @@
  */
 DEKI_CATEGORY("Settings")
 DEKI_SETTINGS_SECTION("Rendering")
+DEKI_FORMER_NAME("RenderingProjectSettings")
 class RenderingProjectSettings : public Deki::Component
 {
 public:
@@ -37,4 +41,6 @@ public:
     DEKI_EXPORT
     int32_t dirtyTileSize = 32;
 };
+
+}  // namespace DekiRendering
 

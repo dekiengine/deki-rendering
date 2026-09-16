@@ -15,6 +15,9 @@
 #include <algorithm>
 #include <cmath>
 
+namespace DekiRendering
+{
+
 // Self-register with the renderer registry
 static struct Standard2DRegistrar {
     Standard2DRegistrar() {
@@ -132,7 +135,7 @@ void Standard2DRenderer::ExecuteBuiltins(const SortItem& item, RenderContext& ct
                                top  + static_cast<int32_t>(scaledH));
     }
 
-    // Sprite: blit content
+    // Deki2D::Sprite: blit content
     RendererComponent* renderer = item.renderer;
     if (renderer)
     {
@@ -278,7 +281,7 @@ void Standard2DRenderer::CollectSortableItems(Deki::Object* obj, std::vector<Sor
     const Renderables r = ResolveRenderables(obj);
 
     // Check built-in components first: a renderer, then any other sortable
-    // (ClipComponent, SortingGroupComponent, ...).
+    // (Deki2D::ClipComponent, Deki2D::SortingGroupComponent, ...).
     if (r.renderer)
     {
         items.push_back({obj, r.renderer, r.clip, r.renderer->sortingOrder, static_cast<uint32_t>(items.size())});
@@ -413,3 +416,5 @@ void Standard2DRenderer::RenderObject(const SortItem& item, const RenderContext&
     // Phase 6: Post-execute built-ins (clip pop)
     PostExecuteBuiltins(item);
 }
+
+}  // namespace DekiRendering

@@ -2,6 +2,9 @@
 #include <unordered_map>
 #include <string>
 
+namespace DekiRendering
+{
+
 // Forward-declared from DekiRenderingInit.h — kept here to avoid pulling the
 // init header into this registry's public surface.
 void DekiRendering_DetachPass(const char* name);
@@ -75,3 +78,5 @@ void SetAutoAttachCallback(AutoAttachCallback cb)
 }
 
 } // namespace DekiRenderPassRegistry
+
+}  // namespace DekiRendering

@@ -2,6 +2,9 @@
 #include <unordered_map>
 #include <string>
 
+namespace DekiRendering
+{
+
 namespace DekiSortingCallbackRegistry {
 
 static std::unordered_map<std::string, SortingCallback>& GetRegistry()
@@ -24,3 +27,5 @@ void GetAll(std::vector<SortingCallback>& outCallbacks)
 }
 
 } // namespace DekiSortingCallbackRegistry
+
+}  // namespace DekiRendering
