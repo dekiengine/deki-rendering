@@ -10,6 +10,12 @@ alongside one that has them.
 
 ## 0.16.0
 
+### Fixed
+- `DekiRendering_InitSystem` and `DekiRendering_ShutdownSystem` stay at global
+  scope, for the same reason as the equivalent pair in deki-input: a generated
+  translation unit names them and cannot know a package's namespace.
+  `DekiRendering_DetachPass` is a normal API and stays in the namespace.
+
 ### Changed
 - **Moved into the `DekiRendering` namespace.** Every component was declared at global
   scope, which made its identity a bare class name — the name a scene file

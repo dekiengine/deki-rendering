@@ -56,6 +56,29 @@ static void AttachPass(const char* name, const RenderPassInfo& info)
     DEKI_LOG_INTERNAL("DekiRendering: Attached pass '%s'", name);
 }
 
+
+void DekiRendering_DetachPass(const char* name)
+{
+    if (!name) return;
+    for (auto it = s_Passes.begin(); it != s_Passes.end(); ++it)
+    {
+        if (it->name != name) continue;
+
+        if (s_PassReceiver)
+            s_PassReceiver->RemovePass(it->pass);
+        delete it->pass;
+        s_Passes.erase(it);
+        DEKI_LOG_INTERNAL("DekiRendering: Detached pass '%s'", name);
+        return;
+    }
+}
+
+
+}  // namespace DekiRendering
+
+// Global scope, matching the editor's generated glue. See DekiRenderingInit.h.
+using namespace DekiRendering;
+
 void DekiRendering_InitSystem()
 {
     if (s_RenderSystem)
@@ -135,22 +158,6 @@ void DekiRendering_InitSystem()
     DEKI_LOG_INTERNAL("DekiRendering: Init complete (renderer=%p, %d passes)", (void*)s_Renderer, (int)s_Passes.size());
 }
 
-void DekiRendering_DetachPass(const char* name)
-{
-    if (!name) return;
-    for (auto it = s_Passes.begin(); it != s_Passes.end(); ++it)
-    {
-        if (it->name != name) continue;
-
-        if (s_PassReceiver)
-            s_PassReceiver->RemovePass(it->pass);
-        delete it->pass;
-        s_Passes.erase(it);
-        DEKI_LOG_INTERNAL("DekiRendering: Detached pass '%s'", name);
-        return;
-    }
-}
-
 void DekiRendering_ShutdownSystem()
 {
     Deki::Engine::GetInstance().SetRenderSystem(nullptr);
@@ -170,5 +177,3 @@ void DekiRendering_ShutdownSystem()
     delete s_RenderSystem;
     s_RenderSystem = nullptr;
 }
-
-}  // namespace DekiRendering
