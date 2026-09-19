@@ -57,15 +57,17 @@ namespace QuadBlit
 
 static RowKernelFn s_Kernels[(int)KernelOp::Count] = {};
 
+// KernelOp is uint8_t, so there is no below-zero to check: `(int)op < 0` was
+// always false, which GCC 15 reports (and ESP-IDF 6 makes an error).
 void RegisterKernel(KernelOp op, RowKernelFn fn)
 {
-    if ((int)op < 0 || (int)op >= (int)KernelOp::Count) return;
+    if ((int)op >= (int)KernelOp::Count) return;
     s_Kernels[(int)op] = fn;
 }
 
 RowKernelFn GetKernel(KernelOp op)
 {
-    if ((int)op < 0 || (int)op >= (int)KernelOp::Count) return nullptr;
+    if ((int)op >= (int)KernelOp::Count) return nullptr;
     return s_Kernels[(int)op];
 }
 
