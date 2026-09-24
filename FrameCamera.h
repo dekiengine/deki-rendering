@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cmath>
 #include <cstdint>
 
 namespace DekiRendering
@@ -26,7 +27,17 @@ struct FrameCamera
     float ppm = 1.0f;    // framebuffer pixels per world metre
     float halfW = 0.0f;  // target centre (pixels): screen origin of world (camX, camY)
     float halfH = 0.0f;
+    // Pixel Perfect: screen pixels per art pixel (a whole number >= 1), and 0
+    // when off. The camera is then on the art-pixel grid and halfW/halfH are
+    // whole, so anything placed on that grid lands on whole multiples of it;
+    // renderers snap their draw positions to it (SnapToArtGrid).
+    int32_t snapStep = 0;
     bool valid = false;  // false until captured; RenderContext default
+
+    /// Under Pixel Perfect, round a screen position to the art-pixel grid
+    /// around the centre; otherwise return it unchanged.
+    float SnapX(float screenX) const { return snapStep > 0 ? halfW + std::round((screenX - halfW) / snapStep) * snapStep : screenX; }
+    float SnapY(float screenY) const { return snapStep > 0 ? halfH + std::round((screenY - halfH) / snapStep) * snapStep : screenY; }
 
     void WorldToScreen(float worldX, float worldY, float& screenX, float& screenY) const
     {

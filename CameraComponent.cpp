@@ -2,16 +2,11 @@
 #include <deki/Object.h>
 #include <deki/Engine.h>
 #include <deki/ICamera.h>
+#include <deki/ScreenScale.h>
 #include <deki/ComponentInterfaceAdapters.h>
 
 namespace DekiRendering
 {
-
-// ============================================================================
-// Component Registration
-// ============================================================================
-// NOTE: s_Properties[] and s_ComponentMeta are now auto-generated in
-// CameraComponent.gen.h (included at end of CameraComponent.h)
 
 // Register ICamera adapter so editor can use FindInterface<ICamera>()
 static struct CameraInterfaceRegistrar {
@@ -24,24 +19,26 @@ static struct CameraInterfaceRegistrar {
     }
 } s_cameraInterfaceReg;
 
-
-// ============================================================================
-
 CameraComponent::CameraComponent()
 {
 }
 
-float CameraComponent::GetPixelsPerMeter() const
+float CameraComponent::GetPixelsPerMeter(int bufferWidth, int bufferHeight) const
 {
-    if (pixelsPerMeter > 0.0f)
-        return pixelsPerMeter;
-    const float global = Deki::EngineSettings::Global().pixelsPerMeter;
-    return global > 0.0f ? global : 1.0f;
-}
+    if (m_FixedPixelsPerMeter > 0.0f)
+        return m_FixedPixelsPerMeter;
 
-void CameraComponent::SetPixelsPerMeter(float ppm)
-{
-    pixelsPerMeter = (ppm > 0.0f) ? ppm : 0.0f;
+    const Deki::EngineSettings& s = Deki::EngineSettings::Global();
+    const float fit = Deki::ResolveScreenPixelsPerMeter(bufferWidth, bufferHeight, s);
+    if (fit <= 0.0f || zoom <= 0.0f)
+        return 0.0f;
+    if (!s.pixelPerfect)
+        return fit * zoom;
+
+    // Whole art-pixel multiples only: the fit is already one; round the zoomed
+    // multiple to the nearest whole number, never below 1.
+    const float multiple = std::round((fit / s.pixelsPerMeter) * zoom);
+    return s.pixelsPerMeter * (multiple < 1.0f ? 1.0f : multiple);
 }
 
 float CameraComponent::GetPositionX() const
@@ -56,16 +53,16 @@ float CameraComponent::GetPositionY() const
     return owner ? owner->GetWorldY() : 0.0f;
 }
 
-float CameraComponent::GetVisibleWidth(int32_t screenWidth) const
+float CameraComponent::GetVisibleWidth(int32_t bufferWidth, int32_t bufferHeight) const
 {
-    const float ppm = GetPixelsPerMeter();
-    return (ppm > 0.0f) ? (static_cast<float>(screenWidth) / ppm) : 0.0f;
+    const float ppm = GetPixelsPerMeter(bufferWidth, bufferHeight);
+    return (ppm > 0.0f) ? (static_cast<float>(bufferWidth) / ppm) : 0.0f;
 }
 
-float CameraComponent::GetVisibleHeight(int32_t screenHeight) const
+float CameraComponent::GetVisibleHeight(int32_t bufferWidth, int32_t bufferHeight) const
 {
-    const float ppm = GetPixelsPerMeter();
-    return (ppm > 0.0f) ? (static_cast<float>(screenHeight) / ppm) : 0.0f;
+    const float ppm = GetPixelsPerMeter(bufferWidth, bufferHeight);
+    return (ppm > 0.0f) ? (static_cast<float>(bufferHeight) / ppm) : 0.0f;
 }
 
 FrameCamera CameraComponent::CaptureFrameCamera(int screenWidth, int screenHeight) const
@@ -73,24 +70,51 @@ FrameCamera CameraComponent::CaptureFrameCamera(int screenWidth, int screenHeigh
     // World: meters, center origin, Y UP (positive Y = up)
     // Screen: top-left origin, Y down
     // Camera position is the world point that maps to screen center.
-    //
-    // When pixelSnap is on, the camera's own contribution is rounded to
-    // whole pixels (cam_x_px = round(cam_x * ppm) / ppm) so smooth camera
-    // tweens / shake quantize at the camera level. The per-renderer
-    // pixelSnap still applies on top of this.
     FrameCamera fc;
-    fc.ppm = GetPixelsPerMeter();
+    fc.ppm = GetPixelsPerMeter(screenWidth, screenHeight);
     fc.camX = GetPositionX();
     fc.camY = GetPositionY();
-    if (pixelSnap && fc.ppm > 0.0f)
-    {
-        fc.camX = std::round(fc.camX * fc.ppm) / fc.ppm;
-        fc.camY = std::round(fc.camY * fc.ppm) / fc.ppm;
-    }
     fc.halfW = static_cast<float>(screenWidth) * 0.5f;
     fc.halfH = static_cast<float>(screenHeight) * 0.5f;
-    fc.valid = true;
+
+    // Pixel Perfect: the camera sits on the art-pixel grid and the centre on a
+    // whole screen pixel, so every art pixel covers the same block of screen
+    // pixels however the camera moves. The scene view's fixed scale is not a
+    // screen and is left alone.
+    const Deki::EngineSettings& s = Deki::EngineSettings::Global();
+    if (s.pixelPerfect && m_FixedPixelsPerMeter <= 0.0f && s.pixelsPerMeter > 0.0f && fc.ppm > 0.0f)
+    {
+        const float art = s.pixelsPerMeter;
+        fc.camX = std::round(fc.camX * art) / art;
+        fc.camY = std::round(fc.camY * art) / art;
+        fc.halfW = std::floor(fc.halfW);
+        fc.halfH = std::floor(fc.halfH);
+        fc.snapStep = static_cast<int32_t>(std::lround(fc.ppm / art));
+    }
+    fc.valid = fc.ppm > 0.0f;
     return fc;
+}
+
+Deki::Mat4 CameraComponent::GetProjectionMatrix(int bufferWidth, int bufferHeight) const
+{
+    if (bufferWidth <= 0 || bufferHeight <= 0)
+        return Deki::Mat4::Identity();
+
+    if (projection == Deki::ProjectionMode::Perspective)
+    {
+        constexpr float kDegToRad = 3.14159265358979f / 180.0f;
+        const float fov = Deki::ResolveVerticalFieldOfView(fieldOfView, bufferWidth, bufferHeight);
+        return Deki::Mat4::Perspective(fov * kDegToRad,
+                                       static_cast<float>(bufferWidth) / static_cast<float>(bufferHeight),
+                                       nearPlane, farPlane);
+    }
+
+    const float ppm = GetPixelsPerMeter(bufferWidth, bufferHeight);
+    if (ppm <= 0.0f)
+        return Deki::Mat4::Identity();
+    const float halfW = (static_cast<float>(bufferWidth) * 0.5f) / ppm;
+    const float halfH = (static_cast<float>(bufferHeight) * 0.5f) / ppm;
+    return Deki::Mat4::Ortho(-halfW, halfW, -halfH, halfH, -1.0f, 1.0f);
 }
 
 void CameraComponent::WorldToScreen(float worldX, float worldY,
@@ -104,14 +128,11 @@ void CameraComponent::ScreenToWorld(float screenX, float screenY,
                                      int screenWidth, int screenHeight,
                                      float& worldX, float& worldY) const
 {
-    // Inverse of WorldToScreen.
-    const float ppm = GetPixelsPerMeter();
-    const float inv = (ppm > 0.0f) ? (1.0f / ppm) : 0.0f;
-    const float rel_x = (screenX - static_cast<float>(screenWidth) * 0.5f) * inv;
-    const float rel_y = (screenY - static_cast<float>(screenHeight) * 0.5f) * inv;
-
-    worldX = rel_x + GetPositionX();
-    worldY = -rel_y + GetPositionY(); // Negate Y: screen Y down -> world Y up
+    // Inverse of WorldToScreen, through the same snapshot.
+    const FrameCamera fc = CaptureFrameCamera(screenWidth, screenHeight);
+    const float inv = (fc.ppm > 0.0f) ? (1.0f / fc.ppm) : 0.0f;
+    worldX = (screenX - fc.halfW) * inv + fc.camX;
+    worldY = -(screenY - fc.halfH) * inv + fc.camY;  // screen Y down -> world Y up
 }
 
 }  // namespace DekiRendering

@@ -21,6 +21,14 @@ Scenes saved before 0.16.0 used bare names and still load; saving writes the cur
 
 Package Manager in the Deki Editor, or `DekiEditor --packages-add deki-rendering <project>`.
 
+## Camera
+
+`CameraComponent` shows the project's design area (Project Settings >
+Framebuffer) on whatever screen it renders to, fitted by the project's Screen
+Fit. `zoom` 1 is the design area. Projection is Orthographic, or Perspective
+with a field of view for 3D meshes. Every screen renders at its own resolution
+and shows the same world.
+
 ## Partial present (dirty rectangles)
 
 Off by default. Turn on the project's Rendering setting `dirtyTileTracking`

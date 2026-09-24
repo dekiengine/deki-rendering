@@ -10,6 +10,20 @@ alongside one that has them.
 
 ## Unreleased
 
+### Changed
+- **One camera for every screen.** `CameraComponent` fits the project's design
+  area to whatever it renders into, per the project's Screen Fit, and adds its
+  `zoom` (1 = the design area). Pixel Perfect scales by whole numbers and puts
+  the camera and every draw position on the art-pixel grid.
+- The camera has a `projection`: Orthographic, or Perspective with
+  `fieldOfView`, `nearPlane` and `farPlane` (these moved here from deki-3d).
+- Scenes convert on load: the camera's `pixelsPerMeter` p becomes
+  `zoom = p / project pixels per meter` (0 becomes 1), which looks the same on
+  the design screen. The camera's `pixelSnap` is now the project's Pixel
+  Perfect and is dropped.
+- The camera's inspector says what it shows; its gizmo draws the design area
+  and, dashed, what the previewed screen sees.
+
 ### Fixed
 - `QuadBlit::RegisterKernel`/`GetKernel` checked an unsigned id for being
   below zero, an always-false comparison that ESP-IDF 6's GCC 15 build rejects.

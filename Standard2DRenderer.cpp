@@ -196,13 +196,20 @@ void Standard2DRenderer::ExecuteBuiltins(const SortItem& item, RenderContext& ct
             const float drawScaleX = wt.scaleX * worldToScreen * invSourcePPM;
             const float drawScaleY = wt.scaleY * worldToScreen * invSourcePPM;
 
+            // Pixel Perfect (project): snap to the art-pixel grid, whatever
+            // the renderer's own setting. Otherwise:
             // pixelSnap = true → round to nearest pixel (sharp, sprite-art).
             // pixelSnap = false → truncate (sub-pixel motion accumulates;
             // visually smoother under continuous movement, no bilinear yet).
-            const int32_t intScreenX = renderer->pixelSnap
+            if (ctx.cam.snapStep > 0)
+            {
+                fScreenX = ctx.cam.SnapX(fScreenX);
+                fScreenY = ctx.cam.SnapY(fScreenY);
+            }
+            const int32_t intScreenX = (renderer->pixelSnap || ctx.cam.snapStep > 0)
                 ? static_cast<int32_t>(std::lround(fScreenX))
                 : static_cast<int32_t>(fScreenX);
-            const int32_t intScreenY = renderer->pixelSnap
+            const int32_t intScreenY = (renderer->pixelSnap || ctx.cam.snapStep > 0)
                 ? static_cast<int32_t>(std::lround(fScreenY))
                 : static_cast<int32_t>(fScreenY);
 
