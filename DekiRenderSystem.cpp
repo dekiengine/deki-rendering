@@ -41,7 +41,7 @@ bool DekiRenderSystem::Setup(int32_t width, int32_t height, Deki::ColorFormat fo
 {
     // Project-wide rendering settings. In the editor the registry holds the
     // hydrated instance; on device there is no registry, so the values come
-    // straight out of the loaded dproject.bin. Half-width and interlaced have
+    // straight out of the loaded project_data.bin. Half-width and interlaced have
     // no implementation yet and are only reported.
     m_TrackDirty = false;
     m_DirtyAlign = 32;
