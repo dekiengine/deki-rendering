@@ -67,6 +67,7 @@ public:
     void Shutdown() override {}
     void Present(const uint8_t*, int, int, Deki::ColorFormat) override {}
     void GetDisplaySize(int32_t* w, int32_t* h) const override { if (w) *w = kW; if (h) *h = kH; }
+    Deki::ColorFormat GetColorFormat() const override { return Deki::ColorFormat::RGB565; }
     bool IsInitialized() const override { return true; }
     void RequestFullRefresh() override {}
     bool ProcessEvents() override { return true; }

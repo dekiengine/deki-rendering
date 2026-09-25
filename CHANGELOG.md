@@ -11,6 +11,9 @@ alongside one that has them.
 ## Unreleased
 
 ### Changed
+- The per-format pixel reads and writes (`SrcKind`, `ReadSrcPixel`,
+  `ReadDstPixel`, `WriteDstPixel`) moved from QuadBlit.cpp into the public
+  `PixelFormat.h`, so deki-3d shares them. Output is unchanged.
 - **One camera for every screen.** `CameraComponent` fits the project's design
   area to whatever it renders into, per the project's Screen Fit, and adds its
   `zoom` (1 = the design area). Pixel Perfect scales by whole numbers and puts

@@ -43,6 +43,10 @@ using DekiPixel::BayerThreshold;
 using DekiPixel::Div255;
 using DekiPixel::PackRGB565;
 using DekiPixel::UnpackRGB565;
+using DekiPixel::SrcKind;
+using DekiPixel::ReadSrcPixel;
+using DekiPixel::ReadDstPixel;
+using DekiPixel::WriteDstPixel;
 
 namespace QuadBlit
 {
@@ -272,102 +276,12 @@ static inline bool ComputeClipBounds(int32_t destX, int32_t destY,
 // is read); RGBA8888 is the 4-byte non-565 layout, RGB888 3 bytes, ALPHA8 a
 // coverage-only byte (a font/icon atlas drawn as a sprite: its colour is the
 // tint, white when untinted).
-enum class SrcKind { RGB565, RGB565A8, RGBA8888, RGB888, ALPHA8 };
-
 static inline SrcKind KindOf(const Source& s)
 {
     if (s.isRGB565) return s.bytesPerPixel >= 3 ? SrcKind::RGB565A8 : SrcKind::RGB565;
     if (s.bytesPerPixel == 4) return SrcKind::RGBA8888;
     if (s.bytesPerPixel == 3) return SrcKind::RGB888;
     return SrcKind::ALPHA8;
-}
-
-template <SrcKind SK>
-static inline void ReadSrcPixel(const uint8_t* p, bool hasAlpha, uint8_t& r, uint8_t& g, uint8_t& b, uint8_t& a)
-{
-    if constexpr (SK == SrcKind::RGB565 || SK == SrcKind::RGB565A8)
-    {
-        uint16_t v;
-        memcpy(&v, p, 2);
-        UnpackRGB565(v, r, g, b);
-        if constexpr (SK == SrcKind::RGB565A8)
-            a = hasAlpha ? p[2] : 255;
-        else
-            a = 255;
-    }
-    else if constexpr (SK == SrcKind::RGBA8888)
-    {
-        r = p[0]; g = p[1]; b = p[2]; a = p[3];
-        (void)hasAlpha;
-    }
-    else if constexpr (SK == SrcKind::RGB888)
-    {
-        r = p[0]; g = p[1]; b = p[2]; a = 255;
-        (void)hasAlpha;
-    }
-    else
-    {
-        r = g = b = 255;
-        a = p[0];
-        (void)hasAlpha;
-    }
-}
-
-// Destination read: colour plus coverage alpha (255 for formats without one).
-template <Deki::ColorFormat F>
-static inline void ReadDstPixel(const uint8_t* target, size_t idx, uint8_t& r, uint8_t& g, uint8_t& b, uint8_t& a)
-{
-    if constexpr (F == Deki::ColorFormat::RGB565)
-    {
-        UnpackRGB565(((const uint16_t*)target)[idx], r, g, b);
-        a = 255;
-    }
-    else if constexpr (F == Deki::ColorFormat::RGB888)
-    {
-        r = target[idx * 3]; g = target[idx * 3 + 1]; b = target[idx * 3 + 2];
-        a = 255;
-    }
-    else if constexpr (F == Deki::ColorFormat::ARGB8888)
-    {
-        const uint32_t v = ((const uint32_t*)target)[idx];
-        r = (v >> 16) & 0xFF; g = (v >> 8) & 0xFF; b = v & 0xFF;
-        a = 255;
-    }
-    else  // RGB565A8: [lo, hi, alpha]
-    {
-        const uint16_t v = (uint16_t)target[idx * 3] | ((uint16_t)target[idx * 3 + 1] << 8);
-        UnpackRGB565(v, r, g, b);
-        a = target[idx * 3 + 2];
-    }
-}
-
-// Destination write with the coverage alpha the format keeps (ignored by the
-// formats without one).
-template <Deki::ColorFormat F>
-static inline void WriteDstPixel(uint8_t* target, size_t idx, uint8_t r, uint8_t g, uint8_t b, uint8_t a)
-{
-    if constexpr (F == Deki::ColorFormat::RGB565)
-    {
-        ((uint16_t*)target)[idx] = PackRGB565(r, g, b);
-        (void)a;
-    }
-    else if constexpr (F == Deki::ColorFormat::RGB888)
-    {
-        target[idx * 3] = r; target[idx * 3 + 1] = g; target[idx * 3 + 2] = b;
-        (void)a;
-    }
-    else if constexpr (F == Deki::ColorFormat::ARGB8888)
-    {
-        ((uint32_t*)target)[idx] = (0xFFu << 24) | ((uint32_t)r << 16) | ((uint32_t)g << 8) | b;
-        (void)a;
-    }
-    else
-    {
-        const uint16_t v = PackRGB565(r, g, b);
-        target[idx * 3] = (uint8_t)(v & 0xFF);
-        target[idx * 3 + 1] = (uint8_t)(v >> 8);
-        target[idx * 3 + 2] = a;
-    }
 }
 
 // ============================================================================
