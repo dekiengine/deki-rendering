@@ -10,6 +10,11 @@ alongside one that has them.
 
 ## Unreleased
 
+### Added
+- `DekiRendering::CurrentDrawView()`: the view being drawn (its pixels per
+  meter and size), set by the renderer around a frame, so a component that
+  bakes pixels can bake them at the density they are drawn at.
+
 ### Changed
 - The per-format pixel reads and writes (`SrcKind`, `ReadSrcPixel`,
   `ReadDstPixel`, `WriteDstPixel`) moved from QuadBlit.cpp into the public

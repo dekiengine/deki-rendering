@@ -46,6 +46,23 @@ enum class AlphaMode : uint8_t
  * in addition to the Render method for drawing.
  */
 DEKI_CATEGORY("Core")
+/**
+ * @brief The view being drawn: its pixels per world meter and its size.
+ *
+ * Set by the renderer before it asks components for their content, so a
+ * component that bakes pixels (a gradient) can bake them at the density they
+ * will be drawn at and land 1:1 on the screen, instead of being scaled by a
+ * fractional factor afterwards. pixelsPerMeter is 0 outside a frame.
+ */
+struct DrawView
+{
+    float pixelsPerMeter = 0.0f;
+    int32_t width = 0;
+    int32_t height = 0;
+};
+const DrawView& CurrentDrawView();
+void SetCurrentDrawView(const DrawView& view);
+
 class RendererComponent : public Deki::Component, public Deki::ISortableProvider
 {
    public:

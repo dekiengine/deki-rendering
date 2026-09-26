@@ -318,6 +318,21 @@ void Standard2DRenderer::CollectSortableItems(Deki::Object* obj, std::vector<Sor
 
 // --- Main render loop ---
 
+namespace
+{
+DrawView s_CurrentDrawView;
+}
+
+const DrawView& CurrentDrawView()
+{
+    return s_CurrentDrawView;
+}
+
+void SetCurrentDrawView(const DrawView& view)
+{
+    s_CurrentDrawView = view;
+}
+
 void Standard2DRenderer::Render(Deki::Scene* scene, const RenderContext& ctx)
 {
     if (!scene || !ctx.camera || !ctx.buffer)
@@ -345,6 +360,7 @@ void Standard2DRenderer::Render(Deki::Scene* scene, const RenderContext& ctx)
     // Capture the camera once for the frame, against the target the passes
     // settled on. Everything below maps world to screen through this.
     frameCtx.cam = frameCtx.camera->CaptureFrameCamera(frameCtx.width, frameCtx.height);
+    SetCurrentDrawView({ frameCtx.cam.ppm, frameCtx.width, frameCtx.height });
 
     // Dirty-rect tracking: QuadBlit records every blit into the caller's
     // buffer. A pass that installed its own frame target composites back into
@@ -382,6 +398,7 @@ void Standard2DRenderer::Render(Deki::Scene* scene, const RenderContext& ctx)
     // Post-frame composites (e.g. screen-space overlays).
     for (auto it = m_EndPasses.rbegin(); it != m_EndPasses.rend(); ++it)
         (*it)->EndFrame(frameCtx);
+    SetCurrentDrawView({});
 
     if (ctx.trackDirty)
         QuadBlit::SetDirtyTracking(nullptr, nullptr);
