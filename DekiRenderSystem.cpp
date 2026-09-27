@@ -92,7 +92,7 @@ bool DekiRenderSystem::Setup(int32_t width, int32_t height, Deki::ColorFormat fo
     m_ScreenHeight = height;
     m_ColorFormat = format;
 
-    // Prefer a display-provided internal RAM buffer (avoids a memcpy in Present).
+    // Prefer a buffer the display provides (avoids a memcpy in Present).
     if (TryAdoptDisplayBuffer())
         return true;
 
