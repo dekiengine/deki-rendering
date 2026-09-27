@@ -19,18 +19,22 @@ alongside one that has them.
 - The per-format pixel reads and writes (`SrcKind`, `ReadSrcPixel`,
   `ReadDstPixel`, `WriteDstPixel`) moved from QuadBlit.cpp into the public
   `PixelFormat.h`, so deki-3d shares them. Output is unchanged.
-- **One camera for every screen.** `CameraComponent` fits the project's design
-  area to whatever it renders into, per the project's Screen Fit, and adds its
-  `zoom` (1 = the design area). Pixel Perfect scales by whole numbers and puts
-  the camera and every draw position on the art-pixel grid.
+- **The camera frames the world, on every screen.** `CameraComponent` shows
+  `orthoHeight` meters top to bottom (Orthographic) or a vertical
+  `fieldOfView` (Perspective); the width follows the screen. A bigger screen
+  of the same shape shows the same world, drawn bigger. `pixelPerfect` scales
+  by whole numbers and puts the camera and every draw position on the
+  art-pixel grid.
 - The camera has a `projection`: Orthographic, or Perspective with
   `fieldOfView`, `nearPlane` and `farPlane` (these moved here from deki-3d).
-- Scenes convert on load: the camera's `pixelsPerMeter` p becomes
-  `zoom = p / project pixels per meter` (0 becomes 1), which looks the same on
-  the design screen. The camera's `pixelSnap` is now the project's Pixel
-  Perfect and is dropped.
-- The camera's inspector says what it shows; its gizmo draws the design area
-  and, dashed, what the previewed screen sees.
+- Scenes convert on load. A 0.16 camera's `pixelsPerMeter` p shows
+  `p / project pixels per meter` times as close; `orthoHeight` is the
+  project's old Framebuffer height (in meters, `targetHeight / pixels per
+  meter` for a 0.16 project) divided by that, so the picture is the same on a
+  screen of the old shape. `pixelSnap`, or the old project's Pixel Perfect,
+  becomes the camera's `pixelPerfect`.
+- The camera's inspector says what it shows on the previewed screen, and its
+  gizmo draws that.
 
 ### Fixed
 - `QuadBlit::RegisterKernel`/`GetKernel` checked an unsigned id for being

@@ -2,8 +2,9 @@
  * @file FrameCameraTests.cpp
  * @brief The camera on screens of every size: the per-frame snapshot must map
  *        world to screen exactly like CameraComponent::WorldToScreen, and the
- *        design area must fit each screen per the project's Screen Fit and
- *        Pixel Perfect settings.
+ *        camera's ortho height must frame each screen the same way: a fixed
+ *        height, a width that follows the screen, whole-number scaling under
+ *        Pixel Perfect.
  */
 
 #include <gtest/gtest.h>
@@ -11,10 +12,9 @@
 #include <cstdint>
 
 #include <deki/Object.h>
-#include <deki/ScreenScale.h>
 #include "CameraComponent.h"
 #include "FrameCamera.h"
-#include "ScopedDesignArea.h"
+#include "ScopedArtDensity.h"
 
 // The package's types moved into its namespace; tests name them unqualified.
 using namespace DekiRendering;
@@ -65,10 +65,11 @@ TEST(FrameCamera, DefaultIsNotValid)
     EXPECT_FALSE(fc.valid);
 }
 
-TEST(FrameCamera, DesignScreenIsOneToOne)
+TEST(FrameCamera, OrthoHeightFillsTheScreenHeight)
 {
-    ScopedDesignArea design(80.0f, 45.0f);  // deki-demo: 1280 x 720 at 16 px/m
+    ScopedArtDensity art;
     CameraFixture f;
+    f.camera->orthoHeight = 45.0f;  // 1280 x 720 at 16 px/m
     EXPECT_EQ(f.camera->GetPixelsPerMeter(1280, 720), 16.0f);
     const FrameCamera fc = f.camera->CaptureFrameCamera(1280, 720);
     EXPECT_EQ(fc.halfW, 640.0f);
@@ -76,67 +77,69 @@ TEST(FrameCamera, DesignScreenIsOneToOne)
     EXPECT_EQ(fc.snapStep, 0);
 }
 
-TEST(FrameCamera, ShowAllKeepsTheWholeDesignAreaVisible)
+TEST(FrameCamera, BiggerScreenShowsTheSameWorldBigger)
 {
-    ScopedDesignArea design(80.0f, 45.0f);
+    ScopedArtDensity art;
     CameraFixture f;
-    // 4:3 is narrower: the full 80 m width, and more height than designed.
-    EXPECT_FLOAT_EQ(VisibleWidth(*f.camera, 320, 240), 80.0f);
-    EXPECT_FLOAT_EQ(VisibleHeight(*f.camera, 320, 240), 60.0f);
-    // Portrait: still the full width, a lot more height.
-    EXPECT_FLOAT_EQ(VisibleWidth(*f.camera, 240, 320), 80.0f);
-    EXPECT_NEAR(VisibleHeight(*f.camera, 240, 320), 106.667f, 1e-3f);
-    // Wider than designed: the full height, more width.
-    EXPECT_FLOAT_EQ(VisibleHeight(*f.camera, 2560, 1080), 45.0f);
-    EXPECT_GT(VisibleWidth(*f.camera, 2560, 1080), 80.0f);
-    // Same shape, any resolution: exactly the design area.
-    EXPECT_FLOAT_EQ(VisibleWidth(*f.camera, 1920, 1080), 80.0f);
-    EXPECT_FLOAT_EQ(VisibleHeight(*f.camera, 1920, 1080), 45.0f);
+    f.camera->orthoHeight = 15.0f;
+    // Same shape, 3.2x the pixels: the same 20 x 15 m, drawn 3.2x larger.
+    EXPECT_FLOAT_EQ(VisibleWidth(*f.camera, 320, 240), 20.0f);
+    EXPECT_FLOAT_EQ(VisibleHeight(*f.camera, 320, 240), 15.0f);
+    EXPECT_FLOAT_EQ(VisibleWidth(*f.camera, 1024, 768), 20.0f);
+    EXPECT_FLOAT_EQ(VisibleHeight(*f.camera, 1024, 768), 15.0f);
+    EXPECT_FLOAT_EQ(f.camera->GetPixelsPerMeter(1024, 768), 3.2f * f.camera->GetPixelsPerMeter(320, 240));
 }
 
-TEST(FrameCamera, FillCoversTheScreenAndCrops)
+TEST(FrameCamera, WidthFollowsTheScreenShape)
 {
-    ScopedDesignArea design(80.0f, 45.0f, Deki::ScreenFit::Fill);
+    ScopedArtDensity art;
     CameraFixture f;
-    // 4:3: the full height, the sides cropped.
-    EXPECT_FLOAT_EQ(VisibleHeight(*f.camera, 320, 240), 45.0f);
-    EXPECT_FLOAT_EQ(VisibleWidth(*f.camera, 320, 240), 60.0f);
-    // Wider: the full width, top and bottom cropped.
-    EXPECT_FLOAT_EQ(VisibleWidth(*f.camera, 2560, 1080), 80.0f);
-    EXPECT_LT(VisibleHeight(*f.camera, 2560, 1080), 45.0f);
+    f.camera->orthoHeight = 11.25f;
+    // The height never changes; a wider screen shows more at the sides, a
+    // narrower one less.
+    EXPECT_FLOAT_EQ(VisibleHeight(*f.camera, 1280, 720), 11.25f);
+    EXPECT_FLOAT_EQ(VisibleWidth(*f.camera, 1280, 720), 20.0f);
+    EXPECT_FLOAT_EQ(VisibleHeight(*f.camera, 320, 240), 11.25f);
+    EXPECT_FLOAT_EQ(VisibleWidth(*f.camera, 320, 240), 15.0f);
+    EXPECT_FLOAT_EQ(VisibleHeight(*f.camera, 2560, 1080), 11.25f);
+    EXPECT_GT(VisibleWidth(*f.camera, 2560, 1080), 20.0f);
+    EXPECT_FLOAT_EQ(VisibleHeight(*f.camera, 240, 320), 11.25f);  // portrait
 }
 
-TEST(FrameCamera, ZoomScalesTheDesignArea)
+TEST(FrameCamera, SmallerOrthoHeightIsCloser)
 {
-    ScopedDesignArea design(20.0f, 15.0f);
+    ScopedArtDensity art;
     CameraFixture f;
-    f.camera->zoom = 2.0f;
+    f.camera->orthoHeight = 7.5f;
+    EXPECT_EQ(f.camera->GetPixelsPerMeter(320, 240), 32.0f);
     EXPECT_FLOAT_EQ(VisibleWidth(*f.camera, 320, 240), 10.0f);
-    EXPECT_FLOAT_EQ(VisibleHeight(*f.camera, 320, 240), 7.5f);
-    f.camera->zoom = 0.5f;
-    EXPECT_FLOAT_EQ(VisibleWidth(*f.camera, 320, 240), 40.0f);
 }
 
 TEST(FrameCamera, PixelPerfectScalesByWholeNumbers)
 {
-    // 320 x 240 of art at 16 px/m.
-    ScopedDesignArea design(20.0f, 15.0f, Deki::ScreenFit::ShowAll, /*pixelPerfect=*/true);
+    // 15 m of art at 16 px/m: 240 art pixels tall.
+    ScopedArtDensity art;
     CameraFixture f;
+    f.camera->orthoHeight = 15.0f;
+    f.camera->pixelPerfect = true;
     EXPECT_EQ(f.camera->GetPixelsPerMeter(320, 240), 16.0f);   // 1x
     EXPECT_EQ(f.camera->GetPixelsPerMeter(640, 480), 32.0f);   // 2x
-    EXPECT_EQ(f.camera->GetPixelsPerMeter(1280, 720), 48.0f);  // 3x, extra world at the sides
-    EXPECT_EQ(f.camera->GetPixelsPerMeter(400, 300), 16.0f);   // 1.25 rounds down to 1x
+    EXPECT_EQ(f.camera->GetPixelsPerMeter(1280, 720), 48.0f);  // 3x
+    EXPECT_EQ(f.camera->GetPixelsPerMeter(400, 300), 16.0f);   // 1.25 rounds down: a little more world
+    EXPECT_FLOAT_EQ(VisibleHeight(*f.camera, 400, 300), 18.75f);
     EXPECT_EQ(f.camera->GetPixelsPerMeter(200, 150), 16.0f);   // smaller: stays 1x and crops
-    EXPECT_FLOAT_EQ(VisibleWidth(*f.camera, 200, 150), 12.5f);
+    EXPECT_FLOAT_EQ(VisibleHeight(*f.camera, 200, 150), 9.375f);
 
-    f.camera->zoom = 1.5f;  // 1x * 1.5 rounds to 2x
-    EXPECT_EQ(f.camera->GetPixelsPerMeter(320, 240), 32.0f);
+    f.camera->orthoHeight = 10.0f;  // 1.5x at 240 rounds down to 1x
+    EXPECT_EQ(f.camera->GetPixelsPerMeter(320, 240), 16.0f);
 }
 
 TEST(FrameCamera, PixelPerfectPutsTheCameraOnTheArtGrid)
 {
-    ScopedDesignArea design(20.0f, 15.0f, Deki::ScreenFit::ShowAll, /*pixelPerfect=*/true);
+    ScopedArtDensity art;
     CameraFixture f;
+    f.camera->orthoHeight = 15.0f;
+    f.camera->pixelPerfect = true;
     f.owner->SetX(0.04f);   // 0.64 art px: snaps to 1
     f.owner->SetY(-0.02f);  // -0.32 art px: snaps to 0
     const FrameCamera fc = f.camera->CaptureFrameCamera(641, 481);  // 2x, odd size
@@ -149,10 +152,11 @@ TEST(FrameCamera, PixelPerfectPutsTheCameraOnTheArtGrid)
     ExpectSnapshotMatchesCamera(*f.camera, 641, 481);
 }
 
-TEST(FrameCamera, FixedPixelsPerMeterIgnoresTheDesignArea)
+TEST(FrameCamera, FixedPixelsPerMeterIgnoresTheOrthoHeight)
 {
-    ScopedDesignArea design(80.0f, 45.0f, Deki::ScreenFit::ShowAll, /*pixelPerfect=*/true);
+    ScopedArtDensity art;
     CameraFixture f;
+    f.camera->pixelPerfect = true;
     f.camera->SetFixedPixelsPerMeter(16.0f);
     EXPECT_EQ(f.camera->GetPixelsPerMeter(333, 777), 16.0f);
     EXPECT_EQ(f.camera->CaptureFrameCamera(333, 777).snapStep, 0);  // the scene view is not a screen
@@ -160,27 +164,29 @@ TEST(FrameCamera, FixedPixelsPerMeterIgnoresTheDesignArea)
 
 TEST(FrameCamera, EmptyScreenDrawsNothing)
 {
-    ScopedDesignArea design(20.0f, 15.0f);
+    ScopedArtDensity art;
     CameraFixture f;
-    EXPECT_EQ(f.camera->GetPixelsPerMeter(0, 240), 0.0f);
-    EXPECT_FALSE(f.camera->CaptureFrameCamera(0, 240).valid);
+    EXPECT_EQ(f.camera->GetPixelsPerMeter(320, 0), 0.0f);
+    EXPECT_FALSE(f.camera->CaptureFrameCamera(320, 0).valid);
+    f.camera->orthoHeight = 0.0f;
+    EXPECT_EQ(f.camera->GetPixelsPerMeter(320, 240), 0.0f);
 }
 
 TEST(FrameCamera, MatchesCameraAtManySizes)
 {
-    ScopedDesignArea design(20.0f, 15.0f);
+    ScopedArtDensity art;
     CameraFixture f;
     f.owner->SetX(0.37f);
     f.owner->SetY(-2.125f);
     ExpectSnapshotMatchesCamera(*f.camera, 320, 240);
     ExpectSnapshotMatchesCamera(*f.camera, 63, 47);
-    f.camera->zoom = 1.5f;
+    f.camera->orthoHeight = 10.0f;
     ExpectSnapshotMatchesCamera(*f.camera, 128, 96);
 }
 
 TEST(FrameCamera, ParentedCameraUsesWorldPosition)
 {
-    ScopedDesignArea design(20.0f, 15.0f);
+    ScopedArtDensity art;
     CameraFixture f;
     auto* rig = new Deki::Object("rig");
     rig->SetX(10.0f);
@@ -196,13 +202,17 @@ TEST(FrameCamera, ParentedCameraUsesWorldPosition)
     ExpectSnapshotMatchesCamera(*f.camera, 100, 100);
 }
 
-TEST(FrameCamera, PerspectiveFieldOfViewFollowsTheFit)
+TEST(FrameCamera, PerspectiveFieldOfViewIsVertical)
 {
-    ScopedDesignArea design(16.0f, 9.0f);
-    // The design shape keeps the field of view.
-    EXPECT_FLOAT_EQ(Deki::ResolveVerticalFieldOfView(60.0f, 1920, 1080), 60.0f);
-    // Narrower under Show All: wider vertically, so the design's width still fits.
-    EXPECT_GT(Deki::ResolveVerticalFieldOfView(60.0f, 320, 240), 60.0f);
-    // Wider under Show All: unchanged.
-    EXPECT_FLOAT_EQ(Deki::ResolveVerticalFieldOfView(60.0f, 2560, 1080), 60.0f);
+    CameraFixture f;
+    f.camera->projection = Deki::ProjectionMode::Perspective;
+    f.camera->fieldOfView = 60.0f;
+    // The vertical field of view is the same on every screen; only the width
+    // (the aspect) changes. Mat4 is m[column][row].
+    const Deki::Mat4 wide = f.camera->GetProjectionMatrix(1920, 1080);
+    const Deki::Mat4 small = f.camera->GetProjectionMatrix(320, 240);
+    const Deki::Mat4 big = f.camera->GetProjectionMatrix(640, 480);
+    EXPECT_FLOAT_EQ(wide.m[1][1], small.m[1][1]);  // y scale = 1 / tan(fov / 2)
+    EXPECT_NE(wide.m[0][0], small.m[0][0]);        // x scale follows the aspect
+    EXPECT_FLOAT_EQ(small.m[0][0], big.m[0][0]);   // same shape, same picture
 }

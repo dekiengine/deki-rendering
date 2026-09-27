@@ -30,7 +30,7 @@
 #include <deki/ComponentInterfaceAdapters.h>
 #include <deki/IClipProvider.h>
 #include <deki/ISortableProvider.h>
-#include "ScopedDesignArea.h"
+#include "ScopedArtDensity.h"
 #include "CameraComponent.h"
 #include "RendererComponent.h"
 #include "Standard2DRenderer.h"
@@ -143,9 +143,9 @@ void RegisterTestAdapters()
 
 struct SceneBuilder
 {
-    // Design area 4 x 3 m: a camera at zoom 1 maps the 64 x 48 target at
-    // 16 px/m, the scale every case below was pinned at.
-    ScopedDesignArea design{ 4.0f, 3.0f };
+    // A camera 3 m tall maps the 64 x 48 target at 16 px/m, the scale every
+    // case below was pinned at.
+    ScopedArtDensity art;
     Deki::Scene scene;
     CameraComponent* camera = nullptr;
 
@@ -153,6 +153,7 @@ struct SceneBuilder
     {
         auto* camObj = new Deki::Object("Camera");
         camera = camObj->AddComponent<CameraComponent>();
+        camera->orthoHeight = 3.0f;
         scene.AddObject(camObj);
     }
 
@@ -206,8 +207,8 @@ struct Case
     std::function<void(SceneBuilder&)> build;
 };
 
-// Camera at the origin, zoom 1 over a 4 m x 3 m design area: 16 px/m on the
-// 64 x 48 target, screen centre is world (0, 0).
+// Camera at the origin showing 3 m top to bottom: 16 px/m on the 64 x 48
+// target, screen centre is world (0, 0).
 const Case kCases[] = {
     { "sort order", [](SceneBuilder& b) {
         b.Sprite("back", 0.0f, 0.0f, 0xF800, 10);   // red, drawn last despite insertion order
@@ -278,15 +279,15 @@ const Case kCases[] = {
         b.Sprite("s", 0.0f, 0.0f, 0x07E0, 0)->pixelSnap = false;  // so the camera's snap is what differs
     } },
     { "pixel perfect snaps the camera", [](SceneBuilder& b) {
-        // Was the camera's own pixel snap; the project's Pixel Perfect does
-        // the same at 1x and produces the same pixels.
-        Deki::EngineSettings::Global().pixelPerfect = true;
+        // Was the camera's own pixel snap; Pixel Perfect does the same at 1x
+        // and produces the same pixels.
+        b.camera->pixelPerfect = true;
         b.camera->GetOwner()->SetX(0.04f);
         b.camera->GetOwner()->SetY(-0.02f);
         b.Sprite("s", 0.0f, 0.0f, 0x07E0, 0)->pixelSnap = false;  // so the camera's snap is what differs
     } },
-    { "camera zoom 1.5 (24 px/m)", [](SceneBuilder& b) {
-        b.camera->zoom = 1.5f;
+    { "camera 2 m tall (24 px/m)", [](SceneBuilder& b) {
+        b.camera->orthoHeight = 2.0f;
         b.Sprite("s", 0.2f, 0.1f, 0xFFE0, 0); } },
     { "parent rotation and scale", [](SceneBuilder& b) {
         auto* p = b.Object("p", 0.1f, 0.0f);

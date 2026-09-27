@@ -14,22 +14,21 @@ namespace DekiRendering
 /**
  * @brief The scene's camera: what part of the world the player sees.
  *
- * The project's design area (Project Settings > Framebuffer) is what the
- * player sees; every screen renders at its own native size and fits that area
- * per the project's Screen Fit. The camera adds its position, a zoom, and a
- * projection:
+ * Every screen renders at its own native size; the camera decides how much
+ * world that shows. It fixes the height, and the width follows the screen, so
+ * a bigger screen of the same shape shows the same world drawn bigger and a
+ * wider one shows more at the sides:
  *
  *   Orthographic  screen_px = (world - camera) * ppm + buffer_center
- *                 ppm = ResolveScreenPixelsPerMeter(w, h) * zoom
- *   Perspective   3D passes (deki-3d) use fieldOfView on the design shape,
- *                 adapted to the screen by the same fit. Sprites still draw
- *                 flat through the orthographic mapping.
+ *                 ppm = OrthoPixelsPerMeter(h, orthoHeight, ...)
+ *   Perspective   3D passes (deki-3d) use fieldOfView, vertical. Sprites
+ *                 still draw flat through the orthographic mapping.
  *
- * With the project's Pixel Perfect on, the zoomed scale is a whole multiple of
- * the art density and the camera sits on the art-pixel grid.
+ * With Pixel Perfect on, the scale is a whole multiple of the art density and
+ * the camera sits on the art-pixel grid.
  */
 DEKI_CATEGORY("Core")
-DEKI_DESCRIPTION("The view: position, zoom or field of view, and clear color.")
+DEKI_DESCRIPTION("The view: position, how much world it shows, and clear color.")
 DEKI_FORMER_NAME("CameraComponent")
 class CameraComponent : public Deki::Component, public Deki::ICamera
 {
@@ -39,17 +38,23 @@ public:
     DEKI_TOOLTIP("Colour the screen is filled with before anything is drawn. What shows wherever nothing covers it.")
     Deki::Color clearColor = Deki::Color(49, 77, 121);  // Background clear color
 
-    DEKI_TOOLTIP("Orthographic shows the project's design area, flat. Perspective shows a field of view in depth, for 3D meshes; sprites still draw flat.")
+    DEKI_TOOLTIP("Orthographic shows a fixed height of world, flat. Perspective shows a field of view in depth, for 3D meshes; sprites still draw flat.")
     DEKI_EXPORT
     Deki::ProjectionMode projection = Deki::ProjectionMode::Orthographic;
 
-    DEKI_TOOLTIP("1 shows exactly the project's design area; 2 is twice as close, 0.5 shows twice as much. With Pixel Perfect on, the result rounds to a whole-number scale.")
-    DEKI_RANGE(0.01f, 100.0f)
+    DEKI_TOOLTIP("How much world the camera shows top to bottom. The width follows the screen's shape: a wider screen shows more at the sides. A bigger screen of the same shape shows the same world, drawn bigger.")
+    DEKI_UNIT(Distance)
+    DEKI_RANGE(0.01f, 100000.0f)
     DEKI_VISIBLE_WHEN(projection, Orthographic)
     DEKI_EXPORT
-    float zoom = 1.0f;
+    float orthoHeight = 15.0f;
 
-    DEKI_TOOLTIP("Vertical field of view in degrees on a screen of the design area's shape. Other shapes adapt through the project's Screen Fit. 60 is a common default; larger looks wider and more distorted at the edges.")
+    DEKI_TOOLTIP("For pixel art. Scales by whole numbers only, so every art pixel is the same size on screen, and snaps the camera to the art-pixel grid. Rounds down: the camera shows a little more than its ortho height, and a screen too small for 1x crops.")
+    DEKI_VISIBLE_WHEN(projection, Orthographic)
+    DEKI_EXPORT
+    bool pixelPerfect = false;
+
+    DEKI_TOOLTIP("Vertical field of view in degrees. A wider screen sees more at the sides. 60 is a common default; larger looks wider and more distorted at the edges.")
     DEKI_RANGE(10, 150)
     DEKI_VISIBLE_WHEN(projection, Perspective)
     DEKI_EXPORT
@@ -75,10 +80,10 @@ public:
     CameraComponent();
     virtual ~CameraComponent() = default;
 
-    // ICamera: scale for a buffer of this size (design area fitted, times zoom).
+    // ICamera: scale for a buffer of this size (its height over orthoHeight).
     float GetPixelsPerMeter(int bufferWidth, int bufferHeight) const override;
-    float GetZoom() const override { return zoom; }
-    void SetZoom(float z) override { zoom = z; }
+    float GetOrthoHeight() const override { return orthoHeight; }
+    void SetOrthoHeight(float meters) override { orthoHeight = meters; }
     void SetFixedPixelsPerMeter(float ppm) override { m_FixedPixelsPerMeter = ppm > 0.0f ? ppm : 0.0f; }
 
     Deki::ProjectionMode GetProjectionMode() const override { return projection; }

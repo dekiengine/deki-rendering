@@ -28,17 +28,9 @@ float CameraComponent::GetPixelsPerMeter(int bufferWidth, int bufferHeight) cons
     if (m_FixedPixelsPerMeter > 0.0f)
         return m_FixedPixelsPerMeter;
 
-    const Deki::EngineSettings& s = Deki::EngineSettings::Global();
-    const float fit = Deki::ResolveScreenPixelsPerMeter(bufferWidth, bufferHeight, s);
-    if (fit <= 0.0f || zoom <= 0.0f)
-        return 0.0f;
-    if (!s.pixelPerfect)
-        return fit * zoom;
-
-    // Whole art-pixel multiples only: the fit is already one; round the zoomed
-    // multiple to the nearest whole number, never below 1.
-    const float multiple = std::round((fit / s.pixelsPerMeter) * zoom);
-    return s.pixelsPerMeter * (multiple < 1.0f ? 1.0f : multiple);
+    (void)bufferWidth;  // the height is fixed; the width follows the screen
+    return Deki::OrthoPixelsPerMeter(bufferHeight, orthoHeight, pixelPerfect,
+                                     Deki::EngineSettings::Global().pixelsPerMeter);
 }
 
 float CameraComponent::GetPositionX() const
@@ -81,10 +73,9 @@ FrameCamera CameraComponent::CaptureFrameCamera(int screenWidth, int screenHeigh
     // whole screen pixel, so every art pixel covers the same block of screen
     // pixels however the camera moves. The scene view's fixed scale is not a
     // screen and is left alone.
-    const Deki::EngineSettings& s = Deki::EngineSettings::Global();
-    if (s.pixelPerfect && m_FixedPixelsPerMeter <= 0.0f && s.pixelsPerMeter > 0.0f && fc.ppm > 0.0f)
+    const float art = Deki::EngineSettings::Global().pixelsPerMeter;
+    if (pixelPerfect && m_FixedPixelsPerMeter <= 0.0f && art > 0.0f && fc.ppm > 0.0f)
     {
-        const float art = s.pixelsPerMeter;
         fc.camX = std::round(fc.camX * art) / art;
         fc.camY = std::round(fc.camY * art) / art;
         fc.halfW = std::floor(fc.halfW);
@@ -103,8 +94,7 @@ Deki::Mat4 CameraComponent::GetProjectionMatrix(int bufferWidth, int bufferHeigh
     if (projection == Deki::ProjectionMode::Perspective)
     {
         constexpr float kDegToRad = 3.14159265358979f / 180.0f;
-        const float fov = Deki::ResolveVerticalFieldOfView(fieldOfView, bufferWidth, bufferHeight);
-        return Deki::Mat4::Perspective(fov * kDegToRad,
+        return Deki::Mat4::Perspective(fieldOfView * kDegToRad,
                                        static_cast<float>(bufferWidth) / static_cast<float>(bufferHeight),
                                        nearPlane, farPlane);
     }

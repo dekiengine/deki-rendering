@@ -23,11 +23,12 @@ Package Manager in the Deki Editor, or `DekiEditor --packages-add deki-rendering
 
 ## Camera
 
-`CameraComponent` shows the project's design area (Project Settings >
-Framebuffer) on whatever screen it renders to, fitted by the project's Screen
-Fit. `zoom` 1 is the design area. Projection is Orthographic, or Perspective
-with a field of view for 3D meshes. Every screen renders at its own resolution
-and shows the same world.
+`CameraComponent` decides how much world the player sees. Orthographic, it
+shows `orthoHeight` meters top to bottom and the width follows the screen: a
+bigger screen of the same shape shows the same world drawn bigger, a wider one
+shows more at the sides. Perspective, it shows a vertical `fieldOfView` for 3D
+meshes. `pixelPerfect` scales by whole numbers for pixel art. Every screen
+renders at its own resolution.
 
 ## Partial present (dirty rectangles)
 
