@@ -107,7 +107,6 @@ public:
             ui.PropertyField("orthoHeight");
             DrawScaleBadge(ui, *cam);
             ui.PropertyField("pixelPerfect");
-            ui.PropertyField("scaleUp");
         }
         else
         {

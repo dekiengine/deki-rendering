@@ -54,11 +54,6 @@ public:
     DEKI_EXPORT
     bool pixelPerfect = false;
 
-    DEKI_TOOLTIP("Off, the camera never draws art bigger than 1x: a bigger screen shows more of the world instead.")
-    DEKI_VISIBLE_WHEN(projection, Orthographic)
-    DEKI_EXPORT
-    bool scaleUp = true;
-
     DEKI_TOOLTIP("Vertical field of view in degrees. A wider screen sees more at the sides. 60 is a common default; larger looks wider and more distorted at the edges.")
     DEKI_RANGE(10, 150)
     DEKI_VISIBLE_WHEN(projection, Perspective)

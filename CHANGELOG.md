@@ -24,8 +24,7 @@ alongside one that has them.
   `fieldOfView` (Perspective); the width follows the screen. A bigger screen
   of the same shape shows the same world, drawn bigger. `pixelPerfect` scales
   by whole numbers and puts the camera and every draw position on the
-  art-pixel grid. `scaleUp` off stops the scale at 1x, so a bigger screen
-  shows more of the world instead of bigger art.
+  art-pixel grid.
 - The camera has a `projection`: Orthographic, or Perspective with
   `fieldOfView`, `nearPlane` and `farPlane` (these moved here from deki-3d).
 - Scenes convert on load. A 0.16 camera's `pixelsPerMeter` p shows

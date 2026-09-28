@@ -29,13 +29,8 @@ float CameraComponent::GetPixelsPerMeter(int bufferWidth, int bufferHeight) cons
         return m_FixedPixelsPerMeter;
 
     (void)bufferWidth;  // the height is fixed; the width follows the screen
-    const float art = Deki::EngineSettings::Global().pixelsPerMeter;
-    const float ppm = Deki::OrthoPixelsPerMeter(bufferHeight, orthoHeight, pixelPerfect, art);
-    // Scale Up off: never past 1x, so a bigger screen shows more world. A
-    // screen shorter than the ortho height still fits it.
-    if (!scaleUp && art > 0.0f && ppm > art)
-        return art;
-    return ppm;
+    return Deki::OrthoPixelsPerMeter(bufferHeight, orthoHeight, pixelPerfect,
+                                     Deki::EngineSettings::Global().pixelsPerMeter);
 }
 
 float CameraComponent::GetPositionX() const
