@@ -152,6 +152,21 @@ TEST(FrameCamera, PixelPerfectPutsTheCameraOnTheArtGrid)
     ExpectSnapshotMatchesCamera(*f.camera, 641, 481);
 }
 
+TEST(FrameCamera, ScaleUpOffShowsMoreWorldInsteadOfBiggerArt)
+{
+    ScopedArtDensity art;
+    CameraFixture f;
+    f.camera->orthoHeight = 15.0f;  // 240 art px
+    f.camera->scaleUp = false;
+    EXPECT_EQ(f.camera->GetPixelsPerMeter(1280, 720), 16.0f);  // 1x, not 3x
+    EXPECT_FLOAT_EQ(VisibleHeight(*f.camera, 1280, 720), 45.0f);
+    EXPECT_FLOAT_EQ(VisibleWidth(*f.camera, 1280, 720), 80.0f);
+    EXPECT_EQ(f.camera->GetPixelsPerMeter(320, 240), 16.0f);   // the reference itself
+    EXPECT_FLOAT_EQ(f.camera->GetPixelsPerMeter(160, 120), 8.0f);  // smaller still fits it
+    f.camera->pixelPerfect = true;
+    EXPECT_EQ(f.camera->GetPixelsPerMeter(1280, 720), 16.0f);
+}
+
 TEST(FrameCamera, FixedPixelsPerMeterIgnoresTheOrthoHeight)
 {
     ScopedArtDensity art;
