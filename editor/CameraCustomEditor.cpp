@@ -103,16 +103,20 @@ public:
         if (cam->projection != Deki::ProjectionMode::Orthographic)
             return;
 
-        // What this camera shows on the previewed screen (the design size
-        // unless the Play view picked another), so the number above and the
-        // picture in the Play view can be matched up.
+        // What this camera shows on the screen the Play view previews, and how
+        // big it is drawn there. The px the inspector shows for Ortho Height
+        // are art pixels (meters at the project's pixels per meter), not screen
+        // pixels: every screen scales them to fill its height, and this says by
+        // how much, so 240 px on a 720 px screen does not read as a crop.
         const int pw = SceneView::Get().GetPreviewWidth(), ph = SceneView::Get().GetPreviewHeight();
         const float ppm = cam->GetPixelsPerMeter(pw, ph);
-        if (ppm <= 0.0f)
+        const float art = Deki::EngineSettings::Global().pixelsPerMeter;
+        if (ppm <= 0.0f || art <= 0.0f)
             return;
-        char line[160];
-        std::snprintf(line, sizeof(line), "Shows %.4g x %.4g m on the previewed %d x %d screen", pw / ppm, ph / ppm, pw,
-                      ph);
+        const float w = pw / ppm, h = ph / ppm;
+        char line[200];
+        std::snprintf(line, sizeof(line), "Shows %.4g x %.4g m (%d x %d art px), drawn %.3gx on the previewed %d x %d screen",
+                      w, h, (int)std::lround(w * art), (int)std::lround(h * art), ppm / art, pw, ph);
         ui.Spacing();
         ui.TextDisabled(line);
     }
