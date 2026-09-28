@@ -42,7 +42,7 @@ public:
     DEKI_EXPORT
     Deki::ProjectionMode projection = Deki::ProjectionMode::Orthographic;
 
-    DEKI_TOOLTIP("How much world the camera shows top to bottom. In px these are art pixels (at the project's pixels per meter), not screen pixels: every screen scales them to fill its height, so 240 px fills a 720 px screen at 3x. The width follows the screen's shape: a wider screen shows more at the sides.")
+    DEKI_TOOLTIP("How much world the camera shows top to bottom. Every screen scales it to fill its height (the x beside it).")
     DEKI_UNIT(Distance)
     DEKI_RANGE(0.01f, 100000.0f)
     DEKI_VISIBLE_WHEN(projection, Orthographic)

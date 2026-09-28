@@ -97,28 +97,42 @@ public:
     void OnInspectorGUI(Deki::Component* comp) override
     {
         auto& ui = EditorUI::Get();
-        ui.DrawDefaultInspector();
-
         auto* cam = static_cast<CameraComponent*>(comp);
-        if (cam->projection != Deki::ProjectionMode::Orthographic)
-            return;
+        const bool ortho = cam->projection == Deki::ProjectionMode::Orthographic;
 
-        // What this camera shows on the screen the Play view previews, and how
-        // big it is drawn there. The px the inspector shows for Ortho Height
-        // are art pixels (meters at the project's pixels per meter), not screen
-        // pixels: every screen scales them to fill its height, and this says by
-        // how much, so 240 px on a 720 px screen does not read as a crop.
+        ui.PropertyField("clearColor");
+        ui.PropertyField("projection");
+        if (ortho)
+        {
+            ui.PropertyField("orthoHeight");
+            DrawScaleBadge(ui, *cam);
+            ui.PropertyField("pixelPerfect");
+        }
+        else
+        {
+            ui.PropertyField("fieldOfView");
+            ui.PropertyField("nearPlane");
+            ui.PropertyField("farPlane");
+        }
+        ui.PropertyField("clearEveryFrame");
+    }
+
+    // "x3" at the end of the Ortho Height field: how much the previewed screen
+    // draws it. In px the height is art pixels, which read like a resolution;
+    // the scale beside them shows they are not.
+    static void DrawScaleBadge(EditorUI& ui, const CameraComponent& cam)
+    {
         const int pw = SceneView::Get().GetPreviewWidth(), ph = SceneView::Get().GetPreviewHeight();
-        const float ppm = cam->GetPixelsPerMeter(pw, ph);
         const float art = Deki::EngineSettings::Global().pixelsPerMeter;
+        const float ppm = cam.GetPixelsPerMeter(pw, ph);
         if (ppm <= 0.0f || art <= 0.0f)
             return;
-        const float w = pw / ppm, h = ph / ppm;
-        char line[200];
-        std::snprintf(line, sizeof(line), "Shows %.4g x %.4g m (%d x %d art px), drawn %.3gx on the previewed %d x %d screen",
-                      w, h, (int)std::lround(w * art), (int)std::lround(h * art), ppm / art, pw, ph);
-        ui.Spacing();
-        ui.TextDisabled(line);
+        char badge[16];
+        std::snprintf(badge, sizeof(badge), "x%.3g", ppm / art);
+        float x0, y0, x1, y1, tw, th;
+        ui.GetItemRect(&x0, &y0, &x1, &y1);
+        ui.MeasureTextCss(12.0f, badge, &tw, &th);
+        ui.DrawTextCss(12.0f, x1 - tw - 8.0f, y0 + (y1 - y0 - th) * 0.5f, EditorUI::Rgba(150, 150, 150), badge);
     }
 
     bool GetDisplaySize(Deki::Component* comp, float& outWidth, float& outHeight) override
