@@ -8,7 +8,7 @@ breaking change bumps the minor across the editor, the engine and every
 package together, so a package with no changes of its own is still released
 alongside one that has them.
 
-## Unreleased
+## 0.17.0
 
 ### Added
 - `DekiRendering::CurrentDrawView()`: the view being drawn (its pixels per
@@ -16,6 +16,7 @@ alongside one that has them.
   bakes pixels can bake them at the density they are drawn at.
 
 ### Changed
+- `minEngine` 0.17.0. Reflection ABI 20: the package must be rebuilt.
 - The per-format pixel reads and writes (`SrcKind`, `ReadSrcPixel`,
   `ReadDstPixel`, `WriteDstPixel`) moved from QuadBlit.cpp into the public
   `PixelFormat.h`, so deki-3d shares them. Output is unchanged.
