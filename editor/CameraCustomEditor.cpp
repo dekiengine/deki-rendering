@@ -22,17 +22,17 @@ bool IsCameraType(const std::string& type)
     return type == "DekiRendering::CameraComponent" || type == "CameraComponent";
 }
 
-// Older cameras did not frame anything themselves. Before 0.18 a camera had
-// its own pixels per meter (0 = the project's) and a pixel snap; in 0.18 it had
-// a zoom over the project's design area, and Pixel Perfect was a project
-// setting. A camera now shows orthoHeight meters top to bottom and carries its
-// own Pixel Perfect, so:
+// Converts cameras saved in older forms. Before 0.18 a camera stored its own
+// pixels per meter (0 = the project's) and a pixel snap; 0.18 stored a zoom
+// over the project's design area, with Pixel Perfect as a project setting. A
+// camera now shows orthoHeight meters top to bottom and has its own Pixel
+// Perfect, so:
 //
 //   pixelsPerMeter p  ->  zoom = p / projectPpm (0 -> 1)
 //   zoom z            ->  orthoHeight = the old design area's height / z
 //   pixelSnap, the project's Pixel Perfect  ->  pixelPerfect
 //
-// On a screen the shape of the old design area the picture is identical. The
+// On a screen with the old design area's shape, the picture is identical. The
 // old design height and Pixel Perfect come from the project's framebuffer.json
 // (SceneView::GetLegacyFraming), which the editor reads when the project opens.
 void MigrateCameraFraming(nlohmann::json& components)
@@ -68,8 +68,8 @@ void MigrateCameraFraming(nlohmann::json& components)
             props.erase("pixelsPerMeter");
         }
 
-        // A camera saved with an ortho height is current; anything else is
-        // older, including one saved at every default (no zoom key = zoom 1).
+        // A camera saved with an ortho height is current. Anything else is
+        // older, including one saved with all defaults (no zoom key means 1).
         if (props.contains("orthoHeight"))
         {
             continue;
@@ -127,9 +127,9 @@ public:
         ui.PropertyField("clearEveryFrame");
     }
 
-    // "x3" at the end of the Ortho Height field: how much the previewed screen
-    // draws it. In px the height is art pixels, which read like a resolution;
-    // the scale beside them shows they are not.
+    // "x3" at the end of the Ortho Height field: the scale the previewed screen
+    // draws at. Shown in px, the height is in art pixels and could be mistaken
+    // for a resolution; the scale beside it makes that clear.
     static void DrawScaleBadge(EditorUI& ui, const CameraComponent& cam)
     {
         const int pw = SceneView::Get().GetPreviewWidth(), ph = SceneView::Get().GetPreviewHeight();
@@ -149,9 +149,9 @@ public:
 
     bool GetDisplaySize(Deki::Component* comp, float& outWidth, float& outHeight) override
     {
-        // In buffer pixels at the project's art density, the
-        // Deki2D::SpriteComponent convention: the world the previewed screen
-        // sees through this camera.
+        // The world the previewed screen sees through this camera, in buffer
+        // pixels at the project's art density (Deki2D::SpriteComponent's
+        // convention).
         auto* cam = static_cast<CameraComponent*>(comp);
         const float art = Deki::EngineSettings::Global().pixelsPerMeter;
         const int pw = SceneView::Get().GetPreviewWidth(), ph = SceneView::Get().GetPreviewHeight();
@@ -177,17 +177,17 @@ public:
             return;
         }
 
-        // DisplayWidth/Height are buffer pixels; each is editor zoom screen pixels.
+        // DisplayWidth/Height are in buffer pixels; each is `zoom` screen pixels.
         const float zoom = view.GetZoom();
         const float halfW = w * 0.5f * zoom;
         const float halfH = h * 0.5f * zoom;
         const float cx = view.GetScreenX();
         const float cy = view.GetScreenY();
 
-        // Deki accent (#3ac3ff, oklch(0.78 0.16 240)) - the same value as
-        // EditorTheme's Palette::Accent, spelled out here because a package DLL
-        // does not pull in the editor's ImGui theme header. Selected draws it
-        // opaque, unselected at 70%.
+        // Deki accent (#3ac3ff, oklch(0.78 0.16 240)), the same value as
+        // EditorTheme's Palette::Accent. Spelled out because a package DLL does
+        // not include the editor's ImGui theme header. Opaque when selected,
+        // 70% otherwise.
         const uint32_t color =
             view.IsCurrentObjectSelected() ? SceneView::Rgba(58, 195, 255, 255) : SceneView::Rgba(58, 195, 255, 180);
         view.DrawRect(cx - halfW, cy - halfH, cx + halfW, cy + halfH, color, 1.0f);

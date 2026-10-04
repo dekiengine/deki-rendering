@@ -11,22 +11,20 @@
 namespace DekiRendering
 {
 
-/**
- * @brief The scene's camera: what part of the world the player sees.
- *
- * Every screen renders at its own native size; the camera decides how much
- * world that shows. It fixes the height, and the width follows the screen, so
- * a bigger screen of the same shape shows the same world drawn bigger and a
- * wider one shows more at the sides:
- *
- *   Orthographic  screen_px = (world - camera) * ppm + buffer_center
- *                 ppm = OrthoPixelsPerMeter(h, orthoHeight, ...)
- *   Perspective   3D passes (deki-3d) use fieldOfView, vertical. Sprites
- *                 still draw flat through the orthographic mapping.
- *
- * With Pixel Perfect on, the scale is a whole multiple of the art density and
- * the camera sits on the art-pixel grid.
- */
+/// The scene's camera: what part of the world the player sees.
+///
+/// Every screen renders at its own native size; the camera decides how much
+/// world that shows. It fixes the height and the width follows the screen, so
+/// a bigger screen of the same shape shows the same world drawn bigger, and a
+/// wider one shows more at the sides:
+///
+///   Orthographic  screen_px = (world - camera) * ppm + buffer_center
+///                 ppm = OrthoPixelsPerMeter(h, orthoHeight, ...)
+///   Perspective   3D passes (deki-3d) use fieldOfView, vertical. Sprites
+///                 still draw flat through the orthographic mapping.
+///
+/// With Pixel Perfect on, the scale is a whole multiple of the art density and
+/// the camera sits on the art-pixel grid.
 DEKI_CATEGORY("Core")
 DEKI_DESCRIPTION("The view: position, how much world it shows, and clear color.")
 DEKI_FORMER_NAME("CameraComponent")
@@ -35,7 +33,7 @@ class CameraComponent : public Deki::Component, public Deki::ICamera
 public:
     DEKI_EXPORT
     DEKI_TOOLTIP("Colour the screen is filled with before anything is drawn. What shows wherever nothing covers it.")
-    Deki::Color clearColor = Deki::Color(49, 77, 121);  // Background clear color
+    Deki::Color clearColor = Deki::Color(49, 77, 121);
 
     DEKI_TOOLTIP("Orthographic shows a fixed height of world, flat. Perspective shows a field of view in depth, for 3D "
                  "meshes; sprites still draw flat.")
@@ -75,9 +73,9 @@ public:
     DEKI_EXPORT
     float farPlane = 100.0f;
 
-    // Clear the framebuffer to clearColor before each frame. Turn off when the
-    // first thing drawn covers the whole screen (a full-screen background
-    // sprite or tilemap): the clear is a full framebuffer write per frame.
+    // The clear is a full framebuffer write per frame, so turning it off pays
+    // when the first thing drawn covers the whole screen (a full-screen
+    // background sprite or tilemap).
     DEKI_TOOLTIP("Clear before each frame. Off, the previous frame stays underneath: faster when a full-screen "
                  "background covers everything, and occasionally what you want for trails.")
     DEKI_EXPORT
@@ -99,7 +97,7 @@ public:
     float GetFarPlane() const override { return farPlane; }
     Deki::Mat4 GetProjectionMatrix(int bufferWidth, int bufferHeight) const override;
 
-    // ICamera: Clear color
+    // ICamera: clear colour
     void GetClearColor(uint8_t& r, uint8_t& g, uint8_t& b) const override
     {
         r = clearColor.r;
@@ -113,21 +111,21 @@ public:
         clearColor.b = b;
     }
 
-    // Camera world position (meters), from owner Deki::Object transform
+    // Camera world position in meters, from the owner object's transform.
     float GetPositionX() const;
     float GetPositionY() const;
 
-    // Visible world size (meters) on a buffer of this size.
+    // Visible world size in meters on a buffer of this size.
     float GetVisibleWidth(int32_t bufferWidth, int32_t bufferHeight) const;
     float GetVisibleHeight(int32_t bufferWidth, int32_t bufferHeight) const;
 
     // Snapshot of this camera's world-to-screen mapping for a target of the
     // given size: position (snapped under Pixel Perfect), pixels per meter,
-    // centre. WorldToScreen below is this snapshot's WorldToScreen, so the two
-    // agree exactly; the renderer captures it once per frame (RenderContext::cam).
+    // centre. WorldToScreen below goes through this snapshot, so the two agree
+    // exactly; the renderer captures it once per frame (RenderContext::cam).
     FrameCamera CaptureFrameCamera(int screenWidth, int screenHeight) const;
 
-    // ICamera: Coordinate conversion (float in, float out)
+    // ICamera: coordinate conversion
     void WorldToScreen(float worldX, float worldY, int screenWidth, int screenHeight, float& screenX,
                        float& screenY) const override;
 
@@ -135,7 +133,8 @@ public:
                        float& worldY) const override;
 
 private:
-    // Not exported: set by views that are not a screen (the editor's scene view).
+    // Not exported: set by views that are not a screen (the editor's scene
+    // view). 0 means "derive from the buffer".
     float m_FixedPixelsPerMeter = 0.0f;
 };
 

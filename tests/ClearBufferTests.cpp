@@ -1,9 +1,6 @@
-/**
- * @file ClearBufferTests.cpp
- * @brief DekiRenderSystem::ClearBuffer / ClearRect write exactly the expected
- *        bytes in every framebuffer format, and ClearRect touches only its
- *        (clipped) rectangle.
- */
+// DekiRenderSystem::ClearBuffer and ClearRect write exactly the expected bytes
+// in every framebuffer format, and ClearRect touches only its clipped
+// rectangle.
 
 #include <gtest/gtest.h>
 #include <cstdint>
@@ -13,7 +10,7 @@
 #include <deki/Engine.h>
 #include "DekiRenderSystem.h"
 
-// The package's types moved into its namespace; tests name them unqualified.
+// Tests name the package's types unqualified.
 using namespace DekiRendering;
 
 namespace
@@ -35,7 +32,7 @@ std::vector<uint8_t> ExpectedPixel(Deki::ColorFormat f, uint8_t r, uint8_t g, ui
 const Deki::ColorFormat kFormats[] = { Deki::ColorFormat::RGB565, Deki::ColorFormat::RGB888,
                                        Deki::ColorFormat::ARGB8888, Deki::ColorFormat::RGB565A8 };
 
-// Every pixel of the framebuffer equals `px` inside the rect and `outside`
+// True when every framebuffer pixel equals `px` inside the rect and `outside`
 // elsewhere.
 void ExpectFill(const DekiRenderSystem& rs, int w, int h, int l, int t, int r, int b,
                 const std::vector<uint8_t>& inside, const std::vector<uint8_t>& outside)
@@ -91,8 +88,8 @@ TEST(ClearBuffer, ClearRectClipsToTheFramebuffer)
     rs.ClearBuffer(0, 0, 0);
     rs.ClearRect(-4, -4, 8, 8, 255, 255, 255);     // top-left corner, partly outside
     rs.ClearRect(12, 8, 100, 100, 255, 255, 255);  // bottom-right corner, partly outside
-    rs.ClearRect(20, 20, 4, 4, 255, 255, 255);     // fully outside: no-op
-    rs.ClearRect(3, 3, 0, 5, 255, 255, 255);       // empty: no-op
+    rs.ClearRect(20, 20, 4, 4, 255, 255, 255);     // fully outside: does nothing
+    rs.ClearRect(3, 3, 0, 5, 255, 255, 255);       // empty: does nothing
     const uint16_t* fb = reinterpret_cast<const uint16_t*>(rs.GetFrameBuffer());
     int white = 0;
     for (int i = 0; i < 16 * 12; ++i)

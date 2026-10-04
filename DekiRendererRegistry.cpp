@@ -8,7 +8,8 @@ namespace DekiRendering
 namespace DekiRendererRegistry
 {
 
-// Meyer's singleton — avoids static init order issues across translation units
+// Function-local static, so registrars in other translation units can use it
+// during static initialisation in any order.
 static std::unordered_map<std::string, DekiRendererFactory>& GetRegistry()
 {
     static std::unordered_map<std::string, DekiRendererFactory> s_Reg;

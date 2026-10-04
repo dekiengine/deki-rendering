@@ -1,19 +1,16 @@
-/**
- * @file QuadBlitTests.cpp
- * @brief Unit tests for QuadBlit namespace (clip stack, MakeSource, blitting)
- */
+// QuadBlit: the clip stack, MakeSource, blitting.
 
 #include <gtest/gtest.h>
 #include <cstring>
 #include <cstdint>
 #include "QuadBlit.h"
-#include <deki/Engine.h>  // For DekiColorFormat
+#include <deki/Engine.h>  // Deki::ColorFormat
 
-// The package's types moved into its namespace; tests name them unqualified.
+// Tests name the package's types unqualified.
 using namespace DekiRendering;
 
 // ============================================================================
-// Clip Rect Stack Tests
+// Clip rect stack
 // ============================================================================
 
 class QuadBlitClipTest : public ::testing::Test
@@ -57,7 +54,7 @@ TEST_F(QuadBlitClipTest, NestedClipsIntersect)
 {
     // Parent: 10,10 → 100,100
     QuadBlit::PushClipRect(10, 10, 100, 100);
-    // Child: 50,50 → 200,200 → should be clamped to 50,50 → 100,100
+    // Child: 50,50 → 200,200, clamped to 50,50 → 100,100
     QuadBlit::PushClipRect(50, 50, 200, 200);
 
     QuadBlit::ClipRect rect = QuadBlit::GetCurrentClipRect();
@@ -92,7 +89,7 @@ TEST_F(QuadBlitClipTest, ClearClipStackResetsEverything)
 
 TEST_F(QuadBlitClipTest, PopOnEmptyStackIsNoOp)
 {
-    // Should not crash
+    // Must not crash.
     QuadBlit::PopClipRect();
     QuadBlit::PopClipRect();
     QuadBlit::ClipRect rect = QuadBlit::GetCurrentClipRect();
@@ -115,7 +112,7 @@ TEST_F(QuadBlitClipTest, DisabledClipReturnsDefaultRect)
     QuadBlit::PushClipRect(10, 10, 100, 100);
     QuadBlit::SetClipEnabled(false);
 
-    // Should return default (unset) rect when disabled
+    // Disabled: the default (unset) rect.
     QuadBlit::ClipRect rect = QuadBlit::GetCurrentClipRect();
     EXPECT_FALSE(rect.IsSet());
 }
@@ -128,7 +125,7 @@ TEST_F(QuadBlitClipTest, ClearClipStackReEnablesClipping)
 }
 
 // ============================================================================
-// MakeSource Tests
+// MakeSource
 // ============================================================================
 
 class QuadBlitSourceTest : public ::testing::Test
@@ -146,9 +143,9 @@ TEST_F(QuadBlitSourceTest, RGB565OpaqueSource)
     EXPECT_EQ(src.bytesPerPixel, 2);
     EXPECT_FALSE(src.hasAlpha);
     EXPECT_TRUE(src.isRGB565);
-    // Borrowed by default: the renderer releasing a buffer its component is
-    // still using next frame is the worse of the two mistakes, and every
-    // component in-tree keeps its own.
+    // Borrowed by default: freeing a buffer its component still uses next
+    // frame is the worse mistake, and every component in the tree keeps its
+    // own.
     EXPECT_FALSE(src.ownsPixels);
     EXPECT_EQ(src.alphaOffset, 0);
 }
@@ -188,7 +185,7 @@ TEST_F(QuadBlitSourceTest, OwnsPixelsFlagPassedThrough)
 }
 
 // ============================================================================
-// Blit / BlitScaled Tests
+// Blit and BlitScaled
 // ============================================================================
 
 class QuadBlitPixelTest : public ::testing::Test
@@ -198,13 +195,13 @@ protected:
 
     void TearDown() override { QuadBlit::ClearClipStack(); }
 
-    // Helper: encode RGB565 pixel
+    // Encodes an RGB565 pixel.
     static uint16_t MakeRGB565(uint8_t r, uint8_t g, uint8_t b)
     {
         return ((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3);
     }
 
-    // Helper: read RGB565 pixel from buffer at (x, y)
+    // Reads the RGB565 pixel at (x, y).
     static uint16_t ReadRGB565(const uint8_t* buf, int32_t w, int32_t x, int32_t y)
     {
         return *reinterpret_cast<const uint16_t*>(buf + (y * w + x) * 2);
@@ -225,13 +222,13 @@ TEST_F(QuadBlitPixelTest, BlitScaled_RGB565_1x1_Opaque)
     // Blit at (1, 1), no scaling
     QuadBlit::BlitScaled(src, target, w, h, Deki::ColorFormat::RGB565, 1, 1, 1, 1);
 
-    // Pixel at (1,1) should be red
+    // (1,1) is red.
     EXPECT_EQ(ReadRGB565(target, w, 1, 1), srcPixel);
 
-    // Pixel at (0,0) should remain black
+    // (0,0) stays black.
     EXPECT_EQ(ReadRGB565(target, w, 0, 0), 0);
 
-    // Pixel at (2,2) should remain black
+    // (2,2) stays black.
     EXPECT_EQ(ReadRGB565(target, w, 2, 2), 0);
 }
 
@@ -257,7 +254,7 @@ TEST_F(QuadBlitPixelTest, BlitScaled_RGB565_2x2_AtOrigin)
     EXPECT_EQ(ReadRGB565(target, w, 0, 1), srcPixels[2]);
     EXPECT_EQ(ReadRGB565(target, w, 1, 1), srcPixels[3]);
 
-    // (2,0) should be black
+    // (2,0) stays black.
     EXPECT_EQ(ReadRGB565(target, w, 2, 0), 0);
 }
 
@@ -270,10 +267,10 @@ TEST_F(QuadBlitPixelTest, BlitScaled_FullyOutOfBounds_NoWrite)
     const int w = 4, h = 4;
     uint8_t target[w * h * 2] = { 0 };
 
-    // Blit at (10, 10) — completely outside 4x4 buffer
+    // Blit at (10, 10), entirely outside the 4x4 buffer.
     QuadBlit::BlitScaled(src, target, w, h, Deki::ColorFormat::RGB565, 10, 10, 1, 1);
 
-    // All pixels should remain black
+    // Every pixel stays black.
     for (int i = 0; i < w * h; i++)
     {
         EXPECT_EQ(reinterpret_cast<uint16_t*>(target)[i], 0) << "pixel " << i << " should be 0";
@@ -289,10 +286,10 @@ TEST_F(QuadBlitPixelTest, Blit_WithTintAlphaZero_NoWrite)
     const int w = 4, h = 4;
     uint8_t target[w * h * 2] = { 0 };
 
-    // Blit with tintA=0 (invisible)
+    // tintA 0: invisible.
     QuadBlit::Blit(src, target, w, h, Deki::ColorFormat::RGB565, 1, 1, 1.0f, 1.0f, 0.0f, 0.0f, 0.0f, 255, 255, 255, 0);
 
-    // All pixels should remain black
+    // Every pixel stays black.
     for (int i = 0; i < w * h; i++)
     {
         EXPECT_EQ(reinterpret_cast<uint16_t*>(target)[i], 0);
@@ -310,15 +307,15 @@ TEST_F(QuadBlitPixelTest, BlitScaled_ClipRectRestrictsOutput)
     const int w = 4, h = 4;
     uint8_t target[w * h * 2] = { 0 };
 
-    // Clip to only (0,0)→(1,1) — only top-left pixel should be written
+    // Clip to (0,0)→(1,1): only the top-left pixel is written.
     QuadBlit::PushClipRect(0, 0, 1, 1);
 
     QuadBlit::BlitScaled(src, target, w, h, Deki::ColorFormat::RGB565, 0, 0, 2, 2);
 
-    // (0,0) should be red (inside clip)
+    // (0,0), inside the clip, is red.
     EXPECT_EQ(ReadRGB565(target, w, 0, 0), red);
 
-    // (1,0), (0,1), (1,1) should be black (outside clip)
+    // (1,0), (0,1) and (1,1), outside the clip, stay black.
     EXPECT_EQ(ReadRGB565(target, w, 1, 0), 0);
     EXPECT_EQ(ReadRGB565(target, w, 0, 1), 0);
     EXPECT_EQ(ReadRGB565(target, w, 1, 1), 0);
@@ -337,21 +334,21 @@ TEST_F(QuadBlitPixelTest, BlitScaled_1x1_To_2x2_Upscale)
     // Scale 1x1 to 2x2 at (0,0)
     QuadBlit::BlitScaled(src, target, w, h, Deki::ColorFormat::RGB565, 0, 0, 2, 2);
 
-    // All 4 pixels in the 2x2 dest should be green
+    // All 4 pixels of the 2x2 destination are green.
     EXPECT_EQ(ReadRGB565(target, w, 0, 0), green);
     EXPECT_EQ(ReadRGB565(target, w, 1, 0), green);
     EXPECT_EQ(ReadRGB565(target, w, 0, 1), green);
     EXPECT_EQ(ReadRGB565(target, w, 1, 1), green);
 
-    // (2,0) should be black
+    // (2,0) stays black.
     EXPECT_EQ(ReadRGB565(target, w, 2, 0), 0);
 }
 
 // ============================================================================
-// Kernel dispatch tests
+// Kernel dispatch
 // ============================================================================
-// Verify that when a row kernel is registered AND alignment preconditions
-// hold, the dispatcher invokes it; otherwise the scalar inner loop runs.
+// When a row kernel is registered and the alignment preconditions hold, the
+// dispatcher calls it; otherwise the scalar loop runs.
 
 namespace
 {
@@ -403,7 +400,7 @@ int KernelProbe::s_CallCount = 0;
 uint16_t KernelProbe::s_Marker = 0;
 int32_t KernelProbe::s_LastPixelCount = 0;
 
-// Allocates a 16-byte-aligned buffer (heap, freed via aligned-free helper).
+// A 16-byte-aligned heap buffer, freed by its aligned-free helper.
 struct AlignedBuf
 {
     uint8_t* base;
@@ -427,7 +424,7 @@ protected:
     void SetUp() override
     {
         QuadBlit::ClearClipStack();
-        // Clear any previously registered kernels.
+        // Clear any kernels registered earlier.
         QuadBlit::RegisterKernel(QuadBlit::KernelOp::RGB565CopyRow, nullptr);
         QuadBlit::RegisterKernel(QuadBlit::KernelOp::RGB565A8BlendRow, nullptr);
         KernelProbe::Reset();
@@ -443,12 +440,12 @@ protected:
 
 TEST_F(QuadBlitKernelDispatchTest, RGB565CopyRow_UsesKernel_WhenAligned)
 {
-    // 16-pixel-wide source/dest at 16-byte alignment.
+    // 16-pixel-wide source and destination, 16-byte aligned.
     const int w = 16, h = 1;
     AlignedBuf srcBuf(w * h * 2);
     AlignedBuf dstBuf(w * h * 2);
-    // Fill source with a recognisable scalar value so we can prove the kernel
-    // (which writes a different marker) actually ran.
+    // Fill the source with a recognisable value, so the kernel's different
+    // marker proves the kernel ran.
     uint16_t scalarValue = MakeRGB565Free(64, 128, 192);
     auto* srcPx = reinterpret_cast<uint16_t*>(srcBuf.aligned);
     for (int i = 0; i < w * h; ++i)
@@ -492,9 +489,9 @@ TEST_F(QuadBlitKernelDispatchTest, RGB565CopyRow_SkipsKernel_WhenSourceMisaligne
     QuadBlit::Source src = QuadBlit::MakeSource(srcMisaligned, w, h, QuadBlit::PixelLayout::RGB565(), false);
     QuadBlit::BlitScaled(src, dstBuf.aligned, w, h, Deki::ColorFormat::RGB565, 0, 0, w, h);
 
-    // Kernel must NOT have been called — alignment precondition failed.
+    // The kernel must not run: the alignment precondition failed.
     EXPECT_EQ(KernelProbe::s_CallCount, 0);
-    // Output must match the scalar copy (same as source).
+    // The output is the scalar copy, the same as the source.
     auto* dstPx = reinterpret_cast<uint16_t*>(dstBuf.aligned);
     for (int i = 0; i < w; ++i)
     {
@@ -504,7 +501,7 @@ TEST_F(QuadBlitKernelDispatchTest, RGB565CopyRow_SkipsKernel_WhenSourceMisaligne
 
 TEST_F(QuadBlitKernelDispatchTest, RGB565CopyRow_NoKernel_RunsScalar)
 {
-    // No kernel registered — bytes must be copied verbatim by the scalar path.
+    // No kernel registered: the scalar path copies the bytes verbatim.
     const int w = 8, h = 1;
     AlignedBuf srcBuf(w * h * 2);
     AlignedBuf dstBuf(w * h * 2);
@@ -527,13 +524,12 @@ TEST_F(QuadBlitKernelDispatchTest, RGB565CopyRow_NoKernel_RunsScalar)
 
 TEST_F(QuadBlitKernelDispatchTest, RGB565A8BlendRow_UsesKernel_WhenAligned_AndUntinted)
 {
-    // Source is RGB565A8 (3 bytes/pixel). At 1:1 with hasAlpha=true and no
-    // tint, no chroma key, no row-spans, the blend kernel slot should be
-    // consulted.
+    // Source is RGB565A8 (3 bytes/pixel). At 1:1 with hasAlpha true and no
+    // tint, chroma key or row spans, the blend kernel slot is used.
     const int w = 16, h = 1;
     AlignedBuf srcBuf(w * h * 3 + 16);
     AlignedBuf dstBuf(w * h * 2);
-    // Fill source with non-zero alpha so the per-pixel else branch is reached.
+    // Non-zero alpha, so the per-pixel else branch is reached.
     for (int i = 0; i < w * h; ++i)
     {
         srcBuf.aligned[i * 3 + 0] = 0x12;  // RGB565 lo
@@ -558,7 +554,7 @@ TEST_F(QuadBlitKernelDispatchTest, RGB565A8BlendRow_UsesKernel_WhenAligned_AndUn
 
 TEST_F(QuadBlitKernelDispatchTest, RGB565A8BlendRow_SkipsKernel_WhenTinted)
 {
-    // Tinted blend must take the scalar path even with alignment satisfied.
+    // A tinted blend takes the scalar path even when aligned.
     const int w = 16, h = 1;
     AlignedBuf srcBuf(w * h * 3 + 16);
     AlignedBuf dstBuf(w * h * 2);
@@ -573,16 +569,16 @@ TEST_F(QuadBlitKernelDispatchTest, RGB565A8BlendRow_SkipsKernel_WhenTinted)
     QuadBlit::RegisterKernel(QuadBlit::KernelOp::RGB565A8BlendRow, &KernelProbe::BlendRowMarker);
 
     QuadBlit::Source src = QuadBlit::MakeSource(srcBuf.aligned, w, h, QuadBlit::PixelLayout::RGB565A8(), false);
-    // Apply a non-identity tint -> precondition fails -> kernel must not run.
+    // A real tint fails the precondition, so the kernel must not run.
     QuadBlit::BlitScaled(src, dstBuf.aligned, w, h, Deki::ColorFormat::RGB565, 0, 0, w, h, 128, 128, 128, 255);
 
     EXPECT_EQ(KernelProbe::s_CallCount, 0);
 }
 
 // ============================================================================
-// RGB565A8 target tests
+// RGB565A8 targets
 // ============================================================================
-// Cover the new BlitScaled_*_to_RGB565A8 paths and their kernel-dispatch slots.
+// The paths into an RGB565A8 target and their kernel slots.
 
 class QuadBlitRGB565A8TargetTest : public ::testing::Test
 {
@@ -632,12 +628,12 @@ TEST_F(QuadBlitRGB565A8TargetTest, RGB565A8_to_RGB565A8_Opaque_Copies_RGB_AndSet
 
 TEST_F(QuadBlitRGB565A8TargetTest, RGB565A8_to_RGB565A8_AlphaZero_LeavesTargetUnchanged)
 {
-    // Source has alpha=0 — should be a no-op for that pixel.
+    // Source alpha 0: that pixel is left alone.
     const int w = 1, h = 1;
     uint16_t pix = MakeRGB565Free(255, 0, 0);
     uint8_t src[3] = { (uint8_t)(pix & 0xFF), (uint8_t)((pix >> 8) & 0xFF), 0 };
 
-    // Pre-fill target with a recognisable pattern.
+    // Fill the target with a recognisable pattern first.
     uint8_t target[w * h * 3] = { 0xAB, 0xCD, 0xEF };
 
     QuadBlit::Source s = QuadBlit::MakeSource(src, w, h, QuadBlit::PixelLayout::RGB565A8(), false);
@@ -665,7 +661,7 @@ TEST_F(QuadBlitRGB565A8TargetTest, RGB565A8_to_RGB565A8_PartialAlpha_OntoCleared
 
 TEST_F(QuadBlitRGB565A8TargetTest, RGB565_to_RGB565A8_SetsAlphaTo255)
 {
-    // Pure RGB565 source has no alpha; target alpha byte should be 0xFF.
+    // A plain RGB565 source has no alpha, so the target alpha byte is 0xFF.
     const int w = 2, h = 1;
     uint16_t srcPx[w];
     srcPx[0] = MakeRGB565Free(255, 0, 0);
@@ -685,7 +681,7 @@ TEST_F(QuadBlitRGB565A8TargetTest, RGB565_to_RGB565A8_SetsAlphaTo255)
     EXPECT_EQ(target[5], 255);
 }
 
-// Kernel dispatch coverage for the new RGB565A8-target slots.
+// Kernel dispatch for the RGB565A8-target slots.
 
 namespace
 {
@@ -718,7 +714,7 @@ uint8_t RGB565A8KernelProbe::s_Marker = 0;
 
 TEST_F(QuadBlitRGB565A8TargetTest, RGB565A8CopyRow_KernelInvoked_WhenAlignedAndOpaqueSource)
 {
-    // Source: hasAlpha=false → opaque-copy fast path.
+    // Source hasAlpha false: the opaque-copy fast path.
     const int w = 16, h = 1;
     AlignedBuf srcBuf(w * h * 3 + 16);
     AlignedBuf dstBuf(w * h * 3);
@@ -743,7 +739,7 @@ TEST_F(QuadBlitRGB565A8TargetTest, RGB565A8CopyRow_KernelInvoked_WhenAlignedAndO
 
 TEST_F(QuadBlitRGB565A8TargetTest, RGB565A8BlendRow_KernelInvoked_WhenAlignedAndAlphaSource)
 {
-    // Source: hasAlpha=true → alpha blend path; kernel slot consulted with no tint/key.
+    // Source hasAlpha true: the alpha blend path, whose kernel slot is used with no tint or key.
     const int w = 16, h = 1;
     AlignedBuf srcBuf(w * h * 3 + 16);
     AlignedBuf dstBuf(w * h * 3);
@@ -788,11 +784,11 @@ TEST_F(QuadBlitRGB565A8TargetTest, RGB565ToRGB565A8_KernelInvoked_WhenAligned)
 }
 
 // ============================================================================
-// Ordered-dither alpha tests
+// Ordered-dither alpha
 // ============================================================================
-// Cover the new useOrderedDither path. Validates: opaque pixels still draw,
-// fully-transparent pixels still skip, partial-alpha pixels follow the Bayer
-// threshold pattern (no destination read, no blend math).
+// The useOrderedDither path: opaque pixels still draw, fully transparent ones
+// are still skipped, and partial-alpha pixels follow the Bayer threshold
+// pattern (no destination read, no blend maths).
 
 class QuadBlitDitherTest : public ::testing::Test
 {
@@ -803,8 +799,8 @@ protected:
 
 TEST_F(QuadBlitDitherTest, OpaqueSrc_WritesAllPixels_RGB565A8_to_RGB565)
 {
-    // 4x1 RGB565A8 source with a==255 — every pixel must draw regardless of
-    // Bayer threshold. Hits the specialized RGB565A8→RGB565 dither path.
+    // 4x1 RGB565A8 source with alpha 255: every pixel draws whatever the
+    // Bayer threshold. Takes the RGB565A8→RGB565 dither path.
     const int w = 4, h = 1;
     uint8_t src[w * h * 3];
     uint16_t color = MakeRGB565Free(255, 128, 0);
@@ -829,7 +825,7 @@ TEST_F(QuadBlitDitherTest, OpaqueSrc_WritesAllPixels_RGB565A8_to_RGB565)
 
 TEST_F(QuadBlitDitherTest, ZeroAlphaSrc_LeavesTargetUnchanged)
 {
-    // src.a = 0 → must skip every pixel even with dither active.
+    // src.a = 0: every pixel is skipped, dither or not.
     const int w = 2, h = 1;
     uint8_t src[w * h * 3];
     uint16_t color = MakeRGB565Free(255, 0, 0);
@@ -852,10 +848,9 @@ TEST_F(QuadBlitDitherTest, ZeroAlphaSrc_LeavesTargetUnchanged)
 
 TEST_F(QuadBlitDitherTest, PartialAlpha_FollowsBayerThreshold)
 {
-    // 8x8 source filled with src.a = 128. The 8x8 Bayer matrix has values
-    // 0..255 spread evenly; threshold-comparing 128 against the matrix should
-    // pass for exactly half of the pixels. Each output pixel is either
-    // src-RGB or untouched (no blend).
+    // 8x8 source with src.a = 128. The Bayer matrix spreads its values evenly
+    // over 0..255, so exactly half the pixels pass the threshold. Each output
+    // pixel is either the source colour or untouched, never a blend.
     const int w = 8, h = 8;
     uint8_t src[w * h * 3];
     uint16_t color = MakeRGB565Free(0, 255, 0);  // green
@@ -865,7 +860,7 @@ TEST_F(QuadBlitDitherTest, PartialAlpha_FollowsBayerThreshold)
         src[i * 3 + 1] = (uint8_t)((color >> 8) & 0xFF);
         src[i * 3 + 2] = 128;
     }
-    uint16_t bg = MakeRGB565Free(0, 0, 255);  // blue background — must NOT be blended
+    uint16_t bg = MakeRGB565Free(0, 0, 255);  // blue background, must not be blended
     uint16_t target[w * h];
     for (int i = 0; i < w * h; ++i)
     {
@@ -892,16 +887,16 @@ TEST_F(QuadBlitDitherTest, PartialAlpha_FollowsBayerThreshold)
             FAIL() << "pixel " << i << " is " << target[i] << " — neither pure src nor pure bg, blend leaked";
         }
     }
-    // Bayer 8x8 has 64 unique values [0..255]. Pixels with threshold < 128 pass;
-    // exactly half (32) by construction.
+    // The 8x8 Bayer matrix has 64 distinct values in 0..255. Pixels with a
+    // threshold below 128 pass: exactly half (32) by construction.
     EXPECT_EQ(wrote, 32);
     EXPECT_EQ(kept, 32);
 }
 
 TEST_F(QuadBlitDitherTest, GenericPath_RGB565A8_to_RGB565A8)
 {
-    // Hits the generic dither path (target != RGB565). Same threshold
-    // semantics; just verify alpha=0 skip and alpha=255 write.
+    // The generic dither path (target not RGB565), with the same thresholds;
+    // checks only that alpha 0 skips and alpha 255 writes.
     const int w = 2, h = 1;
     uint8_t src[w * h * 3] = {
         0x00, 0xF8, 0xFF,  // red, opaque
@@ -922,7 +917,7 @@ TEST_F(QuadBlitDitherTest, GenericPath_RGB565A8_to_RGB565A8)
 }
 
 // ============================================================================
-// Regressions: row-span edge cases, clip-stack overflow, rotation tint order
+// Regressions: row-span edge cases, deep clip stacks, rotation tint order
 // ============================================================================
 
 namespace
@@ -951,10 +946,10 @@ protected:
     void TearDown() override { QuadBlit::ClearClipStack(); }
 };
 
-// A row with no fully-opaque pixel carries an EMPTY span (start == end == w).
-// With the old sentinel (start=w, end=0) the left region covered the whole row
-// and the right region covered it again from x=0: every soft pixel was blended
-// twice. The spanned blit must equal the unspanned one.
+// A row with no fully opaque pixel carries an empty span (start == end == w).
+// The spanned blit must equal the unspanned one; a span of (w, 0) would make
+// the left and right regions both cover the row and blend each soft pixel
+// twice.
 TEST_F(QuadBlitSpanRegressionTest, EmptyOpaqueSpan_BlendsEachPixelOnce)
 {
     const int w = 4;
@@ -975,12 +970,12 @@ TEST_F(QuadBlitSpanRegressionTest, EmptyOpaqueSpan_BlendsEachPixelOnce)
     {
         EXPECT_EQ(Read565(withSpans, w, x, 0), Read565(withoutSpans, w, x, 0)) << "x=" << x;
     }
-    // Half-alpha white over black is mid grey, not white (which double blending gives).
+    // Half-alpha white over black is mid grey; blending twice would give white.
     EXPECT_LT(Read565(withSpans, w, 0, 0), Pack565(200, 200, 200));
 }
 
-// The right-alpha region used to start at opaqueEnd even when the clip rect
-// started further right, writing pixels the clip had excluded.
+// The right alpha region must start at the clip start when the clip rect
+// starts after opaqueEnd, not write pixels the clip excludes.
 TEST_F(QuadBlitSpanRegressionTest, RightAlphaRegion_RespectsClipLeftEdge)
 {
     const int w = 4;
@@ -1003,8 +998,8 @@ TEST_F(QuadBlitSpanRegressionTest, RightAlphaRegion_RespectsClipLeftEdge)
     EXPECT_NE(Read565(target, w, 3, 0), 0u);
 }
 
-// The clip stack has no fixed capacity: 40 nested levels (deeper than the old
-// 16-slot array) all intersect and pop back out in order.
+// The clip stack has no fixed capacity: 40 nested levels all intersect and pop
+// back out in order.
 TEST_F(QuadBlitSpanRegressionTest, ClipStack_DeepNestingHasNoCap)
 {
     ASSERT_EQ(QuadBlit::GetClipStackDepth(), 0);
@@ -1021,12 +1016,12 @@ TEST_F(QuadBlitSpanRegressionTest, ClipStack_DeepNestingHasNoCap)
         QuadBlit::PopClipRect();
     }
     EXPECT_EQ(QuadBlit::GetClipStackDepth(), 0);
-    QuadBlit::PopClipRect();  // extra pop on an empty stack is harmless
+    QuadBlit::PopClipRect();  // an extra pop on an empty stack is harmless
     EXPECT_EQ(QuadBlit::GetClipStackDepth(), 0);
 }
 
-// The rotation path must tint the source BEFORE compositing, like every
-// BlitScaled kernel. A full turn takes the rotated code path with the same
+// The rotation path must tint the source before compositing, like every
+// BlitScaled path. A full turn takes the rotated code path with the same
 // geometry as no rotation, so the two must agree on the centre pixel.
 TEST_F(QuadBlitSpanRegressionTest, RotationPath_TintsSourceBeforeBlend)
 {
@@ -1056,8 +1051,9 @@ TEST_F(QuadBlitSpanRegressionTest, RotationPath_TintsSourceBeforeBlend)
 }
 
 // ---------------------------------------------------------------------------
-// Flips. Tiled-authored tiles carry H/V/D flags; they used to be expressed as
-// negative destination sizes, which BlitScaled rejects outright.
+// Flips. Tiled-authored tiles carry H/V/D flags, which map to the Source flip
+// fields; negative destination sizes are not flips, and BlitScaled rejects
+// them.
 // ---------------------------------------------------------------------------
 TEST_F(QuadBlitSpanRegressionTest, FlipH_MirrorsColumns)
 {

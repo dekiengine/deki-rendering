@@ -12,21 +12,15 @@ struct ComponentMeta;
 namespace DekiRendering
 {
 
-/**
- * @file DekiRenderingPackage.h
- * @brief Central header for the Deki Rendering Package
- *
- * This package provides the rendering subsystem:
- * - DekiRenderSystem: framebuffer management
- * - Standard2DRenderer: default 2D render pipeline
- * - QuadBlit: 2D blitting with transforms
- * - RendererComponent: abstract base for renderable components
- * - CameraComponent: camera/projection
- *
- * The engine can run without this package for headless/automation use cases.
- */
+// The rendering package:
+// - DekiRenderSystem: framebuffer management
+// - Standard2DRenderer: the default 2D render pipeline
+// - QuadBlit: 2D blitting with transforms
+// - RendererComponent: base class for renderable components
+// - CameraComponent: camera and projection
+//
+// The engine runs without this package for headless and automation use.
 
-// DLL export macro
 #ifdef _WIN32
 #if defined(DEKI_RENDERING_EXPORTS) || defined(DEKI_PLUGIN_EXPORTS)
 #define DEKI_RENDERING_API __declspec(dllexport)
@@ -38,8 +32,6 @@ namespace DekiRendering
 #endif
 
 #ifdef DEKI_EDITOR
-
-// Forward declarations
 
 extern "C"
 {

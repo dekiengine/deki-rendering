@@ -5,13 +5,7 @@
 namespace DekiRendering
 {
 
-// ============================================================================
-// Component Registration
-// ============================================================================
-// NOTE: s_Properties[] and s_ComponentMeta are now auto-generated in
-// RendererComponent.gen.h (included at end of RendererComponent.h)
-
-// Register ISortableProvider adapter for sorting order queries
+// Registers the ISortableProvider adapter, so sorting can read sortingOrder.
 static struct RendererSortableRegistrar
 {
     RendererSortableRegistrar()
@@ -22,9 +16,7 @@ static struct RendererSortableRegistrar
     }
 } s_RendererSortableReg;
 
-// ============================================================================
-
-// Pure virtual destructor still needs a definition
+// A pure virtual destructor still needs a definition.
 RendererComponent::~RendererComponent() = default;
 
 void RendererComponent::SetSortingOrder(int order)

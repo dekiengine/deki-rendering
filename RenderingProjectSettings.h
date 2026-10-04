@@ -7,15 +7,14 @@
 namespace DekiRendering
 {
 
-/**
- * @brief Project-wide rendering tradeoff toggles.
- *
- * Lives in the editor's Project Settings panel under the "Rendering" section.
- * dirtyTileTracking / dirtyTileSize drive DekiRenderSystem's dirty-rect
- * present (the field names predate the implementation and are the scene
- * format, so they stay). halfWidthFramebuffer and interlaced60hz have no
- * implementation yet; DekiRenderSystem::Setup logs when they are set.
- */
+/// Project-wide rendering trade-offs, in the "Rendering" section of the
+/// editor's Project Settings panel.
+///
+/// dirtyTileTracking and dirtyTileSize drive DekiRenderSystem's dirty-rect
+/// present. The feature tracks rectangles, not tiles, but the field names are
+/// part of the saved format and must stay. halfWidthFramebuffer and
+/// interlaced60hz are not implemented yet; DekiRenderSystem::Setup logs when
+/// they are set.
 DEKI_CATEGORY("Settings")
 DEKI_SETTINGS_SECTION("Rendering")
 DEKI_FORMER_NAME("RenderingProjectSettings")

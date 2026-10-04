@@ -1,14 +1,11 @@
-/**
- * @file DirtyRegionTests.cpp
- * @brief DirtyRegion: clipping, containment folding, the merge and
- *        full-coverage policies, alignment, union.
- */
+// DirtyRegion: clipping, folding of contained rectangles, the merge and
+// full-coverage policies, alignment, union.
 
 #include <gtest/gtest.h>
 
 #include "DirtyRegion.h"
 
-// The package's types moved into its namespace; tests name them unqualified.
+// Tests name the package's types unqualified.
 using namespace DekiRendering;
 
 namespace
@@ -53,7 +50,7 @@ TEST(DirtyRegion, ContainedRectanglesFold)
     r.Add(10, 10, 20, 20);
     r.Add(12, 12, 14, 14);  // inside: nothing new
     EXPECT_EQ(r.Rects().size(), 1u);
-    r.Add(0, 0, 30, 30);  // swallows the first
+    r.Add(0, 0, 30, 30);  // contains the first
     EXPECT_EQ(r.Rects().size(), 1u);
     EXPECT_EQ(r.Rects()[0].right, 30);
 }
@@ -88,7 +85,7 @@ TEST(DirtyRegion, CollapsesToFullAboveTheCoverageRatio)
     r.SetFullCoverageRatio(0.5f);
     r.Add(0, 0, 60, 60);  // 36%
     EXPECT_FALSE(r.IsFull());
-    r.Add(50, 50, 100, 100);  // +25% (overlap counted twice: conservative)
+    r.Add(50, 50, 100, 100);  // +25% (the overlap counts twice)
     EXPECT_TRUE(r.IsFull());
     EXPECT_TRUE(r.Rects().empty());
     EXPECT_TRUE(r.Contains(99, 0));

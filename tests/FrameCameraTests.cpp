@@ -1,11 +1,7 @@
-/**
- * @file FrameCameraTests.cpp
- * @brief The camera on screens of every size: the per-frame snapshot must map
- *        world to screen exactly like CameraComponent::WorldToScreen, and the
- *        camera's ortho height must frame each screen the same way: a fixed
- *        height, a width that follows the screen, whole-number scaling under
- *        Pixel Perfect.
- */
+// The camera on screens of every size. The per-frame snapshot must map world
+// to screen exactly like CameraComponent::WorldToScreen, and the ortho height
+// must frame each screen the same way: a fixed height, a width that follows
+// the screen, and whole-number scaling under Pixel Perfect.
 
 #include <gtest/gtest.h>
 #include <cmath>
@@ -16,7 +12,7 @@
 #include "FrameCamera.h"
 #include "ScopedArtDensity.h"
 
-// The package's types moved into its namespace; tests name them unqualified.
+// Tests name the package's types unqualified.
 using namespace DekiRendering;
 
 namespace
@@ -203,8 +199,8 @@ TEST(FrameCamera, ParentedCameraUsesWorldPosition)
     auto* rig = new Deki::Object("rig");
     rig->SetX(10.0f);
     rig->SetScale(2.0f, 2.0f);
-    // Re-parent: the fixture deletes `owner` through `rig` afterwards, so hand
-    // ownership over and clear the fixture's pointer.
+    // Re-parent: the fixture deletes `owner` through `rig` afterwards, so
+    // hand ownership over and clear the fixture's pointer.
     Deki::Object* cam = f.owner;
     f.owner = rig;
     rig->AddChild(cam);

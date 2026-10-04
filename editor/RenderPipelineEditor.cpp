@@ -1,15 +1,10 @@
 // Editor-only translation unit (a firmware build compiles nothing from it).
 #ifdef DEKI_EDITOR
 
-/**
- * @file RenderPipelineEditor.cpp
- * @brief AssetTypeEditor for RenderPipeline .asset files
- *
- * Provides inspector UI for editing render pipeline configuration:
- * - Renderer selection (dropdown of registered renderers)
- * - Render pass list with add/remove (dropdown of registered passes)
- * - Per-pass settings display
- */
+// Inspector for RenderPipeline .asset files:
+// - renderer choice (a dropdown of registered renderers)
+// - the pass list, with add and remove (a dropdown of registered passes)
+// - each pass's settings, read only
 
 #include <deki-editor/EditorExtension.h>
 #include <deki-editor/EditorRegistry.h>
@@ -48,7 +43,7 @@ public:
 
     bool Compile(const std::string& jsonData, std::vector<uint8_t>& rgba, int& width, int& height) override
     {
-        return false;  // No texture compilation
+        return false;  // nothing to compile into a texture
     }
 
     bool OnInspectorGUI(std::string& jsonData, const std::string& assetPath, const std::string& assetGuid) override
@@ -105,7 +100,7 @@ public:
             passes = nlohmann::json::array();
         }
 
-        // Cache pass names for dropdowns
+        // Pass names for the dropdowns.
         std::vector<std::string> passNames;
         DekiRendering::DekiRenderPassRegistry::GetAllNames(passNames);
 
@@ -121,7 +116,7 @@ public:
 
             std::string passType = pass.value("type", "");
 
-            // Collapsible header with built-in close button
+            // Collapsible header with its own close button.
             bool passOpen = true;
             bool open =
                 ui.CollapsingHeader(passType.empty() ? "(select pass type)" : passType.c_str(), &passOpen, true);
@@ -168,7 +163,7 @@ public:
                     ui.TextDisabled("No passes registered");
                 }
 
-                // Settings display
+                // Settings, read only.
                 if (!pass.contains("settings"))
                 {
                     pass["settings"] = nlohmann::json::object();
@@ -202,7 +197,7 @@ public:
         // Add pass button
         if (ui.Button("+ Add Pass"))
         {
-            // Default to first registered pass if available
+            // The first registered pass, if any.
             std::string defaultType = passNames.empty() ? "" : passNames[0];
             passes.push_back({ { "type", defaultType }, { "settings", nlohmann::json::object() } });
             modified = true;

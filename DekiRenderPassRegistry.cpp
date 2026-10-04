@@ -5,8 +5,8 @@
 namespace DekiRendering
 {
 
-// Forward-declared from DekiRenderingInit.h — kept here to avoid pulling the
-// init header into this registry's public surface.
+// From DekiRenderingInit.h, declared here so this registry does not include
+// the init header.
 void DekiRenderingDetachPass(const char* name);
 
 namespace DekiRenderPassRegistry
@@ -33,8 +33,8 @@ void Register(const char* name, RenderPassInfo info)
 
     GetRegistry()[name] = info;
 
-    // Late-attach for packages that load after DekiRenderingInitSystem already
-    // ran its scan. The callback is installed by DekiRenderingInitSystem.
+    // Attach passes of packages that load after DekiRenderingInitSystem's
+    // scan. DekiRenderingInitSystem installs the callback.
     if (info.autoAttach)
     {
         auto& cb = GetAutoAttachCallback();
@@ -68,11 +68,11 @@ void Unregister(const char* name)
     {
         return;
     }
-    // Tear down the live pass instance before removing the factory. The
-    // instance's vtable lives in the caller's DLL, which is typically about
-    // to unload (the static destructor that called us runs during DLL detach).
-    // Without this, deki-rendering's later shutdown deletes the pass through
-    // a freed vtable.
+    // Destroy the live pass before removing the factory. Its vtable lives in
+    // the caller's DLL, which is usually about to unload (the static
+    // destructor calling this runs during DLL detach); otherwise
+    // deki-rendering's later shutdown would delete the pass through a freed
+    // vtable.
     DekiRenderingDetachPass(name);
     GetRegistry().erase(name);
 }

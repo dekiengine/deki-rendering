@@ -1,17 +1,13 @@
-/**
- * @file Standard2DRendererGoldenTests.cpp
- * @brief Golden-image gate for the scene renderer (Standard2DRenderer): sort
- *        order and stability, transparent containers, inactive subtrees,
- *        nested clips, ignoreClip, renderer and camera pixel snapping, camera
- *        pixels-per-meter, parent rotation/scale, off-screen culling, alpha
- *        blending - on every target format.
- *
- * GoldenBlitTests pins the rasterizer; this pins everything the renderer does
- * around it. The constants were captured before the per-object overhead work
- * (FrameCamera, SortItem caching, hook masks) and must not change through it:
- * a differing hash there is a bug, not a re-pin. DEKI_GOLDEN_PRINT=1 lists
- * every case's hash so two builds can be compared case by case.
- */
+// Golden-image gate for the scene renderer (Standard2DRenderer): sort order and
+// stability, transparent containers, inactive subtrees, nested clips,
+// ignoreClip, renderer and camera pixel snapping, camera pixels-per-meter,
+// parent rotation and scale, off-screen culling, alpha blending, on every
+// target format.
+//
+// GoldenBlitTests pins the rasterizer; this pins everything the renderer does
+// around it. A performance change to the renderer must keep these hashes: a
+// differing hash then is a bug, not a reason to re-pin. DEKI_GOLDEN_PRINT=1
+// lists every case's hash so two builds can be compared case by case.
 
 #include <gtest/gtest.h>
 
@@ -37,7 +33,7 @@
 #include "DirtyRegion.h"
 #include "QuadBlit.h"
 
-// The package's types moved into its namespace; tests name them unqualified.
+// Tests name the package's types unqualified.
 using namespace DekiRendering;
 
 namespace
@@ -49,7 +45,7 @@ namespace
 class TestRenderer : public RendererComponent
 {
 public:
-    // Hand-written (not reflected): the class attaches its own entry.
+    // Hand-written, not reflected: the class sets its own type info.
     static const Deki::ComponentTypeInfo kTypeInfo;
     TestRenderer() { SetTypeInfo(&kTypeInfo); }
 
@@ -106,7 +102,7 @@ const Deki::ComponentTypeInfo TestRenderer::kTypeInfo =
 class TestClip : public Deki::Component, public Deki::IClipProvider, public Deki::ISortableProvider
 {
 public:
-    // Hand-written (not reflected): the class attaches its own entry.
+    // Hand-written, not reflected: the class sets its own type info.
     static const Deki::ComponentTypeInfo kTypeInfo;
     TestClip() { SetTypeInfo(&kTypeInfo); }
     float width = 1.0f, height = 1.0f;
@@ -121,7 +117,7 @@ const Deki::ComponentTypeInfo TestClip::kTypeInfo = Deki::MakeHandWrittenTypeInf
 class TestSortGroup : public Deki::Component, public Deki::ISortableProvider
 {
 public:
-    // Hand-written (not reflected): the class attaches its own entry.
+    // Hand-written, not reflected: the class sets its own type info.
     static const Deki::ComponentTypeInfo kTypeInfo;
     TestSortGroup() { SetTypeInfo(&kTypeInfo); }
     int32_t order = 0;
@@ -327,8 +323,8 @@ const Case kCases[] = {
     { "pixel perfect snaps the camera",
       [](SceneBuilder& b)
       {
-          // Was the camera's own pixel snap; Pixel Perfect does the same at 1x
-          // and produces the same pixels.
+          // Pixel Perfect at 1x snaps the camera to whole pixels, giving the
+          // same pixels as a plain camera pixel snap.
           b.camera->pixelPerfect = true;
           b.camera->GetOwner()->SetX(0.04f);
           b.camera->GetOwner()->SetY(-0.02f);
@@ -405,9 +401,6 @@ struct Expected
     uint64_t hash;
 };
 const Expected kExpected[] = {
-    // Re-pinned 2026-09-03 when the QuadBlit clip stack lost its 16-slot cap: only
-    // the "nested clips depth 40" case changed (levels 17..40 used to be clipped
-    // by level 16's rect); every other case hash is identical to the first pin.
     { Deki::ColorFormat::RGB565, "RGB565", 0x1d8eb3cd8824484dULL },
     { Deki::ColorFormat::RGB888, "RGB888", 0x57549d41cf335c9bULL },
     { Deki::ColorFormat::ARGB8888, "ARGB8888", 0x99d8e38d9ca41e9fULL },
@@ -449,9 +442,9 @@ TEST(RendererGoldenTest, ClipStackBalancedAfterDeepNesting)
     EXPECT_EQ(QuadBlit::GetClipStackDepth(), 0);
 }
 
-// A clip and a renderer on ONE object must render like the clip on a parent
+// A clip and a renderer on one object must render like the clip on a parent
 // with the renderer on a child at the same world position: the clip is pushed
-// before the object's own content is drawn (one component walk resolves both).
+// before the object's own content is drawn (one component walk finds both).
 TEST(RendererGoldenTest, ClipAndRendererOnOneObjectMatchesParentChildForm)
 {
     RegisterTestAdapters();
@@ -484,13 +477,13 @@ TEST(RendererGoldenTest, ClipAndRendererOnOneObjectMatchesParentChildForm)
     EXPECT_EQ(same[centre] | (same[centre + 1] << 8), 0x001F);
 }
 
-// A component type that gains an IClipProvider adapter AFTER the renderer has
-// already classified it (a package loading later) must clip from the next
-// frame on: the per-type cache is dropped when the adapter registry changes.
+// A component type that gains an IClipProvider adapter after the renderer has
+// classified it (a package loading later) must clip from the next frame on:
+// the per-type cache is cleared when the adapter registry changes.
 class TestLateClip : public Deki::Component, public Deki::IClipProvider
 {
 public:
-    // Hand-written (not reflected): the class attaches its own entry.
+    // Hand-written, not reflected: the class sets its own type info.
     static const Deki::ComponentTypeInfo kTypeInfo;
     TestLateClip() { SetTypeInfo(&kTypeInfo); }
     float GetClipWidth() const override { return 0.15f; }
@@ -506,8 +499,8 @@ TEST(RendererGoldenTest, AdapterRegisteredAfterFirstFrameTakesEffect)
     Deki::Object* holder = b.Object("holder", 0.0f, 0.0f);
     holder->AddComponent<TestLateClip>();
     // Like ClipComponent, a real clip is also sortable so the renderer claims
-    // it; an unclaimed container's clip is never pushed (containers only
-    // float their children up).
+    // it. An unclaimed container's clip is never pushed, since its children
+    // are sorted at its parent's level.
     holder->AddComponent<TestSortGroup>();
     auto* big = b.Sprite("big", 0.0f, 0.0f, 0xF800, 0, holder);
     big->sourcePpm = 4.0f;

@@ -1,9 +1,6 @@
-/**
- * @file RenderPassHookTests.cpp
- * @brief RenderPass::HookMask: the renderer calls a pass only for the hooks
- *        it declares, the default mask keeps every hook, and the mask is
- *        re-read each frame.
- */
+// RenderPass::HookMask: the renderer calls a pass only for the hooks it
+// declares, the default mask keeps every hook, and the mask is read again each
+// frame.
 
 #include <gtest/gtest.h>
 
@@ -19,7 +16,7 @@
 #include "Standard2DRenderer.h"
 #include "QuadBlit.h"
 
-// The package's types moved into its namespace; tests name them unqualified.
+// Tests name the package's types unqualified.
 using namespace DekiRendering;
 
 namespace
@@ -44,7 +41,7 @@ public:
 class DotRenderer : public RendererComponent
 {
 public:
-    // Hand-written (not reflected): the class attaches its own entry.
+    // Hand-written, not reflected: the class sets its own type info.
     static const Deki::ComponentTypeInfo kTypeInfo;
     DotRenderer() { SetTypeInfo(&kTypeInfo); }
     bool RenderContent(const Deki::Object*, QuadBlit::Source& out, float& px, float& py, uint8_t& r, uint8_t& g,

@@ -10,7 +10,6 @@
 #include <unordered_map>
 #include <vector>
 
-// Forward declarations
 namespace Deki
 {
 class Object;
@@ -33,28 +32,25 @@ namespace DekiRendering
 {
 class RendererComponent;
 
-/**
- * @brief Standard 2D renderer with built-in support for sprites, clipping, and sorting groups
- *
- * This is the default renderer for 2D scenes. It handles:
- * - RendererComponent: blits content via QuadBlit
- * - Deki2D::ClipComponent: pushes/pops clip rects around children
- * - Deki2D::SortingGroupComponent: groups children for sorting
- *
- * Extensible via:
- * - AddPass(): register custom RenderPass objects for new component types
- * - AddSortingCallback(): register custom sorting for new component types
- *
- * Can also be composed inside other renderers (e.g., a 3D renderer
- * that uses Standard2DRenderer for UI overlays).
- *
- * Per frame it captures the camera once into RenderContext::cam, resolves
- * each object's renderer / clip / sortable components with a single walk of
- * its component list (component types are classified once and cached), and
- * calls each pass only for the hooks its HookMask() declares. There are no
- * fixed capacities anywhere: passes, callbacks, objects per level and clip
- * depth all grow as needed.
- */
+/// The default renderer for 2D scenes, with built-in sprites, clipping and
+/// sorting groups:
+/// - RendererComponent: content blitted with QuadBlit
+/// - Deki2D::ClipComponent: clip rects pushed and popped around children
+/// - Deki2D::SortingGroupComponent: children grouped for sorting
+///
+/// Extend it with:
+/// - AddPass(): custom RenderPass objects for new component types
+/// - AddSortingCallback(): custom sorting for new component types
+///
+/// It can also be used inside other renderers (e.g. a 3D renderer that draws
+/// UI overlays with it).
+///
+/// Per frame it captures the camera once into RenderContext::cam, finds each
+/// object's renderer, clip and sortable components in one walk of its
+/// component list (component types are classified once and cached), and calls
+/// each pass only for the hooks its HookMask() declares. Nothing has a fixed
+/// capacity: passes, callbacks, objects per level and clip depth all grow as
+/// needed.
 class Standard2DRenderer : public DekiRenderer
 {
 public:
@@ -64,32 +60,18 @@ public:
     void Render(Deki::Scene* scene, const RenderContext& ctx) override;
     const DirtyRegion* GetLastFrameDirty() const override { return m_FrameDirtyValid ? &m_FrameDirty : nullptr; }
 
-    /**
-     * @brief Add a custom render pass
-     * @param pass Non-owning pointer to a RenderPass (caller manages lifetime)
-     */
+    /// Adds a custom render pass. Not owned: the caller manages its lifetime.
     void AddPass(RenderPass* pass);
 
-    /**
-     * @brief Remove a previously added render pass
-     * @param pass The pass to remove
-     */
     void RemovePass(RenderPass* pass);
 
-    /**
-     * @brief Add a custom sorting callback for new component types
-     * @param cb Function that returns true if an object is sortable, setting outOrder
-     */
+    /// Adds custom sorting for new component types.
     void AddSortingCallback(SortingCallback cb);
 
-    /**
-     * @brief Remove a previously added sorting callback
-     * @param cb The callback to remove
-     */
     void RemoveSortingCallback(SortingCallback cb);
 
 private:
-    std::vector<RenderPass*> m_Passes;  // in attach order; no cap
+    std::vector<RenderPass*> m_Passes;  // in attach order
     // Per-hook subsets of m_Passes in the same relative order, rebuilt from
     // HookMask() at the start of every frame. A pass that only implements
     // Execute costs nothing in the other four loops.
@@ -102,17 +84,17 @@ private:
 
     std::vector<SortingCallback> m_SortingCallbacks;
 
-    // Pixels of ctx.buffer the last frame changed (ctx.trackDirty renders
-    // only). QuadBlit adds every clipped blit rectangle; a pass that installs
+    // Pixels of ctx.buffer the last frame changed, for ctx.trackDirty renders
+    // only. QuadBlit adds every clipped blit rectangle; a pass that installs
     // its own frame target makes it full.
     DirtyRegion m_FrameDirty;
     bool m_FrameDirtyValid = false;
 
-    // What a component type contributes to rendering, resolved once per type
-    // (one hash lookup in this DLL per component per frame instead of two
-    // engine-registry probes per interface per component). Dropped whenever
-    // Deki::ComponentInterfaceAdapters::Version() changes, i.e. a package registered
-    // an adapter after the cache was filled.
+    // What a component type contributes to rendering, resolved once per type:
+    // one hash lookup in this DLL per component per frame instead of two
+    // engine-registry probes per interface per component. Cleared whenever
+    // Deki::ComponentInterfaceAdapters::Version() changes, i.e. a package
+    // registered an adapter after the cache was filled.
     struct TypeTraits
     {
         bool isRenderer;
@@ -131,10 +113,10 @@ private:
     };
     Renderables ResolveRenderables(Deki::Object* obj);
 
-    // One renderable claimed by a component, with the components already
-    // resolved and its insertion order so the sort is stable without
-    // std::stable_sort (whose temporary buffer was a heap allocation per
-    // parent per frame).
+    // One renderable claimed by a component, with its components already
+    // resolved and its insertion order, so the sort is stable without
+    // std::stable_sort, whose temporary buffer would allocate per parent per
+    // frame.
     struct SortItem
     {
         Deki::Object* obj;
@@ -143,11 +125,10 @@ private:
         int32_t order;
         uint32_t seq;
     };
-    // One scratch list per recursion depth. A deque, not a vector of vectors:
-    // Render() and RenderObject() hold a reference to their depth's list while
-    // deeper levels are created, and growing a vector<vector> moves the inner
-    // vectors, leaving that reference dangling (the renderer golden test found
-    // it as a use-after-free on the first frame with children).
+    // One scratch list per recursion depth. Must be a deque, not a vector of
+    // vectors: Render() and RenderObject() hold a reference to their depth's
+    // list while deeper levels are created, and growing a vector<vector> moves
+    // the inner vectors and leaves that reference dangling.
     std::deque<std::vector<SortItem>> m_SortScratch;
     int m_SortDepth = 0;
     std::vector<SortItem>& SortListForDepth(int depth);
@@ -156,7 +137,7 @@ private:
     void CollectSortableItems(Deki::Object* obj, std::vector<SortItem>& items);
     void RenderObject(const SortItem& item, const RenderContext& ctx);
 
-    // Built-in component handling
+    // Built-in components: clip and renderer.
     void ExecuteBuiltins(const SortItem& item, RenderContext& ctx);
     void PostExecuteBuiltins(const SortItem& item);
 };

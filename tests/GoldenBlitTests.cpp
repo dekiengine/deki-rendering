@@ -1,14 +1,10 @@
-/**
- * @file GoldenBlitTests.cpp
- * @brief Golden-image gate for QuadBlit: a fixed matrix of blits (every
- *        source format x every target format x scale/tint/alpha/dither/clip/
- *        flip/rotation/stride/chroma-key) hashed per target format.
- *
- * The expected hashes were captured from the kernels as they were before the
- * kernel refactor. Any change to what a blit writes - intended or not - shows
- * up here first; an intended change regenerates the constants (the test prints
- * the actual values) and says so in the commit message.
- */
+// Golden-image gate for QuadBlit: a fixed matrix of blits (every source format
+// x every target format x scale/tint/alpha/dither/clip/flip/rotation/stride/
+// chroma key), hashed per target format.
+//
+// Any change to what a blit writes, intended or not, shows up here first. An
+// intended change regenerates the constants (the test prints the actual
+// values) and says so in the commit message.
 
 #include <gtest/gtest.h>
 #include <cstdint>
@@ -17,9 +13,9 @@
 #include <cstdlib>
 #include <vector>
 #include "QuadBlit.h"
-#include <deki/Engine.h>  // DekiColorFormat
+#include <deki/Engine.h>  // Deki::ColorFormat
 
-// The package's types moved into its namespace; tests name them unqualified.
+// Tests name the package's types unqualified.
 using namespace DekiRendering;
 
 namespace
@@ -111,9 +107,9 @@ struct SrcBuf
     QuadBlit::Source src{};
 };
 
-// Deterministic source: every row has a run of fully opaque / non-key pixels
-// in the middle (so the row-span paths are exercised) and random alpha / key
-// pixels outside it. stridePad adds unused bytes per row.
+// Deterministic source: every row has a run of fully opaque, non-key pixels in
+// the middle (so the row-span paths run) and random alpha or key pixels
+// outside it. stridePad adds unused bytes per row.
 SrcBuf MakeSrc(SrcFmt f, int w, int h, uint32_t seed, int stridePad, bool chroma)
 {
     SrcBuf out;
@@ -134,9 +130,9 @@ SrcBuf MakeSrc(SrcFmt f, int w, int h, uint32_t seed, int stridePad, bool chroma
         }  // a row with no opaque pixel at all
         out.alphaSpans[y * 2] = static_cast<int16_t>(runStart);
         out.alphaSpans[y * 2 + 1] = static_cast<int16_t>(runEnd);
-        // Every third row with room for it gets a key pixel inside its run
-        // (a heart's notch): the span contract marks such a row (-1, -1) and
-        // the blit has to compare it pixel by pixel.
+        // Every third row with room gets a key pixel inside its run (like a
+        // heart's notch): the span contract marks such a row (-1, -1), and the
+        // blit must compare it pixel by pixel.
         const int holeX = (chroma && y % 3 == 1 && runEnd - runStart >= 3) ? (runStart + runEnd) / 2 : -1;
         out.chromaSpans[y * 2] = static_cast<int16_t>(holeX >= 0 ? -1 : runStart);
         out.chromaSpans[y * 2 + 1] = static_cast<int16_t>(holeX >= 0 ? -1 : runEnd);
@@ -155,9 +151,9 @@ SrcBuf MakeSrc(SrcFmt f, int w, int h, uint32_t seed, int stridePad, bool chroma
             {
                 a = (roll == 0) ? 0 : (roll == 1 ? 255 : rng.Byte());
             }
-            // Chroma-keyed sources honour the chromaRowSpans contract: every
-            // pixel outside the run IS the key colour, every pixel inside is
-            // not, except the hole.
+            // Chroma-keyed sources keep the chromaRowSpans contract: every
+            // pixel outside the run is the key colour, and every pixel inside
+            // is not, except the hole.
             const bool isKey = chroma && (!inRun || x == holeX);
             if (isKey)
             {
@@ -201,10 +197,9 @@ SrcBuf MakeSrc(SrcFmt f, int w, int h, uint32_t seed, int stridePad, bool chroma
     }
     const bool isRGB565 = (f == SrcFmt::RGB565 || f == SrcFmt::RGB565A8 || f == SrcFmt::RGB565A8NoAlpha);
     const bool hasAlpha = (f == SrcFmt::RGB565A8 || f == SrcFmt::RGBA8888 || f == SrcFmt::ALPHA8);
-    // The aggregate rather than a named layout: this harness deliberately
-    // builds shapes that are not one of the asset formats, RGB565A8NoAlpha
-    // among them. Designated initialisers still name each field at the point
-    // of use, which is the whole point of the change.
+    // The aggregate rather than a named layout: this harness builds shapes
+    // that are not asset formats, RGB565A8NoAlpha among them. Designated
+    // initialisers still name each field at the call.
     out.src = QuadBlit::MakeSource(
         out.px.data(), w, h,
         QuadBlit::PixelLayout{ .bytesPerPixel = static_cast<int32_t>(bpp), .hasAlpha = hasAlpha, .isRGB565 = isRGB565 },
@@ -306,8 +301,8 @@ uint64_t RunTarget(Deki::ColorFormat dst, bool print)
                                      c.ta, c.dither);
             }
             QuadBlit::ClearClipStack();
-            // Each case hashes on its own (so two builds can be compared case
-            // by case); the per-target value folds the case hashes in order.
+            // Each case is hashed on its own, so two builds can be compared
+            // case by case; the per-target value folds the case hashes in order.
             const uint64_t caseHash = Fnv(target, 0xcbf29ce484222325ULL);
             hash = (hash ^ caseHash) * 0x100000001b3ULL;
             if (print)
@@ -319,18 +314,11 @@ uint64_t RunTarget(Deki::ColorFormat dst, bool print)
     return hash;
 }
 
-// Captured from the unified pipeline (September 2026). Against the twelve
-// hand-written kernels it replaced, exactly two things changed, both on
-// purpose: an RGB565A8 source with hasAlpha == false is opaque on every path
-// (the ARGB8888/RGB888 kernels and the rotated path read its alpha byte
-// anyway), and blends onto an RGB565A8 target through the generic, flipped
-// and rotated paths keep coverage alpha (src-over union) like the
-// specialised kernels always did instead of writing 0xFF. Every other case
-// is bit-identical. 0 means "not captured yet": the test then prints the
+// Expected hash per target format. Among other things they pin two rules: an
+// RGB565A8 source with hasAlpha == false is opaque on every path, and blends
+// onto an RGB565A8 target keep coverage alpha (src-over union) on every path,
+// never writing 0xFF. 0 means "not captured yet": the test then prints the
 // actual value and fails.
-//
-// Recaptured when chroma sources gained hole rows (a key pixel inside the
-// run, recorded as a (-1, -1) span): the chroma cases changed, nothing else.
 struct Expected
 {
     Deki::ColorFormat fmt;
@@ -353,7 +341,7 @@ class GoldenBlitTest : public ::testing::TestWithParam<int>
 TEST_P(GoldenBlitTest, TargetFormatMatchesGolden)
 {
     const Expected& e = kExpected[GetParam()];
-    // DEKI_GOLDEN_PRINT=1 lists every case's hash (to diff two builds).
+    // DEKI_GOLDEN_PRINT=1 lists every case's hash, to diff two builds.
     const uint64_t actual = RunTarget(e.fmt, std::getenv("DEKI_GOLDEN_PRINT") != nullptr);
     std::printf("GOLDEN %s = 0x%016llxULL\n", e.name, static_cast<unsigned long long>(actual));
     if (actual != e.hash)

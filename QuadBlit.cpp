@@ -6,11 +6,9 @@
 #include <cstring>
 #include <vector>
 
-// Deki::ColorFormat comes from the engine header. The editor build used to re-declare it
-// locally instead of including this; that is a second definition of the same type, which
-// is a redefinition error the moment this file shares a translation unit with one that
-// includes DekiEngine.h (unity build) — and its sibling RendererComponent.cpp already
-// includes it in editor mode.
+// Deki::ColorFormat comes from the engine header. Never re-declare it here: a
+// second definition is a redefinition error once a unity build puts this file
+// in a translation unit that includes DekiEngine.h.
 #include <deki/Engine.h>
 #include <deki/LogSystem.h>
 
@@ -23,20 +21,19 @@
 // read the source pixel, drop it if transparent or chroma-keyed, tint, apply
 // the alpha tint, then dither / write opaque / blend with the destination.
 // The source layout (SrcKind) and the target format are template parameters,
-// so each blit resolves them once; the per-blit flags (tint, alpha tint, key,
-// dither, flips) are runtime booleans hoisted out of the loops, with a
-// separate "Plain" instantiation (none of them set) that keeps the common
+// so each blit resolves them once. The per-blit flags (tint, alpha tint, key,
+// dither, flips) are runtime booleans hoisted out of the loops, and a separate
+// "Plain" instantiation (none of them set) keeps the common
 // sprite-onto-framebuffer loop tight.
 //
-// This replaced twelve hand-written per-format-pair kernels (2300 lines) that
-// had drifted from each other: some honoured Source::hasAlpha and some did
-// not, the generic paths wrote coverage alpha differently from the
-// specialised ones, and a fix in one kernel rarely reached the others.
-// tests/GoldenBlitTests.cpp pins the output of every path.
+// One pipeline keeps every format pair behaving the same way; do not add
+// per-pair kernels that compute pixels differently. tests/GoldenBlitTests.cpp
+// pins the output of every path.
 //
-// The 1:1 fast paths that matter on the ESP32 are kept: whole-row copies and
-// the registered SIMD row kernels, the per-row opaque-span split for
-// RGB565A8 sprites and the chroma-key span copy for RGB565 sprites.
+// The 1:1 fast paths that matter on the ESP32 sit beside it and produce the
+// same pixels: whole-row copies and the registered SIMD row kernels, the
+// per-row opaque-span split for RGB565A8 sprites, and the chroma-key span copy
+// for RGB565 sprites.
 
 using DekiPixel::AlphaUnion;
 using DekiPixel::BayerThreshold;
@@ -54,15 +51,15 @@ namespace QuadBlit
 // ============================================================================
 // Kernel dispatch table
 // ============================================================================
-// Default-null. Platform packages call RegisterKernel(op, fn) at init to plug in
-// SIMD implementations. The blit dispatcher checks for a non-null entry only
-// when all preconditions hold (format, no scale, no rotation, alignment, no
-// tint where applicable).
+// Null by default. Platform packages call RegisterKernel(op, fn) at init to
+// plug in SIMD implementations. The blit dispatcher looks for an entry only
+// when all preconditions hold (format, no scale, no rotation, alignment, and
+// no tint where it applies).
 
 static RowKernelFn s_Kernels[(int)KernelOp::Count] = {};
 
-// KernelOp is uint8_t, so there is no below-zero to check: `(int)op < 0` was
-// always false, which GCC 15 reports (and ESP-IDF 6 makes an error).
+// KernelOp is uint8_t, so only the upper bound is checked. A `(int)op < 0`
+// test is always false, which GCC 15 warns about and ESP-IDF 6 makes an error.
 void RegisterKernel(KernelOp op, RowKernelFn fn)
 {
     if ((int)op >= (int)KernelOp::Count)
@@ -81,19 +78,18 @@ RowKernelFn GetKernel(KernelOp op)
     return s_Kernels[(int)op];
 }
 
-// True when both pointers are 16-byte aligned (PIE / cacheline-friendly).
+// True when both pointers are 16-byte aligned, as the SIMD (PIE) kernels need.
 static inline bool Aligned16(const void* a, const void* b)
 {
     return ((uintptr_t)a & 0xF) == 0 && ((uintptr_t)b & 0xF) == 0;
 }
 
 // ============================================================================
-// Clip Rect Stack Implementation
+// Clip rect stack
 // ============================================================================
 
-// Grows with the nesting depth of the scene; capacity persists across frames
-// (ClearClipStack only clears). A fixed 16-slot array used to over-clip every
-// level beyond the sixteenth.
+// Grows with the nesting depth of the scene, with no fixed limit. Capacity
+// persists across frames (ClearClipStack only clears).
 static std::vector<ClipRect> s_ClipStack;
 static bool s_ClipEnabled = true;
 
@@ -101,7 +97,7 @@ void PushClipRect(int32_t left, int32_t top, int32_t right, int32_t bottom)
 {
     ClipRect rect = { left, top, right, bottom };
 
-    // Intersect with parent clip rect
+    // Intersect with the parent clip rect.
     if (!s_ClipStack.empty())
     {
         const ClipRect& parent = s_ClipStack.back();
@@ -197,7 +193,7 @@ static inline void NoteBlitRect(const uint8_t* target, int32_t startX, int32_t s
 }
 
 // ============================================================================
-// Source Creation
+// Source creation
 // ============================================================================
 
 Source MakeSource(const uint8_t* pixels, int32_t width, int32_t height, PixelLayout layout, bool ownsPixels,
@@ -231,17 +227,17 @@ Source MakeSource(const uint8_t* pixels, int32_t width, int32_t height, PixelLay
     return src;
 }
 
-// Effective bytes-per-row of a Source buffer. Source::stride == 0 means the
-// buffer is tightly packed (one row immediately follows the previous);
-// non-zero stride lets a Source point at a sub-rect of a larger buffer
-// (e.g. a tile inside an atlas) without a copy.
+// Bytes per row of a Source buffer. Source::stride 0 means tightly packed
+// (each row right after the previous); a non-zero stride lets a Source point
+// at a sub-rect of a larger buffer (e.g. a tile in an atlas) without a copy.
 static inline int32_t SourceStride(const Source& s)
 {
     return s.stride ? s.stride : s.width * s.bytesPerPixel;
 }
 
-// Map a sampled source coordinate through the Source's flip flags. Inverse
-// of Tiled's order (transpose, then H, then V), so applied V, H, then D.
+// Maps a sampled source coordinate through the Source's flip flags. This is
+// the inverse of Tiled's order (transpose, then H, then V), so it applies V,
+// then H, then D.
 static inline void ApplyFlips(const Source& s, int32_t& x, int32_t& y)
 {
     if (s.flipV)
@@ -254,8 +250,8 @@ static inline void ApplyFlips(const Source& s, int32_t& x, int32_t& y)
     }
     if (s.flipD)
     {
-        // A transpose only makes sense for a square source; Tiled only sets
-        // it on tiles, which are square. Anything else keeps its orientation.
+        // A transpose only makes sense for a square source; Tiled sets it only
+        // on tiles, which are square. Anything else keeps its orientation.
         if (s.width == s.height)
         {
             const int32_t t = x;
@@ -271,7 +267,7 @@ static inline bool HasFlips(const Source& s)
 }
 
 // ============================================================================
-// Clipping bounds helper (shared by BlitScaled and Blit)
+// Clipping bounds, shared by BlitScaled and Blit
 // ============================================================================
 
 struct BlitBounds
@@ -295,11 +291,7 @@ static inline bool ComputeClipBounds(int32_t destX, int32_t destY, int32_t destW
 // Pixel formats
 // ============================================================================
 
-// Source layouts. RGB565A8 is any isRGB565 source with 3+ bytes per pixel,
-// whether or not it declares alpha (Source::hasAlpha decides whether byte 2
-// is read); RGBA8888 is the 4-byte non-565 layout, RGB888 3 bytes, ALPHA8 a
-// coverage-only byte (a font/icon atlas drawn as a sprite: its colour is the
-// tint, white when untinted).
+// The SrcKind of a Source; see SrcKind in PixelFormat.h for the layouts.
 static inline SrcKind KindOf(const Source& s)
 {
     if (s.isRGB565)
@@ -332,9 +324,9 @@ struct BlitParams
     uint8_t keyR = 0, keyG = 0, keyB = 0;
 };
 
-// One source pixel at `sp` onto destination pixel `idx` (at px, py for the
-// dither threshold). Plain = no tint, no alpha tint, no key, no dither: the
-// tight loop for the common sprite blit.
+// Composites the source pixel at `sp` onto destination pixel `idx`; px, py
+// pick the dither threshold. Plain means no tint, alpha tint, key or dither:
+// the tight loop for the common sprite blit.
 template <SrcKind SK, Deki::ColorFormat F, bool Plain>
 static inline void CompositePixel(const Source& source, const uint8_t* sp, uint8_t* target, size_t idx, int32_t px,
                                   int32_t py, const BlitParams& p)
@@ -383,7 +375,7 @@ static inline void CompositePixel(const Source& source, const uint8_t* sp, uint8
 
         if (p.dither)
         {
-            // Threshold compare: 255 always passes (the matrix tops out at 252).
+            // 255 always passes, since the matrix tops out at 252.
             if (effA <= BayerThreshold(px, py))
             {
                 return;
@@ -407,12 +399,12 @@ static inline void CompositePixel(const Source& source, const uint8_t* sp, uint8
 }
 
 // ============================================================================
-// 1:1 row fast paths (opaque copies, span splits, SIMD hooks)
+// 1:1 row fast paths: opaque copies, span splits, SIMD hooks
 // ============================================================================
-// Each returns true when it handled the whole blit. They exist for speed only:
-// the pipeline above produces the same pixels.
+// Each returns true when it handled the whole blit. They exist only for
+// speed: the pipeline above produces the same pixels.
 
-// RGB565 -> RGB565, no tint/key: row copy (SIMD kernel when aligned).
+// RGB565 -> RGB565, no tint or key: row copy (the SIMD kernel when aligned).
 static DEKI_FAST_ATTR bool CopyRows_RGB565(const Source& source, uint16_t* target16, int32_t targetWidth, int32_t destX,
                                            int32_t destY, const BlitBounds& b)
 {
@@ -435,9 +427,9 @@ static DEKI_FAST_ATTR bool CopyRows_RGB565(const Source& source, uint16_t* targe
     return true;
 }
 
-// RGB565 -> RGB565 with a chroma key and per-row non-key spans, no tint:
-// inside [start, end) every pixel is non-key (straight copy), outside every
-// pixel is the key (skipped without a read). A row recorded as (-1, -1) has a
+// RGB565 -> RGB565 with a chroma key and per-row non-key spans, no tint.
+// Inside [start, end) no pixel is the key (straight copy); outside, every
+// pixel is the key (skipped without a read). A row stored as (-1, -1) has a
 // key pixel inside its run and is compared pixel by pixel.
 static DEKI_FAST_ATTR bool CopyRows_RGB565_ChromaSpans(const Source& source, uint16_t* target16, int32_t targetWidth,
                                                        int32_t destX, int32_t destY, const BlitBounds& b)
@@ -445,8 +437,8 @@ static DEKI_FAST_ATTR bool CopyRows_RGB565_ChromaSpans(const Source& source, uin
     const int32_t stride = SourceStride(source);
     const int16_t* spans = source.chromaRowSpans;
     RowKernelFn copyKernel = s_Kernels[(int)KernelOp::RGB565CopyRow];
-    // The key is pre-quantized to 5/6/5, so comparing packed pixels is the
-    // same test the per-pixel pipeline makes on the extracted channels.
+    // The key is quantised to 5/6/5, so comparing packed pixels is the same
+    // test the per-pixel pipeline makes on the unpacked channels.
     const uint16_t key565 =
         static_cast<uint16_t>(((source.keyR >> 3) << 11) | ((source.keyG >> 2) << 5) | (source.keyB >> 3));
     for (int32_t py = b.startY; py < b.endY; py++)
@@ -489,10 +481,10 @@ static DEKI_FAST_ATTR bool CopyRows_RGB565_ChromaSpans(const Source& source, uin
     return true;
 }
 
-// RGB565A8 (with alpha) -> RGB565, no tint/key: per-row opaque-span split
+// RGB565A8 with alpha -> RGB565, no tint or key: a per-row opaque-span split
 // (left blend | opaque copy | right blend) when spans are available,
-// otherwise the SIMD blend kernel when aligned. Rows the kernel or the spans
-// cannot take go through the plain pipeline.
+// otherwise the SIMD blend kernel when aligned. Rows neither can take go
+// through the plain pipeline.
 static DEKI_FAST_ATTR bool BlendRows_RGB565A8_to_RGB565(const Source& source, uint16_t* target16, int32_t targetWidth,
                                                         int32_t destX, int32_t destY, const BlitBounds& b)
 {
@@ -516,14 +508,14 @@ static DEKI_FAST_ATTR bool BlendRows_RGB565A8_to_RGB565(const Source& source, ui
             const int32_t clampedStart = std::max<int32_t>(rowSpans[srcY * 2], srcStartX);
             const int32_t clampedEnd = std::min<int32_t>(rowSpans[srcY * 2 + 1], srcEndX);
 
-            // Left alpha region
+            // Left alpha region.
             for (int32_t sx = srcStartX; sx < clampedStart && sx < srcEndX; sx++)
             {
                 CompositePixel<SrcKind::RGB565A8, Deki::ColorFormat::RGB565, true>(
                     source, rowBase + sx * bpp, (uint8_t*)target16, rowIdx + destX + sx, destX + sx, py, plain);
             }
 
-            // Opaque middle: direct copy, no alpha checks
+            // Opaque middle: direct copy, no alpha checks.
             const uint8_t* srcPtr = rowBase + clampedStart * bpp;
             for (int32_t sx = clampedStart; sx < clampedEnd; sx++, srcPtr += bpp)
             {
@@ -531,8 +523,8 @@ static DEKI_FAST_ATTR bool BlendRows_RGB565A8_to_RGB565(const Source& source, ui
             }
 
             // Right alpha region. Starts at the clip start when the opaque span
-            // ends before it (or is empty): starting at opaqueEnd wrote pixels
-            // the clip rect had excluded.
+            // ends before it or is empty; starting at opaqueEnd then would
+            // write pixels the clip rect excludes.
             for (int32_t sx = std::max(clampedEnd, srcStartX); sx < srcEndX; sx++)
             {
                 CompositePixel<SrcKind::RGB565A8, Deki::ColorFormat::RGB565, true>(
@@ -557,7 +549,7 @@ static DEKI_FAST_ATTR bool BlendRows_RGB565A8_to_RGB565(const Source& source, ui
     return true;
 }
 
-// RGB565 -> RGB565A8, no tint/key: opaque expand (SIMD kernel when aligned).
+// RGB565 -> RGB565A8, no tint or key: opaque expand (the SIMD kernel when aligned).
 static DEKI_FAST_ATTR bool ExpandRows_RGB565_to_RGB565A8(const Source& source, uint8_t* target, int32_t targetWidth,
                                                          int32_t destX, int32_t destY, const BlitBounds& b)
 {
@@ -582,7 +574,7 @@ static DEKI_FAST_ATTR bool ExpandRows_RGB565_to_RGB565A8(const Source& source, u
     return true;
 }
 
-// RGB565A8 -> RGB565A8, no tint/key: opaque copy when the source declares
+// RGB565A8 -> RGB565A8, no tint or key: opaque copy when the source declares
 // no alpha, otherwise the SIMD blend kernel when aligned.
 static DEKI_FAST_ATTR bool Rows_RGB565A8_to_RGB565A8(const Source& source, uint8_t* target, int32_t targetWidth,
                                                      int32_t destX, int32_t destY, const BlitBounds& b)
@@ -607,7 +599,7 @@ static DEKI_FAST_ATTR bool Rows_RGB565A8_to_RGB565A8(const Source& source, uint8
                 copyKernel(srcPtr, dstPtr, rowPixels, 255, 255, 255, 255);
                 continue;
             }
-            // Byte 2 of the source is whatever; the pixel is opaque by declaration.
+            // Byte 2 of the source is ignored: the source declares itself opaque.
             for (int32_t i = 0; i < rowPixels; i++)
             {
                 dstPtr[i * 3] = srcPtr[i * 3];
@@ -633,7 +625,7 @@ static DEKI_FAST_ATTR bool Rows_RGB565A8_to_RGB565A8(const Source& source, uint8
 }
 
 // ============================================================================
-// Scaled blit: 16.16 fixed-point stepping (1:1 is the step 65536 case)
+// Scaled blit: 16.16 fixed-point stepping (1:1 is a step of 65536)
 // ============================================================================
 
 template <SrcKind SK, Deki::ColorFormat F, bool Plain>
@@ -662,7 +654,7 @@ static DEKI_FAST_ATTR void BlitRows(const Source& source, uint8_t* target, int32
             {
                 if (P.flips)
                 {
-                    // Per-pixel copies: a transpose must not rewrite the row's Y.
+                    // Copy per pixel: a transpose must not rewrite the row's Y.
                     int32_t fx = srcX, fy = srcY;
                     ApplyFlips(source, fx, fy);
                     sp = source.pixels + fy * stride + fx * bpp;
@@ -762,7 +754,7 @@ void BlitScaled(const Source& source, uint8_t* target, int32_t targetWidth, int3
     p.hasTint = (tintR != 255 || tintG != 255 || tintB != 255);
     p.hasAlphaTint = (tintA != 255);
     p.hasKey = source.hasChromaKey;
-    // Dithering only has partial-alpha pixels to work on when the source has alpha.
+    // Dithering only applies when the source has alpha to dither.
     p.dither = useOrderedDither && source.hasAlpha;
     p.flips = HasFlips(source);
     p.tintR = tintR;
@@ -777,7 +769,7 @@ void BlitScaled(const Source& source, uint8_t* target, int32_t targetWidth, int3
     const bool oneToOne = (destWidth == source.width && destHeight == source.height);
     const bool plain = !p.hasTint && !p.hasAlphaTint && !p.hasKey && !p.dither && !p.flips;
 
-    // 1:1 row fast paths (same pixels as the pipeline, fewer instructions).
+    // 1:1 row fast paths: the same pixels as the pipeline, in fewer instructions.
     if (oneToOne && !p.hasTint && !p.hasAlphaTint && !p.dither && !p.flips)
     {
         if (targetFormat == Deki::ColorFormat::RGB565)
@@ -909,7 +901,7 @@ void Blit(const Source& source, uint8_t* target, int32_t targetWidth, int32_t ta
         return;
     }
 
-    // Fast path: no rotation — the scaled blit
+    // No rotation: the faster scaled blit.
     if (rotation == 0.0f)
     {
         int32_t destX = screenX - static_cast<int32_t>(std::floor(destWidth * pivotX));
@@ -920,7 +912,7 @@ void Blit(const Source& source, uint8_t* target, int32_t targetWidth, int32_t ta
         return;
     }
 
-    // Rotated path. `rotation` is in radians (engine convention).
+    // Rotated. `rotation` is in radians, engine convention.
     float cosR = std::cos(rotation);
     float sinR = std::sin(rotation);
 

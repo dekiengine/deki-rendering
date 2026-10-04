@@ -1,14 +1,11 @@
-/**
- * @file PixelFormat.h
- * @brief The one place for pixel-format arithmetic shared by the rasterizer
- *        and the packages that prepare data for it: RGB565 pack/unpack and
- *        quantisation, exact /255, the ordered-dither threshold matrix.
- *
- * RGB565 -> 8-bit expansion is by shift (no bit replication): 0x1F -> 0xF8.
- * That is the engine's convention everywhere a 565 value meets 8-bit maths
- * (blending, tinting, chroma keys), so a key quantised with QuantizeRGB565
- * compares equal to a pixel unpacked with UnpackRGB565.
- */
+// Pixel-format arithmetic shared by the rasterizer and the packages that
+// prepare data for it: RGB565 pack, unpack and quantisation, exact /255, and
+// the ordered-dither threshold matrix.
+//
+// RGB565 expands to 8 bits by shift, without bit replication: 0x1F -> 0xF8.
+// The engine does this everywhere a 565 value meets 8-bit maths (blending,
+// tinting, chroma keys), so a key quantised with QuantizeRGB565 compares
+// equal to a pixel unpacked with UnpackRGB565.
 #pragma once
 
 #include <cstdint>
@@ -18,8 +15,9 @@
 namespace DekiPixel
 {
 
-/// x / 255 for x in [0, 65535], exact. (x + 128) >> 8 lost the top value:
-/// 255 * 255 came out as 254, so repeated tints and blends drifted darker.
+/// x / 255 for x in [0, 65535], exact. Do not replace it with
+/// (x + 128) >> 8: that gives 254 for 255 * 255, so repeated tints and blends
+/// drift darker.
 inline constexpr uint8_t Div255(uint32_t x)
 {
     return static_cast<uint8_t>((x + 1 + (x >> 8)) >> 8);
@@ -37,7 +35,7 @@ inline void UnpackRGB565(uint16_t v, uint8_t& r, uint8_t& g, uint8_t& b)
     b = static_cast<uint8_t>((v & 0x1F) << 3);
 }
 
-/// Drop the bits RGB565 cannot hold, so an 8-bit colour compares equal to the
+/// Drops the bits RGB565 cannot hold, so an 8-bit colour compares equal to the
 /// same colour after a round trip through PackRGB565/UnpackRGB565.
 inline void QuantizeRGB565(uint8_t& r, uint8_t& g, uint8_t& b)
 {
@@ -48,7 +46,7 @@ inline void QuantizeRGB565(uint8_t& r, uint8_t& g, uint8_t& b)
 
 /// Standard src-over alpha union for coverage targets (RGB565A8):
 /// out.a = src.a + dst.a * (255 - src.a) / 255. On a freshly cleared target
-/// (dst.a == 0) this is src.a, which is what "is covered" consumers expect.
+/// (dst.a == 0) this is src.a, as code that checks coverage expects.
 inline uint8_t AlphaUnion(uint8_t srcA, uint8_t dstA)
 {
     if (srcA == 255)
@@ -62,9 +60,9 @@ inline uint8_t AlphaUnion(uint8_t srcA, uint8_t dstA)
     return static_cast<uint8_t>(srcA + Div255(static_cast<uint32_t>(dstA) * (255u - srcA)));
 }
 
-/// 8x8 Bayer threshold matrix scaled to 0..255 (the recurrent definition,
-/// re-mapped to (m + 1) * 256 / 64 - 1). Ordered dithering writes a pixel
-/// opaquely when its alpha exceeds the threshold at (x & 7, y & 7).
+/// 8x8 Bayer threshold matrix scaled to 0..255 (the recursive definition,
+/// mapped to (m + 1) * 256 / 64 - 1). Ordered dithering writes a pixel opaque
+/// when its alpha exceeds the threshold at (x & 7, y & 7).
 /// https://en.wikipedia.org/wiki/Ordered_dithering
 inline constexpr uint8_t kBayer8x8[64] = {
     0,   128, 32,  160, 8,   136, 40,  168, 192, 64,  224, 96,  200, 72,  232, 104, 48,  176, 16,  144, 56,  184,
@@ -83,11 +81,11 @@ inline uint8_t BayerThreshold(int32_t px, int32_t py)
 // each format compiles to its own tight loop.
 // ---------------------------------------------------------------------------
 
-// Source layouts. RGB565A8 is any isRGB565 source with 3+ bytes per pixel,
-// whether or not it declares alpha (hasAlpha decides whether byte 2 is read);
-// RGBA8888 is the 4-byte non-565 layout, RGB888 3 bytes, ALPHA8 a
-// coverage-only byte (a font/icon atlas drawn as a sprite: its colour is the
-// tint, white when untinted).
+// Source layouts. RGB565A8 is any isRGB565 source with 3 or more bytes per
+// pixel, whether or not it declares alpha (hasAlpha decides whether byte 2 is
+// read). RGBA8888 is the 4-byte non-565 layout, RGB888 3 bytes, and ALPHA8 a
+// coverage-only byte (a font or icon atlas drawn as a sprite: its colour is
+// the tint, white when untinted).
 enum class SrcKind
 {
     RGB565,
@@ -170,8 +168,7 @@ inline void ReadDstPixel(const uint8_t* target, size_t idx, uint8_t& r, uint8_t&
     }
 }
 
-// Destination write with the coverage alpha the format keeps (ignored by the
-// formats without one).
+// Destination write, with the coverage alpha for formats that keep one.
 template <Deki::ColorFormat F>
 inline void WriteDstPixel(uint8_t* target, size_t idx, uint8_t r, uint8_t g, uint8_t b, uint8_t a)
 {

@@ -1,25 +1,20 @@
 #pragma once
 
-/**
- * @file DekiSortingCallbackRegistry.h
- * @brief Registry for sorting callbacks — always-on, not tied to passes
- *
- * Packages self-register sorting callbacks at static init time.
- * All registered callbacks are added to the renderer at startup,
- * regardless of which passes are in the pipeline.
- *
- * Usage:
- * @code
- * #include "DekiSortingCallbackRegistry.h"
- * static struct MySortingRegistrar {
- *     MySortingRegistrar() {
- *         DekiSortingCallbackRegistry::Register("mysorting", &MySortingCallback);
- *     }
- * } s_registrar;
- * @endcode
- */
+// Registry for sorting callbacks. These always apply; they are not tied to
+// passes.
+//
+// Packages register sorting callbacks during static initialisation. At
+// startup every registered callback is added to the renderer, whichever
+// passes are in the pipeline.
+//
+//   #include "DekiSortingCallbackRegistry.h"
+//   static struct MySortingRegistrar {
+//       MySortingRegistrar() {
+//           DekiSortingCallbackRegistry::Register("mysorting", &MySortingCallback);
+//       }
+//   } s_registrar;
 
-#include "RenderPass.h"  // For SortingCallback typedef
+#include "RenderPass.h"  // SortingCallback
 #include <vector>
 
 namespace DekiRendering

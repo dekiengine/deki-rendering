@@ -1,11 +1,7 @@
-/**
- * @file DekiRenderingPackage.cpp
- * @brief Package entry point for deki-rendering DLL
- *
- * Registers the rendering subsystem with Deki::Engine.
- * For editor builds, this is a separate DLL that can be hot-reloaded.
- * For runtime builds, sources are statically linked into the engine.
- */
+// Entry point of the deki-rendering package. Registers the rendering system
+// with Deki::Engine. In the editor this is a separate DLL that can be hot
+// reloaded; in runtime builds its sources are linked statically into the
+// engine.
 
 #include "DekiRenderingPackage.h"
 #include "DekiRenderingInit.h"
@@ -27,7 +23,7 @@ namespace DekiRendering
 #ifdef DEKI_EDITOR
 
 #ifndef DEKI_PLUGIN_EXPORTS
-// Auto-generated registration helpers (standalone DLL only)
+// Registration, for the standalone DLL only.
 
 static bool s_Registered = false;
 
@@ -45,11 +41,11 @@ extern "C"
         }
         s_Registered = true;
 
-        // Auto-generated: registers rendering components with ComponentRegistry + ComponentFactory
+        // Generated: registers the components with ComponentRegistry and ComponentFactory.
         ::DekiRenderingRegisterComponents();
 
-        // Initialize the rendering system (idempotent — may already be initialized
-        // by DekiInitPackageSystems() during Deki::Engine::Initialize())
+        // Safe if DekiInitPackageSystems() already started it during
+        // Deki::Engine::Initialize().
         DekiRenderingInitSystem();
 
         return ::DekiRenderingGetAutoComponentCount();
@@ -59,7 +55,7 @@ extern "C"
 #endif  // DEKI_PLUGIN_EXPORTS
 
 // =============================================================================
-// Plugin metadata (for dynamic loading compatibility)
+// Plugin metadata, for dynamic loading
 // =============================================================================
 
 extern "C"
@@ -86,7 +82,6 @@ extern "C"
 
     DEKI_PLUGIN_API void DekiPluginShutdown(void)
     {
-        // Shutdown the rendering system (shared with non-editor builds)
         DekiRenderingShutdownSystem();
         s_Registered = false;
     }

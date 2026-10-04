@@ -6,7 +6,6 @@
 #include <deki/reflection/Property.h>
 #include "QuadBlit.h"
 
-// Forward declarations
 namespace Deki
 {
 class Object;
@@ -17,9 +16,7 @@ namespace DekiRendering
 class CameraComponent;
 
 #ifdef V_ENGINE_ENABLE_MASK
-/**
- * @brief Mask render modes for stencil buffer usage
- */
+// Mask render modes, for stencil buffer use.
 enum class MaskRenderMode : uint8_t
 {
     None = 0,           // No masking
@@ -28,35 +25,25 @@ enum class MaskRenderMode : uint8_t
 };
 #endif
 
-/**
- * @brief How partial-alpha pixels are rendered.
- *
- * Blend         = standard alpha blend (default; smooth, slower).
- * OrderedDither = ordered-dither / screen-door (faster, visible stippling):
- *                 the Bayer paths in QuadBlit, selected per object by
- *                 Standard2DRenderer.
- */
+/// How partial-alpha pixels are rendered.
+///
+/// Blend         standard alpha blend (the default; smooth, slower).
+/// OrderedDither ordered dither, or screen door (faster, visible stipple):
+///               QuadBlit's Bayer paths, chosen per object by
+///               Standard2DRenderer.
 enum class AlphaMode : uint8_t
 {
     Blend = 0,
     OrderedDither = 1,
 };
 
-/**
- * @brief Abstract base class for all renderable components (e.g., sprites, particles)
- *
- * Extends Deki::Component to provide lifecycle methods (Start, Update, PreRender)
- * in addition to the Render method for drawing.
- */
 DEKI_CATEGORY("Core")
-/**
- * @brief The view being drawn: its pixels per world meter and its size.
- *
- * Set by the renderer before it asks components for their content, so a
- * component that bakes pixels (a gradient) can bake them at the density they
- * will be drawn at and land 1:1 on the screen, instead of being scaled by a
- * fractional factor afterwards. pixelsPerMeter is 0 outside a frame.
- */
+/// The view being drawn: its pixels per world meter and its size.
+///
+/// Set by the renderer before it asks components for their content, so a
+/// component that bakes pixels (a gradient) can bake them at the density they
+/// will be drawn at and land 1:1 on the screen, instead of being scaled by a
+/// fractional factor. pixelsPerMeter is 0 outside a frame.
 struct DrawView
 {
     float pixelsPerMeter = 0.0f;
@@ -66,30 +53,30 @@ struct DrawView
 const DrawView& CurrentDrawView();
 void SetCurrentDrawView(const DrawView& view);
 
+/// Base class for renderable components (sprites, particles). A subclass
+/// produces its pixels at 1x in RenderContent; the renderer applies position,
+/// scale and rotation with QuadBlit.
 class RendererComponent : public Deki::Component, public Deki::ISortableProvider
 {
 public:
-    // Pure virtual destructor makes this class abstract
+    // Pure virtual, to make the class abstract.
     virtual ~RendererComponent() = 0;
 
     DEKI_EXPORT
     DEKI_TOOLTIP("Draw order against other renderers. Higher draws on top.")
     int sortingOrder = 0;
 
-    /** @brief If true, this renderer ignores parent Deki2D::ClipComponent bounds */
+    // If true, this renderer ignores the bounds of ancestor Deki2D::ClipComponents.
     DEKI_EXPORT
     DEKI_TOOLTIP(
         "Draw even when an ancestor clips its children. For something that must escape its container, like a dropdown.")
     bool ignoreClip = false;
 
-    /**
-     * @brief If true, snap final screen position to integer pixels at draw
-     *        time (round-to-nearest). Default true preserves classic
-     *        pixel-art alignment. Set false on renderers that should flow
-     *        sub-pixel smoothly (particles, camera-shake-driven effects).
-     *        Snap is per-renderer so a pixel-art sprite and a smooth
-     *        particle effect can coexist in the same scene.
-     */
+    // If true, the final screen position is rounded to the nearest whole
+    // pixel at draw time, which keeps pixel art aligned. Turn it off for
+    // renderers that should move smoothly by sub-pixels (particles, camera
+    // shake). It is per renderer, so pixel-art sprites and smooth particles
+    // can share a scene.
     DEKI_EXPORT
     DEKI_TOOLTIP("Round the final position to whole pixels. Keeps pixel art crisp; leave it off for something that "
                  "should move smoothly at small steps.")
@@ -102,50 +89,24 @@ public:
     AlphaMode alphaMode = AlphaMode::Blend;
 
 #ifdef V_ENGINE_ENABLE_MASK
-    // Mask support - minimal memory overhead (2 bytes total)
+    // Mask support, 2 bytes in all.
     MaskRenderMode maskMode = MaskRenderMode::None;
-    uint8_t stencilId = 0;  // 0 = no stencil test, 1-255 = stencil values
+    uint8_t stencilId = 0;  // 0 = no stencil test, 1-255 = stencil value
 #endif
 
     void SetSortingOrder(int order);
     int32_t GetSortingOrder() const override { return sortingOrder; }
 
 #ifdef V_ENGINE_ENABLE_MASK
-    // Mask configuration methods
     void SetMaskMode(MaskRenderMode mode, uint8_t stencilId = 1);
     void ClearMask();
 #endif
 
-    /**
-     * @brief Render content to intermediate buffer at 1x scale (no transforms)
-     *
-     * Components that override this method produce raw pixel data.
-     * The render loop will use QuadBlit to apply transforms (position, scale, rotation).
-     *
-     * @param owner The owning Deki::Object
-     * @param outSource Output QuadBlit::Source descriptor (buffer, dimensions, format)
-     * @param outPivotX Output pivot X (0.0-1.0, where 0.5 is center)
-     * @param outPivotY Output pivot Y (0.0-1.0, where 0.5 is center)
-     * @param outTintR Output tint red (255 = no tint)
-     * @param outTintG Output tint green (255 = no tint)
-     * @param outTintB Output tint blue (255 = no tint)
-     * @param outTintA Output tint alpha (255 = opaque)
-     * @return true if content was rendered, false if nothing to render
-     *
-     * Ownership: outSource.ownsPixels says whether the renderer takes over
-     * outSource.pixels and releases it (through Deki::Memory) after blitting.
-     * Components that own their buffers — sprites, baked text and gradients,
-     * and anything reusing one composite across frames — leave it false,
-     * which is the default. Set it only for a buffer allocated this frame
-     * through Deki::Memory, normally Deki::Buffer<T>::Release().
-     */
-    /**
-     * @brief Conservative world-space size of what RenderContent draws, in
-     * meters, before the object's scale. The renderer skips RenderContent
-     * (and the blit) for objects entirely outside the target and the current
-     * clip; it accounts for any pivot and any rotation itself. Return false
-     * when the size is unknown: the object is then always drawn.
-     */
+    /// A conservative world-space size of what RenderContent draws, in meters,
+    /// before the object's scale. The renderer skips RenderContent and the
+    /// blit for objects entirely outside the target and the current clip,
+    /// allowing for pivot and rotation itself. Return false when the size is
+    /// unknown; the object is then always drawn.
     virtual bool GetContentExtents(float& outWidth, float& outHeight) const
     {
         (void)outWidth;
@@ -153,6 +114,18 @@ public:
         return false;
     }
 
+    /// Produces the component's pixels at 1x scale, without transforms; the
+    /// renderer applies position, scale and rotation with QuadBlit. Fills
+    /// `outSource`, the pivot (0-1, 0.5 is the centre) and the tint (255 means
+    /// no tint; outTintA 255 is opaque). Returns false when there is nothing
+    /// to draw.
+    ///
+    /// outSource.ownsPixels says whether the renderer takes over
+    /// outSource.pixels and frees it through Deki::Memory after the blit.
+    /// Components that keep their buffers (sprites, baked text and gradients,
+    /// anything reusing one composite across frames) leave it false, the
+    /// default. Set it only for a buffer allocated this frame through
+    /// Deki::Memory, normally Deki::Buffer<T>::Release().
     virtual bool RenderContent(const Deki::Object* owner, QuadBlit::Source& outSource, float& outPivotX,
                                float& outPivotY, uint8_t& outTintR, uint8_t& outTintG, uint8_t& outTintB,
                                uint8_t& outTintA)
@@ -161,7 +134,5 @@ public:
         return false;
     }
 };
-
-// Generated property metadata (after class definition for offsetof)
 
 }  // namespace DekiRendering

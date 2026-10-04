@@ -40,9 +40,9 @@ DekiRenderSystem::~DekiRenderSystem()
 bool DekiRenderSystem::Setup(int32_t width, int32_t height, Deki::ColorFormat format)
 {
     // Project-wide rendering settings. In the editor the registry holds the
-    // hydrated instance; on device there is no registry, so the values come
-    // straight out of the loaded project_data.bin. Half-width and interlaced have
-    // no implementation yet and are only reported.
+    // loaded instance; on device there is no registry, so the values come
+    // straight from project_data.bin. Half-width and interlaced are not
+    // implemented yet and are only reported.
     m_TrackDirty = false;
     m_DirtyAlign = 32;
     bool halfWidth = false, interlaced = false;
@@ -96,7 +96,6 @@ bool DekiRenderSystem::Setup(int32_t width, int32_t height, Deki::ColorFormat fo
         return false;
     }
 
-    // Clean up existing buffers if any
     if (m_RenderBuffer && m_OwnsBuffer)
     {
         Deki::Memory::FreeInternal(m_RenderBuffer);
@@ -109,17 +108,15 @@ bool DekiRenderSystem::Setup(int32_t width, int32_t height, Deki::ColorFormat fo
     m_ScreenHeight = height;
     m_ColorFormat = format;
 
-    // Prefer a buffer the display provides (avoids a memcpy in Present).
+    // Prefer a buffer the display provides; it saves a memcpy in Present.
     if (TryAdoptDisplayBuffer())
     {
         return true;
     }
 
-    // No display yet, or its buffer does not match: own one. This used to
-    // "defer allocation until a display is available" and return true with a
-    // null buffer — but Render() only re-queried the display for non-owned
-    // buffers, so the allocation never happened and nothing was ever drawn,
-    // with no error. Now Setup either yields a usable buffer or says so.
+    // No display yet, or its buffer does not match: allocate our own now.
+    // Setup must leave a usable buffer or fail; returning true with a null
+    // buffer would draw nothing and report no error.
     int bytesPerPixel = GetBytesPerPixel(format);
     size_t bufferSize = (size_t)width * (size_t)height * (size_t)bytesPerPixel;
     m_RenderBuffer = (uint8_t*)Deki::Memory::AllocateInternal(bufferSize);
@@ -165,8 +162,8 @@ void DekiRenderSystem::Render(Deki::Scene* currentScene)
     }
 
     // A display registered after Setup() may offer a direct buffer: adopt it
-    // once. Otherwise re-query the display buffer each frame for double-buffer
-    // support (render_index alternates in Present, so the pointer changes).
+    // once. When already using the display's buffer, ask for it each frame,
+    // since double-buffered displays alternate it in Present.
     if (m_OwnsBuffer)
     {
         TryAdoptDisplayBuffer();
@@ -190,11 +187,9 @@ void DekiRenderSystem::Render(Deki::Scene* currentScene)
         return;
     }
 
-    // Find the scene's camera. Every frame, not cached: the cache used to be
-    // keyed on the Scene pointer, which a new scene at the same address (a
-    // tool rendering scenes in a loop) or a CameraComponent removed at
-    // runtime turned into a dangling component. The walk is a few hundred
-    // component-list checks against a frame of blits.
+    // Find the scene's camera every frame rather than caching it: a cached
+    // pointer dangles when the camera is removed at runtime or a new scene
+    // reuses the old one's address. The walk is cheap next to a frame of blits.
     CameraComponent* camera = nullptr;
     for (Deki::Object* obj : currentScene->GetObjects())
     {
@@ -208,7 +203,7 @@ void DekiRenderSystem::Render(Deki::Scene* currentScene)
     }
     if (!camera)
     {
-        // Fall back to Persistent objects
+        // Fall back to persistent objects.
         const auto& persistentObjects = Deki::Engine::GetInstance().GetSceneSystem().GetPersistentObjects();
         for (Deki::Object* obj : persistentObjects)
         {
@@ -220,17 +215,16 @@ void DekiRenderSystem::Render(Deki::Scene* currentScene)
         }
     }
 
-    // No camera = nothing to render
     if (!camera)
     {
         return;
     }
 
     // ---- dirty-rect present -------------------------------------------------
-    // Anything the bookkeeping cannot vouch for (first use of a buffer, a
-    // size/format change, a clear-colour change, a frame the renderer could
-    // not describe, MarkAllDirty) is a full clear and a full present, so
-    // "off" and "unsure" both behave exactly as before.
+    // Whenever the bookkeeping is unsure (first use of a buffer, a size or
+    // format change, a clear-colour change, a frame the renderer could not
+    // describe, MarkAllDirty), the frame is a full clear and a full present,
+    // the same as with tracking off.
     const bool tracking = m_TrackDirty;
     BufferHistory* hist = tracking ? &HistoryFor(m_RenderBuffer) : nullptr;
     bool full = !tracking || m_ForceFull || !hist->valid;
@@ -261,7 +255,6 @@ void DekiRenderSystem::Render(Deki::Scene* currentScene)
         }
     }
 
-    // Delegate to the active renderer
     RenderContext ctx{ camera, m_RenderBuffer, m_ScreenWidth, m_ScreenHeight, m_ColorFormat };
     ctx.trackDirty = tracking;
     m_Renderer->Render(currentScene, ctx);
@@ -371,22 +364,20 @@ void DekiRenderSystem::RenderToBufferStatic(Deki::Scene* scene, Deki::ICamera* c
         return;
     }
 
-    // Get the renderer from the engine's render system
     DekiRenderer* renderer = Deki::Engine::GetInstance().GetRenderSystem()->GetRenderer();
     if (!renderer)
     {
         return;
     }
 
-    // RenderContext uses CameraComponent* internally — safe cast since
-    // the rendering package owns CameraComponent and knows the concrete type
+    // Safe cast: every ICamera in this package is a CameraComponent.
     RenderContext ctx{ static_cast<CameraComponent*>(camera), buffer, width, height, format };
     renderer->Render(scene, ctx);
 }
 
 namespace
 {
-// One pixel of `format` at p; returns its size in bytes.
+// Writes one pixel of `format` at p and returns its size in bytes.
 inline size_t WritePixel(uint8_t* p, Deki::ColorFormat format, uint8_t r, uint8_t g, uint8_t b)
 {
     switch (format)
@@ -427,7 +418,6 @@ void DekiRenderSystem::ClearRect(int32_t x, int32_t y, int32_t w, int32_t h, uin
     {
         return;
     }
-    // Clip to the framebuffer.
     int32_t x0 = std::max<int32_t>(x, 0), y0 = std::max<int32_t>(y, 0);
     int32_t x1 = std::min<int32_t>(x + w, m_ScreenWidth), y1 = std::min<int32_t>(y + h, m_ScreenHeight);
     if (x1 <= x0 || y1 <= y0)
@@ -440,8 +430,8 @@ void DekiRenderSystem::ClearRect(int32_t x, int32_t y, int32_t w, int32_t h, uin
     const size_t span = static_cast<size_t>(x1 - x0) * bpp;
     uint8_t* row0 = m_RenderBuffer + static_cast<size_t>(y0) * pitch + static_cast<size_t>(x0) * bpp;
 
-    // Seed one pixel, double it across the first row, then copy the row down:
-    // memcpy all the way instead of a per-pixel (or per-byte) loop.
+    // Write one pixel, double it across the first row, then copy the row down:
+    // all memcpy, no per-pixel loop.
     WritePixel(row0, m_ColorFormat, r, g, b);
     for (size_t written = bpp; written < span; written *= 2)
     {
@@ -482,14 +472,12 @@ DEKI_FAST_ATTR void DekiRenderSystem::GetPixel(int32_t x, int32_t y, uint8_t* r,
         return;
     }
 
-    // Bounds check
     if (x < 0 || x >= m_ScreenWidth || y < 0 || y >= m_ScreenHeight)
     {
         *r = *g = *b = 0;
         return;
     }
 
-    // Get pixel from render buffer based on format
     switch (m_ColorFormat)
     {
         case Deki::ColorFormat::RGB565:

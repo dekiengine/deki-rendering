@@ -20,8 +20,7 @@ static DekiRenderSystem* s_RenderSystem = nullptr;
 static DekiRenderer* s_Renderer = nullptr;
 static Standard2DRenderer* s_PassReceiver = nullptr;
 
-// Passes this system created, in attach order. No cap: a fixed array of 8
-// used to silently drop the ninth pass.
+// Passes this system created, in attach order. Any number of passes.
 struct AttachedPass
 {
     std::string name;
@@ -32,13 +31,10 @@ static std::vector<AttachedPass> s_Passes;
 // Pass names that no package registers because the renderer performs the work
 // itself, and that a pipeline may still list.
 //
-// "clip2d" is the one: clipping became a renderer builtin (Standard2DRenderer
-// pushes and pops a clip rect around any object exposing IClipProvider), but
-// every project scaffolded before that carries a clip2d entry, and the
-// scaffold kept writing one. The result was a warning on the first line of
-// every project's log, for a pipeline that was working correctly — which
-// teaches a new user to ignore warnings. Recognised rather than registered as
-// a no-op pass, so the pipeline stays honest about what actually runs.
+// "clip2d" is the one: Standard2DRenderer clips itself, pushing a clip rect
+// around any object exposing IClipProvider, but older projects still list a
+// clip2d pass. It is recognised here, not registered as a no-op pass, so
+// those projects log no false warning and the pipeline shows what really runs.
 static bool IsBuiltinPassName(const char* name)
 {
     return name && std::strcmp(name, "clip2d") == 0;
@@ -100,10 +96,10 @@ void DekiRenderingInitSystem()
         return;
     }
 
-    // 1. Create render system (framebuffer + camera management)
+    // 1. The render system: framebuffer and camera lookup.
     s_RenderSystem = new DekiRenderSystem();
 
-    // 2. Create renderer from project settings
+    // 2. The renderer named in the project settings.
     const char* rendererName = Deki::ProjectSettings::GetRenderPipeline();
     s_Renderer = DekiRendererRegistry::Create(rendererName);
     if (s_Renderer)
@@ -116,8 +112,8 @@ void DekiRenderingInitSystem()
         DEKI_LOG_WARNING("DekiRendering: No renderer registered for '%s'", rendererName ? rendererName : "(null)");
     }
 
-    // 3. Create and add passes from project settings
-    //    Safe downcast via GetRendererType() — no RTTI needed.
+    // 3. The passes named in the project settings. GetRendererType() makes
+    //    the downcast safe without RTTI.
     int passCount = Deki::ProjectSettings::GetPassCount();
     if (s_Renderer && s_Renderer->GetRendererType() == Standard2DRenderer::kRendererTypeID)
     {
@@ -142,11 +138,9 @@ void DekiRenderingInitSystem()
         }
     }
 
-    // 3b. Auto-attach passes flagged autoAttach=true that the project's
-    //     .rpipeline didn't already list. This lets package-owned passes
-    //     (e.g. tilemap) participate without forcing every project to know
-    //     package pass names. Projects can still mention an autoAttach pass
-    //     explicitly in .rpipeline to control its ordering.
+    // 3b. autoAttach passes the project's .rpipeline does not list, so
+    //     package passes (e.g. tilemap) run without every project knowing
+    //     their names. A project can still list one to control its order.
     if (s_PassReceiver)
     {
         std::vector<std::string> allPassNames;
@@ -162,14 +156,13 @@ void DekiRenderingInitSystem()
         }
     }
 
-    // 3c. Install a hook so passes registered after this point (e.g. packages
-    //     that load after deki-rendering inits) still get auto-attached. This
-    //     is the path deki-tilemap takes — its DLL loads after the rendering
-    //     system has already finished its first scan.
+    // 3c. A hook so autoAttach passes registered later, by packages that load
+    //     after this scan (deki-tilemap does), are attached too.
     DekiRenderPassRegistry::SetAutoAttachCallback([](const char* name, const RenderPassInfo& info)
                                                   { AttachPass(name, info); });
 
-    // 4. Add all registered sorting callbacks (always-on, not tied to passes)
+    // 4. Every registered sorting callback. These always apply and are not
+    //    tied to passes.
     if (s_PassReceiver)
     {
         std::vector<SortingCallback> sortingCallbacks;
@@ -184,7 +177,7 @@ void DekiRenderingInitSystem()
         }
     }
 
-    // 5. Register with engine
+    // 5. Hand the render system to the engine.
     Deki::Engine::GetInstance().SetRenderSystem(s_RenderSystem);
     DEKI_LOG_INTERNAL("DekiRendering: Init complete (renderer=%p, %d passes)", (void*)s_Renderer, (int)s_Passes.size());
 }
@@ -193,8 +186,8 @@ void DekiRenderingShutdownSystem()
 {
     Deki::Engine::GetInstance().SetRenderSystem(nullptr);
 
-    // Drop the late-attach hook so a stale lambda doesn't reference a freed
-    // renderer if a package re-registers after shutdown.
+    // Remove the late-attach hook, so a package registering after shutdown
+    // does not reach a freed renderer.
     DekiRenderPassRegistry::SetAutoAttachCallback(nullptr);
 
     for (AttachedPass& p : s_Passes)

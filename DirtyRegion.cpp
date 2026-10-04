@@ -10,7 +10,7 @@ void DirtyRegion::Reset(int32_t width, int32_t height)
     m_Width = width < 0 ? 0 : width;
     m_Height = height < 0 ? 0 : height;
     m_Full = false;
-    m_Rects.clear();  // keeps capacity: no allocation once warm
+    m_Rects.clear();  // keeps capacity, so no allocation once warmed up
 }
 
 void DirtyRegion::SetFull()
@@ -34,10 +34,9 @@ void DirtyRegion::Add(int32_t left, int32_t top, int32_t right, int32_t bottom)
         return;
     }
 
-    // A rectangle inside one we already have adds nothing; one that swallows
-    // an existing rectangle replaces it. Both are common (a sprite drawn
-    // twice, a clip child inside its parent's area) and keep the set small
-    // without a merge.
+    // A rectangle inside an existing one adds nothing; one that contains an
+    // existing one replaces it. Both are common (a sprite drawn twice, a clip
+    // child inside its parent's area) and keep the set small without a merge.
     for (Deki::Rect& r : m_Rects)
     {
         if (left >= r.left && top >= r.top && right <= r.right && bottom <= r.bottom)
@@ -136,7 +135,7 @@ bool DirtyRegion::Contains(int32_t x, int32_t y) const
 void DirtyRegion::MergeOnePair()
 {
     // Merge the pair whose bounding union adds the least new area. Quadratic
-    // in the (small, threshold-bounded) rectangle count.
+    // in the rectangle count, which the threshold keeps small.
     const size_t n = m_Rects.size();
     if (n < 2)
     {

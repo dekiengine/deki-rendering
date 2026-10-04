@@ -1,10 +1,7 @@
-/**
- * @file DirtyHistoryTests.cpp
- * @brief DekiRenderSystem's dirty-rect present: first frame full, steady state
- *        partial, a vanished object still presents its old rectangle, partial
- *        clears leave the framebuffer identical to a full clear, and a display
- *        that hands out alternating buffers gets per-buffer history.
- */
+// DekiRenderSystem's dirty-rect present: the first frame is full, the steady
+// state partial, a vanished object still presents its old rectangle, partial
+// clears leave the framebuffer identical to a full clear, and a display that
+// alternates buffers gets per-buffer history.
 
 #include <gtest/gtest.h>
 #include <cstdint>
@@ -20,7 +17,7 @@
 #include "DirtyRegion.h"
 #include <deki/providers/IDisplay.h>
 
-// The package's types moved into its namespace; tests name them unqualified.
+// Tests name the package's types unqualified.
 using namespace DekiRendering;
 
 namespace
@@ -127,8 +124,8 @@ struct Fixture
         plain.SetDirtyTracking(false, 1);
     }
 
-    // Render one frame on both systems; returns the tracked present count and
-    // checks the tracked framebuffer equals a fresh full-clear render.
+    // Renders one frame on both systems, returns the tracked present count,
+    // and checks the tracked framebuffer equals a fresh full-clear render.
     int32_t Frame(const std::vector<Deki::Rect>& draws)
     {
         renderer.draws = draws;

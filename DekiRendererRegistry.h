@@ -1,25 +1,19 @@
 #pragma once
 
-/**
- * @file DekiRendererRegistry.h
- * @brief Factory registry for DekiRenderer implementations
- *
- * Packages self-register their renderers at static init time.
- * The rendering system creates the configured renderer at startup
- * by looking up the name from Deki::ProjectSettings.
- *
- * Usage:
- * @code
- * // In your renderer .cpp file:
- * #include "DekiRendererRegistry.h"
- * static struct MyRendererRegistrar {
- *     MyRendererRegistrar() {
- *         DekiRendererRegistry::Register("myrenderer",
- *             []() -> DekiRenderer* { return new MyRenderer(); });
- *     }
- * } s_registrar;
- * @endcode
- */
+// Factory registry for DekiRenderer implementations.
+//
+// Packages register their renderers during static initialisation. At startup
+// the rendering system creates the renderer named in Deki::ProjectSettings.
+//
+// Usage, in your renderer .cpp file:
+//
+//   #include "DekiRendererRegistry.h"
+//   static struct MyRendererRegistrar {
+//       MyRendererRegistrar() {
+//           DekiRendererRegistry::Register("myrenderer",
+//               []() -> DekiRenderer* { return new MyRenderer(); });
+//       }
+//   } s_registrar;
 
 #include <functional>
 #include <vector>
@@ -35,24 +29,14 @@ using DekiRendererFactory = std::function<DekiRenderer*()>;
 namespace DekiRendererRegistry
 {
 
-/**
- * @brief Register a renderer factory by name
- * @param name Unique identifier (e.g., "standard2d")
- * @param factory Function that creates a new renderer instance
- */
+/// Registers a renderer factory under a unique `name` (e.g. "standard2d").
 void Register(const char* name, DekiRendererFactory factory);
 
-/**
- * @brief Create a renderer by name
- * @param name The registered name (e.g., "standard2d")
- * @return New renderer instance, or nullptr if name not found or empty
- */
+/// Creates the renderer registered as `name`. nullptr if the name is empty or
+/// not registered.
 DekiRenderer* Create(const char* name);
 
-/**
- * @brief Get names of all registered renderers
- * @param outNames Vector to fill with registered renderer names
- */
+/// Fills `outNames` with the names of all registered renderers.
 void GetAllNames(std::vector<std::string>& outNames);
 
 }  // namespace DekiRendererRegistry

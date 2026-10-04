@@ -8,7 +8,7 @@
 namespace DekiRendering
 {
 
-// Register ICamera adapter so editor can use FindInterface<ICamera>()
+// Registers the ICamera adapter so the editor can use FindInterface<ICamera>().
 static struct CameraInterfaceRegistrar
 {
     CameraInterfaceRegistrar()
@@ -61,9 +61,8 @@ float CameraComponent::GetVisibleHeight(int32_t bufferWidth, int32_t bufferHeigh
 
 FrameCamera CameraComponent::CaptureFrameCamera(int screenWidth, int screenHeight) const
 {
-    // World: meters, center origin, Y UP (positive Y = up)
-    // Screen: top-left origin, Y down
-    // Camera position is the world point that maps to screen center.
+    // World: meters, centre origin, Y up. Screen: top-left origin, Y down.
+    // The camera position is the world point that maps to the screen centre.
     FrameCamera fc;
     fc.ppm = GetPixelsPerMeter(screenWidth, screenHeight);
     fc.camX = GetPositionX();
@@ -74,7 +73,7 @@ FrameCamera CameraComponent::CaptureFrameCamera(int screenWidth, int screenHeigh
     // Pixel Perfect: the camera sits on the art-pixel grid and the centre on a
     // whole screen pixel, so every art pixel covers the same block of screen
     // pixels however the camera moves. The scene view's fixed scale is not a
-    // screen and is left alone.
+    // screen and is not snapped.
     const float art = Deki::EngineSettings::Global().pixelsPerMeter;
     if (pixelPerfect && m_FixedPixelsPerMeter <= 0.0f && art > 0.0f && fc.ppm > 0.0f)
     {

@@ -1,17 +1,14 @@
-/**
- * @file RenderSystemTests.cpp
- * @brief Unit tests for DekiRenderSystem (buffer management, clear, pixel ops)
- */
+// DekiRenderSystem: buffer management, clearing, pixel access.
 
 #include <gtest/gtest.h>
 #include "DekiRenderSystem.h"
-#include <deki/Engine.h>  // For DekiColorFormat
+#include <deki/Engine.h>  // Deki::ColorFormat
 
-// The package's types moved into its namespace; tests name them unqualified.
+// Tests name the package's types unqualified.
 using namespace DekiRendering;
 
 // ============================================================================
-// GetBytesPerPixel Tests
+// GetBytesPerPixel
 // ============================================================================
 
 class RenderSystemBPPTest : public ::testing::Test
@@ -43,7 +40,7 @@ TEST_F(RenderSystemBPPTest, RGB565A8_Returns3)
 }
 
 // ============================================================================
-// Setup Tests
+// Setup
 // ============================================================================
 
 class RenderSystemSetupTest : public ::testing::Test
@@ -99,7 +96,7 @@ TEST_F(RenderSystemSetupTest, SetupCanBeCalledTwice)
 }
 
 // ============================================================================
-// ClearBuffer Tests
+// ClearBuffer
 // ============================================================================
 
 TEST_F(RenderSystemSetupTest, ClearBuffer_RGB565)
@@ -107,17 +104,15 @@ TEST_F(RenderSystemSetupTest, ClearBuffer_RGB565)
     DekiRenderSystem rs;
     rs.Setup(4, 4, Deki::ColorFormat::RGB565);
 
-    rs.ClearBuffer(255, 0, 0);  // Red
+    rs.ClearBuffer(255, 0, 0);  // red
 
-    // Read back with GetPixel
     uint8_t r, g, b;
     rs.GetPixel(0, 0, &r, &g, &b);
-    // RGB565 loses precision: 255 → (31<<3) = 248
+    // RGB565 loses precision: 255 -> (31 << 3) = 248
     EXPECT_GE(r, 240);
     EXPECT_LE(g, 8);
     EXPECT_LE(b, 8);
 
-    // Check another pixel
     rs.GetPixel(3, 3, &r, &g, &b);
     EXPECT_GE(r, 240);
 }
@@ -166,20 +161,20 @@ TEST_F(RenderSystemSetupTest, ClearBuffer_RGB565A8_RoundTripsRGB)
     DekiRenderSystem rs;
     rs.Setup(4, 4, Deki::ColorFormat::RGB565A8);
 
-    // ClearBuffer writes RGB565 + alpha=0xFF per pixel.
+    // ClearBuffer writes RGB565 plus alpha 0xFF per pixel.
     rs.ClearBuffer(0, 128, 255);
 
     uint8_t r, g, b;
     rs.GetPixel(2, 2, &r, &g, &b);
-    // RGB565 quantization: G has 6 bits, B has 5 bits.
+    // RGB565 quantisation: G has 6 bits, B has 5.
     EXPECT_LE(r, 8);
-    EXPECT_GE(g, 124);  // 128 → 0x80, top 6 bits = 0x80 → back to ~128
+    EXPECT_GE(g, 124);  // 128 = 0x80 keeps its top 6 bits, so reads back as ~128
     EXPECT_LE(g, 132);
-    EXPECT_GE(b, 247);  // 255 → 31<<3 = 248
+    EXPECT_GE(b, 247);  // 255 -> 31 << 3 = 248
 }
 
 // ============================================================================
-// GetPixel Edge Cases
+// GetPixel edge cases
 // ============================================================================
 
 TEST_F(RenderSystemSetupTest, GetPixel_OutOfBounds_ReturnsBlack)
@@ -207,7 +202,7 @@ TEST_F(RenderSystemSetupTest, GetPixel_OutOfBounds_ReturnsBlack)
 TEST_F(RenderSystemSetupTest, GetPixel_NullBuffer_ReturnsBlack)
 {
     DekiRenderSystem rs;
-    // No Setup() called — buffer is null
+    // No Setup(), so the buffer is null.
 
     uint8_t r = 99, g = 99, b = 99;
     rs.GetPixel(0, 0, &r, &g, &b);
@@ -229,7 +224,7 @@ TEST_F(RenderSystemSetupTest, GetPixel_ColorOverload)
 }
 
 // ============================================================================
-// Renderer Management Tests
+// Renderer management
 // ============================================================================
 
 TEST_F(RenderSystemSetupTest, SetRenderer_GetRenderer)
@@ -237,8 +232,8 @@ TEST_F(RenderSystemSetupTest, SetRenderer_GetRenderer)
     DekiRenderSystem rs;
     EXPECT_EQ(rs.GetRenderer(), nullptr);
 
-    // We can't easily create a real DekiRenderer without more infrastructure,
-    // but we can verify null handling
+    // A real DekiRenderer needs more setup than this test has; it checks null
+    // handling only.
     rs.SetRenderer(nullptr);
     EXPECT_EQ(rs.GetRenderer(), nullptr);
 }
@@ -248,7 +243,7 @@ TEST_F(RenderSystemSetupTest, RenderWithNullScene_NoOp)
     DekiRenderSystem rs;
     rs.Setup(4, 4, Deki::ColorFormat::RGB565);
 
-    // Should not crash
+    // Must not crash.
     rs.Render(nullptr);
 }
 
@@ -258,7 +253,7 @@ TEST_F(RenderSystemSetupTest, RenderWithNoRenderer_NoOp)
     rs.Setup(4, 4, Deki::ColorFormat::RGB565);
     rs.SetRenderer(nullptr);
 
-    // Should not crash (no renderer set)
-    // Note: We can't pass a real Scene easily, but nullptr covers the null check
+    // Must not crash with no renderer set. A null scene stands in for a real
+    // one, which is hard to build here.
     rs.Render(nullptr);
 }
