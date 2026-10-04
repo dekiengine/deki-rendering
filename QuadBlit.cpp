@@ -337,7 +337,7 @@ struct BlitParams
 // tight loop for the common sprite blit.
 template <SrcKind SK, Deki::ColorFormat F, bool Plain>
 static inline void CompositePixel(const Source& source, const uint8_t* sp, uint8_t* target, size_t idx, int32_t px,
-                                  int32_t py, const BlitParams& P)
+                                  int32_t py, const BlitParams& p)
 {
     uint8_t r, g, b, a;
     ReadSrcPixel<SK>(sp, source.hasAlpha, r, g, b, a);
@@ -363,25 +363,25 @@ static inline void CompositePixel(const Source& source, const uint8_t* sp, uint8
     else
     {
         // The key is compared against the untinted colour.
-        if (P.hasKey && r == P.keyR && g == P.keyG && b == P.keyB)
+        if (p.hasKey && r == p.keyR && g == p.keyG && b == p.keyB)
         {
             return;
         }
 
-        if (P.hasTint)
+        if (p.hasTint)
         {
-            r = Div255(r * P.tintR);
-            g = Div255(g * P.tintG);
-            b = Div255(b * P.tintB);
+            r = Div255(r * p.tintR);
+            g = Div255(g * p.tintG);
+            b = Div255(b * p.tintB);
         }
 
-        const uint8_t effA = P.hasAlphaTint ? Div255(a * P.tintA) : a;
+        const uint8_t effA = p.hasAlphaTint ? Div255(a * p.tintA) : a;
         if (effA == 0)
         {
             return;
         }
 
-        if (P.dither)
+        if (p.dither)
         {
             // Threshold compare: 255 always passes (the matrix tops out at 252).
             if (effA <= BayerThreshold(px, py))
@@ -418,7 +418,7 @@ static DEKI_FAST_ATTR bool CopyRows_RGB565(const Source& source, uint16_t* targe
 {
     const int32_t stride = SourceStride(source);
     const int32_t rowPixels = b.endX - b.startX;
-    RowKernelFn copyKernel = s_Kernels[(int)KernelOp::RGB565_Copy_Row];
+    RowKernelFn copyKernel = s_Kernels[(int)KernelOp::RGB565CopyRow];
     for (int32_t py = b.startY; py < b.endY; py++)
     {
         const uint16_t* srcPtr = (const uint16_t*)(source.pixels + (py - destY) * stride) + (b.startX - destX);
@@ -444,7 +444,7 @@ static DEKI_FAST_ATTR bool CopyRows_RGB565_ChromaSpans(const Source& source, uin
 {
     const int32_t stride = SourceStride(source);
     const int16_t* spans = source.chromaRowSpans;
-    RowKernelFn copyKernel = s_Kernels[(int)KernelOp::RGB565_Copy_Row];
+    RowKernelFn copyKernel = s_Kernels[(int)KernelOp::RGB565CopyRow];
     // The key is pre-quantized to 5/6/5, so comparing packed pixels is the
     // same test the per-pixel pipeline makes on the extracted channels.
     const uint16_t key565 =
@@ -499,7 +499,7 @@ static DEKI_FAST_ATTR bool BlendRows_RGB565A8_to_RGB565(const Source& source, ui
     const int32_t stride = SourceStride(source);
     const int32_t bpp = source.bytesPerPixel;
     const int16_t* rowSpans = source.alphaRowSpans;
-    RowKernelFn blendKernel = s_Kernels[(int)KernelOp::RGB565A8_Blend_Row];
+    RowKernelFn blendKernel = s_Kernels[(int)KernelOp::RGB565A8BlendRow];
     const BlitParams plain;
 
     for (int32_t py = b.startY; py < b.endY; py++)
@@ -563,7 +563,7 @@ static DEKI_FAST_ATTR bool ExpandRows_RGB565_to_RGB565A8(const Source& source, u
 {
     const int32_t stride = SourceStride(source);
     const int32_t rowPixels = b.endX - b.startX;
-    RowKernelFn expandKernel = s_Kernels[(int)KernelOp::RGB565_to_RGB565A8_Row];
+    RowKernelFn expandKernel = s_Kernels[(int)KernelOp::RGB565ToRGB565A8Row];
     for (int32_t py = b.startY; py < b.endY; py++)
     {
         const uint16_t* srcPtr = (const uint16_t*)(source.pixels + (py - destY) * stride) + (b.startX - destX);
@@ -601,7 +601,7 @@ static DEKI_FAST_ATTR bool Rows_RGB565A8_to_RGB565A8(const Source& source, uint8
         uint8_t* dstPtr = target + (py * targetWidth + b.startX) * 3;
         if (!source.hasAlpha)
         {
-            RowKernelFn copyKernel = s_Kernels[(int)KernelOp::RGB565A8_Copy_Row];
+            RowKernelFn copyKernel = s_Kernels[(int)KernelOp::RGB565A8CopyRow];
             if (copyKernel && Aligned16(srcPtr, dstPtr))
             {
                 copyKernel(srcPtr, dstPtr, rowPixels, 255, 255, 255, 255);
@@ -616,7 +616,7 @@ static DEKI_FAST_ATTR bool Rows_RGB565A8_to_RGB565A8(const Source& source, uint8
             }
             continue;
         }
-        RowKernelFn blendKernel = s_Kernels[(int)KernelOp::RGB565A8_Blend_Row_Dest_RGB565A8];
+        RowKernelFn blendKernel = s_Kernels[(int)KernelOp::RGB565A8BlendRowDestRGB565A8];
         if (blendKernel && Aligned16(srcPtr, dstPtr))
         {
             blendKernel(srcPtr, dstPtr, rowPixels, 255, 255, 255, 255);
@@ -684,26 +684,26 @@ static DEKI_FAST_ATTR void BlitRows(const Source& source, uint8_t* target, int32
 template <Deki::ColorFormat F, bool Plain>
 static void BlitRowsForTarget(SrcKind kind, const Source& source, uint8_t* target, int32_t targetWidth, int32_t destX,
                               int32_t destY, int32_t destWidth, int32_t destHeight, const BlitBounds& b,
-                              const BlitParams& P)
+                              const BlitParams& p)
 {
     switch (kind)
     {
         case SrcKind::RGB565:
-            BlitRows<SrcKind::RGB565, F, Plain>(source, target, targetWidth, destX, destY, destWidth, destHeight, b, P);
+            BlitRows<SrcKind::RGB565, F, Plain>(source, target, targetWidth, destX, destY, destWidth, destHeight, b, p);
             break;
         case SrcKind::RGB565A8:
             BlitRows<SrcKind::RGB565A8, F, Plain>(source, target, targetWidth, destX, destY, destWidth, destHeight, b,
-                                                  P);
+                                                  p);
             break;
         case SrcKind::RGBA8888:
             BlitRows<SrcKind::RGBA8888, F, Plain>(source, target, targetWidth, destX, destY, destWidth, destHeight, b,
-                                                  P);
+                                                  p);
             break;
         case SrcKind::RGB888:
-            BlitRows<SrcKind::RGB888, F, Plain>(source, target, targetWidth, destX, destY, destWidth, destHeight, b, P);
+            BlitRows<SrcKind::RGB888, F, Plain>(source, target, targetWidth, destX, destY, destWidth, destHeight, b, p);
             break;
         case SrcKind::ALPHA8:
-            BlitRows<SrcKind::ALPHA8, F, Plain>(source, target, targetWidth, destX, destY, destWidth, destHeight, b, P);
+            BlitRows<SrcKind::ALPHA8, F, Plain>(source, target, targetWidth, destX, destY, destWidth, destHeight, b, p);
             break;
     }
 }
@@ -711,25 +711,25 @@ static void BlitRowsForTarget(SrcKind kind, const Source& source, uint8_t* targe
 template <bool Plain>
 static void BlitRowsDispatch(SrcKind kind, Deki::ColorFormat targetFormat, const Source& source, uint8_t* target,
                              int32_t targetWidth, int32_t destX, int32_t destY, int32_t destWidth, int32_t destHeight,
-                             const BlitBounds& b, const BlitParams& P)
+                             const BlitBounds& b, const BlitParams& p)
 {
     switch (targetFormat)
     {
         case Deki::ColorFormat::RGB565:
             BlitRowsForTarget<Deki::ColorFormat::RGB565, Plain>(kind, source, target, targetWidth, destX, destY,
-                                                                destWidth, destHeight, b, P);
+                                                                destWidth, destHeight, b, p);
             break;
         case Deki::ColorFormat::RGB888:
             BlitRowsForTarget<Deki::ColorFormat::RGB888, Plain>(kind, source, target, targetWidth, destX, destY,
-                                                                destWidth, destHeight, b, P);
+                                                                destWidth, destHeight, b, p);
             break;
         case Deki::ColorFormat::ARGB8888:
             BlitRowsForTarget<Deki::ColorFormat::ARGB8888, Plain>(kind, source, target, targetWidth, destX, destY,
-                                                                  destWidth, destHeight, b, P);
+                                                                  destWidth, destHeight, b, p);
             break;
         case Deki::ColorFormat::RGB565A8:
             BlitRowsForTarget<Deki::ColorFormat::RGB565A8, Plain>(kind, source, target, targetWidth, destX, destY,
-                                                                  destWidth, destHeight, b, P);
+                                                                  destWidth, destHeight, b, p);
             break;
     }
 }
@@ -758,32 +758,32 @@ void BlitScaled(const Source& source, uint8_t* target, int32_t targetWidth, int3
     }
     NoteBlitRect(target, bounds.startX, bounds.startY, bounds.endX, bounds.endY);
 
-    BlitParams P;
-    P.hasTint = (tintR != 255 || tintG != 255 || tintB != 255);
-    P.hasAlphaTint = (tintA != 255);
-    P.hasKey = source.hasChromaKey;
+    BlitParams p;
+    p.hasTint = (tintR != 255 || tintG != 255 || tintB != 255);
+    p.hasAlphaTint = (tintA != 255);
+    p.hasKey = source.hasChromaKey;
     // Dithering only has partial-alpha pixels to work on when the source has alpha.
-    P.dither = useOrderedDither && source.hasAlpha;
-    P.flips = HasFlips(source);
-    P.tintR = tintR;
-    P.tintG = tintG;
-    P.tintB = tintB;
-    P.tintA = tintA;
-    P.keyR = source.keyR;
-    P.keyG = source.keyG;
-    P.keyB = source.keyB;
+    p.dither = useOrderedDither && source.hasAlpha;
+    p.flips = HasFlips(source);
+    p.tintR = tintR;
+    p.tintG = tintG;
+    p.tintB = tintB;
+    p.tintA = tintA;
+    p.keyR = source.keyR;
+    p.keyG = source.keyG;
+    p.keyB = source.keyB;
 
     const SrcKind kind = KindOf(source);
     const bool oneToOne = (destWidth == source.width && destHeight == source.height);
-    const bool plain = !P.hasTint && !P.hasAlphaTint && !P.hasKey && !P.dither && !P.flips;
+    const bool plain = !p.hasTint && !p.hasAlphaTint && !p.hasKey && !p.dither && !p.flips;
 
     // 1:1 row fast paths (same pixels as the pipeline, fewer instructions).
-    if (oneToOne && !P.hasTint && !P.hasAlphaTint && !P.dither && !P.flips)
+    if (oneToOne && !p.hasTint && !p.hasAlphaTint && !p.dither && !p.flips)
     {
         if (targetFormat == Deki::ColorFormat::RGB565)
         {
             uint16_t* target16 = (uint16_t*)target;
-            if (kind == SrcKind::RGB565 && P.hasKey && source.chromaRowSpans)
+            if (kind == SrcKind::RGB565 && p.hasKey && source.chromaRowSpans)
             {
                 CopyRows_RGB565_ChromaSpans(source, target16, targetWidth, destX, destY, bounds);
                 return;
@@ -817,12 +817,12 @@ void BlitScaled(const Source& source, uint8_t* target, int32_t targetWidth, int3
     if (plain)
     {
         BlitRowsDispatch<true>(kind, targetFormat, source, target, targetWidth, destX, destY, destWidth, destHeight,
-                               bounds, P);
+                               bounds, p);
     }
     else
     {
         BlitRowsDispatch<false>(kind, targetFormat, source, target, targetWidth, destX, destY, destWidth, destHeight,
-                                bounds, P);
+                                bounds, p);
     }
 }
 
@@ -875,15 +875,15 @@ static DEKI_FAST_ATTR void RotatedBlitT(const Source& source, uint8_t* target, i
 
 template <Deki::ColorFormat F>
 static void RotatedBlitForTarget(SrcKind kind, const Source& source, uint8_t* target, int32_t targetWidth,
-                                 const RotatedBlitArgs& a, const BlitParams& P)
+                                 const RotatedBlitArgs& a, const BlitParams& p)
 {
     switch (kind)
     {
-        case SrcKind::RGB565: RotatedBlitT<SrcKind::RGB565, F>(source, target, targetWidth, a, P); break;
-        case SrcKind::RGB565A8: RotatedBlitT<SrcKind::RGB565A8, F>(source, target, targetWidth, a, P); break;
-        case SrcKind::RGBA8888: RotatedBlitT<SrcKind::RGBA8888, F>(source, target, targetWidth, a, P); break;
-        case SrcKind::RGB888: RotatedBlitT<SrcKind::RGB888, F>(source, target, targetWidth, a, P); break;
-        case SrcKind::ALPHA8: RotatedBlitT<SrcKind::ALPHA8, F>(source, target, targetWidth, a, P); break;
+        case SrcKind::RGB565: RotatedBlitT<SrcKind::RGB565, F>(source, target, targetWidth, a, p); break;
+        case SrcKind::RGB565A8: RotatedBlitT<SrcKind::RGB565A8, F>(source, target, targetWidth, a, p); break;
+        case SrcKind::RGBA8888: RotatedBlitT<SrcKind::RGBA8888, F>(source, target, targetWidth, a, p); break;
+        case SrcKind::RGB888: RotatedBlitT<SrcKind::RGB888, F>(source, target, targetWidth, a, p); break;
+        case SrcKind::ALPHA8: RotatedBlitT<SrcKind::ALPHA8, F>(source, target, targetWidth, a, p); break;
     }
 }
 
@@ -965,19 +965,19 @@ void Blit(const Source& source, uint8_t* target, int32_t targetWidth, int32_t ta
     }
     NoteBlitRect(target, startX, startY, endX, endY);
 
-    BlitParams P;
-    P.hasTint = (tintR != 255 || tintG != 255 || tintB != 255);
-    P.hasAlphaTint = (tintA != 255);
-    P.hasKey = source.hasChromaKey;
-    P.dither = useOrderedDither && source.hasAlpha;
-    P.flips = HasFlips(source);
-    P.tintR = tintR;
-    P.tintG = tintG;
-    P.tintB = tintB;
-    P.tintA = tintA;
-    P.keyR = source.keyR;
-    P.keyG = source.keyG;
-    P.keyB = source.keyB;
+    BlitParams p;
+    p.hasTint = (tintR != 255 || tintG != 255 || tintB != 255);
+    p.hasAlphaTint = (tintA != 255);
+    p.hasKey = source.hasChromaKey;
+    p.dither = useOrderedDither && source.hasAlpha;
+    p.flips = HasFlips(source);
+    p.tintR = tintR;
+    p.tintG = tintG;
+    p.tintB = tintB;
+    p.tintA = tintA;
+    p.keyR = source.keyR;
+    p.keyG = source.keyG;
+    p.keyB = source.keyB;
 
     // Fixed-point inverse mapping. For destination pixel (px, py):
     //   localX =  dx*cosR + dy*sinR + pivotSX
@@ -1008,16 +1008,16 @@ void Blit(const Source& source, uint8_t* target, int32_t targetWidth, int32_t ta
     switch (targetFormat)
     {
         case Deki::ColorFormat::RGB565:
-            RotatedBlitForTarget<Deki::ColorFormat::RGB565>(kind, source, target, targetWidth, args, P);
+            RotatedBlitForTarget<Deki::ColorFormat::RGB565>(kind, source, target, targetWidth, args, p);
             break;
         case Deki::ColorFormat::RGB888:
-            RotatedBlitForTarget<Deki::ColorFormat::RGB888>(kind, source, target, targetWidth, args, P);
+            RotatedBlitForTarget<Deki::ColorFormat::RGB888>(kind, source, target, targetWidth, args, p);
             break;
         case Deki::ColorFormat::ARGB8888:
-            RotatedBlitForTarget<Deki::ColorFormat::ARGB8888>(kind, source, target, targetWidth, args, P);
+            RotatedBlitForTarget<Deki::ColorFormat::ARGB8888>(kind, source, target, targetWidth, args, p);
             break;
         case Deki::ColorFormat::RGB565A8:
-            RotatedBlitForTarget<Deki::ColorFormat::RGB565A8>(kind, source, target, targetWidth, args, P);
+            RotatedBlitForTarget<Deki::ColorFormat::RGB565A8>(kind, source, target, targetWidth, args, p);
             break;
     }
 }

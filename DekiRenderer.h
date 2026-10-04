@@ -68,7 +68,7 @@ public:
 
     /**
      * @brief Get the renderer type ID (for safe downcasting without RTTI)
-     * Each renderer subclass defines a unique static constexpr uint32_t RendererTypeID.
+     * Each renderer subclass defines a unique static constexpr uint32_t kRendererTypeID.
      */
     virtual uint32_t GetRendererType() const = 0;
 

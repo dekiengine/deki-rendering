@@ -58,8 +58,8 @@ class RendererComponent;
 class Standard2DRenderer : public DekiRenderer
 {
 public:
-    static constexpr uint32_t RendererTypeID = 0x53324452;  // "S2DR"
-    uint32_t GetRendererType() const override { return RendererTypeID; }
+    static constexpr uint32_t kRendererTypeID = 0x53324452;  // "S2DR"
+    uint32_t GetRendererType() const override { return kRendererTypeID; }
 
     void Render(Deki::Scene* scene, const RenderContext& ctx) override;
     const DirtyRegion* GetLastFrameDirty() const override { return m_FrameDirtyValid ? &m_FrameDirty : nullptr; }

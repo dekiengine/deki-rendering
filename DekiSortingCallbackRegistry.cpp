@@ -10,8 +10,8 @@ namespace DekiSortingCallbackRegistry
 
 static std::unordered_map<std::string, SortingCallback>& GetRegistry()
 {
-    static std::unordered_map<std::string, SortingCallback> reg;
-    return reg;
+    static std::unordered_map<std::string, SortingCallback> s_Reg;
+    return s_Reg;
 }
 
 void Register(const char* name, SortingCallback callback)

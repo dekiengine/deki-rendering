@@ -48,10 +48,10 @@ struct FrameCamera
     void WorldToScreen(float worldX, float worldY, float& screenX, float& screenY) const
     {
         // World: metres, centre origin, Y up. Screen: top-left origin, Y down.
-        const float rel_x = worldX - camX;
-        const float rel_y = worldY - camY;
-        screenX = rel_x * ppm + halfW;
-        screenY = -rel_y * ppm + halfH;
+        const float relX = worldX - camX;
+        const float relY = worldY - camY;
+        screenX = relX * ppm + halfW;
+        screenY = -relY * ppm + halfH;
     }
 };
 

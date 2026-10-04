@@ -25,7 +25,7 @@ namespace DekiRendering
  *
  * // In MyTagComponent.cpp:
  * Deki::ComponentInterfaceAdapters::Register(
- *     IRenderTargetProvider::InterfaceID, ::Deki::TypeId<MyTagComponent>(),
+ *     IRenderTargetProvider::kInterfaceID, ::Deki::TypeId<MyTagComponent>(),
  *     [](Deki::Component* c) -> void* {
  *         return static_cast<IRenderTargetProvider*>(static_cast<MyTagComponent*>(c));
  *     });
@@ -35,7 +35,7 @@ namespace DekiRendering
 class IRenderTargetProvider
 {
 public:
-    static constexpr uint32_t InterfaceID = 0x52544754;  // "RTGT"
+    static constexpr uint32_t kInterfaceID = 0x52544754;  // "RTGT"
 
     virtual ~IRenderTargetProvider() = default;
     virtual const char* GetRenderTargetTag() const = 0;

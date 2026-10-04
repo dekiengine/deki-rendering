@@ -11,8 +11,8 @@ namespace DekiRendererRegistry
 // Meyer's singleton — avoids static init order issues across translation units
 static std::unordered_map<std::string, DekiRendererFactory>& GetRegistry()
 {
-    static std::unordered_map<std::string, DekiRendererFactory> reg;
-    return reg;
+    static std::unordered_map<std::string, DekiRendererFactory> s_Reg;
+    return s_Reg;
 }
 
 void Register(const char* name, DekiRendererFactory factory)

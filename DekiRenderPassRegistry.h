@@ -79,7 +79,7 @@ const RenderPassInfo* Get(const char* name);
  * jumps to unmapped memory.
  *
  * Also detaches the live pass instance from the active renderer (equivalent
- * to calling DekiRendering_DetachPass(name)) — the pass's vtable lives in
+ * to calling DekiRenderingDetachPass(name)) — the pass's vtable lives in
  * the caller's DLL, which is typically about to unload, so it must be
  * destroyed while that DLL's code is still mapped.
  */

@@ -54,7 +54,7 @@ enum class SrcFmt
 {
     RGB565,
     RGB565A8,
-    RGB565A8_NoAlpha,
+    RGB565A8NoAlpha,
     RGBA8888,
     RGB888,
     ALPHA8
@@ -66,7 +66,7 @@ const char* SrcName(SrcFmt f)
     {
         case SrcFmt::RGB565: return "RGB565";
         case SrcFmt::RGB565A8: return "RGB565A8";
-        case SrcFmt::RGB565A8_NoAlpha: return "RGB565A8(noalpha)";
+        case SrcFmt::RGB565A8NoAlpha: return "RGB565A8(noalpha)";
         case SrcFmt::RGBA8888: return "RGBA8888";
         case SrcFmt::RGB888: return "RGB888";
         case SrcFmt::ALPHA8: return "ALPHA8";
@@ -80,7 +80,7 @@ int Bpp(SrcFmt f)
     {
         case SrcFmt::RGB565: return 2;
         case SrcFmt::RGB565A8:
-        case SrcFmt::RGB565A8_NoAlpha: return 3;
+        case SrcFmt::RGB565A8NoAlpha: return 3;
         case SrcFmt::RGBA8888: return 4;
         case SrcFmt::RGB888: return 3;
         case SrcFmt::ALPHA8: return 1;
@@ -173,7 +173,7 @@ SrcBuf MakeSrc(SrcFmt f, int w, int h, uint32_t seed, int stridePad, bool chroma
             {
                 case SrcFmt::RGB565:
                 case SrcFmt::RGB565A8:
-                case SrcFmt::RGB565A8_NoAlpha:
+                case SrcFmt::RGB565A8NoAlpha:
                 {
                     const uint16_t v = static_cast<uint16_t>(((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3));
                     p[0] = static_cast<uint8_t>(v & 0xFF);
@@ -199,10 +199,10 @@ SrcBuf MakeSrc(SrcFmt f, int w, int h, uint32_t seed, int stridePad, bool chroma
             }
         }
     }
-    const bool isRGB565 = (f == SrcFmt::RGB565 || f == SrcFmt::RGB565A8 || f == SrcFmt::RGB565A8_NoAlpha);
+    const bool isRGB565 = (f == SrcFmt::RGB565 || f == SrcFmt::RGB565A8 || f == SrcFmt::RGB565A8NoAlpha);
     const bool hasAlpha = (f == SrcFmt::RGB565A8 || f == SrcFmt::RGBA8888 || f == SrcFmt::ALPHA8);
     // The aggregate rather than a named layout: this harness deliberately
-    // builds shapes that are not one of the asset formats, RGB565A8_NoAlpha
+    // builds shapes that are not one of the asset formats, RGB565A8NoAlpha
     // among them. Designated initialisers still name each field at the point
     // of use, which is the whole point of the change.
     out.src = QuadBlit::MakeSource(
@@ -262,7 +262,7 @@ const Case kCases[] = {
     { "rot 2.5 chroma", 30, 24, 0, 0, 255, 255, 255, 255, false, false, false, false, false, 2.5f, 0, true },
 };
 
-const SrcFmt kSrcFmts[] = { SrcFmt::RGB565,   SrcFmt::RGB565A8, SrcFmt::RGB565A8_NoAlpha,
+const SrcFmt kSrcFmts[] = { SrcFmt::RGB565,   SrcFmt::RGB565A8, SrcFmt::RGB565A8NoAlpha,
                             SrcFmt::RGBA8888, SrcFmt::RGB888,   SrcFmt::ALPHA8 };
 const Deki::ColorFormat kDstFmts[] = { Deki::ColorFormat::RGB565, Deki::ColorFormat::RGB888,
                                        Deki::ColorFormat::ARGB8888, Deki::ColorFormat::RGB565A8 };

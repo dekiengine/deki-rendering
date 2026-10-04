@@ -64,7 +64,7 @@ static void AttachPass(const char* name, const RenderPassInfo& info)
     DEKI_LOG_INTERNAL("DekiRendering: Attached pass '%s'", name);
 }
 
-void DekiRendering_DetachPass(const char* name)
+void DekiRenderingDetachPass(const char* name)
 {
     if (!name)
     {
@@ -93,7 +93,7 @@ void DekiRendering_DetachPass(const char* name)
 // Global scope, matching the editor's generated glue. See DekiRenderingInit.h.
 using namespace DekiRendering;
 
-void DekiRendering_InitSystem()
+void DekiRenderingInitSystem()
 {
     if (s_RenderSystem)
     {
@@ -119,7 +119,7 @@ void DekiRendering_InitSystem()
     // 3. Create and add passes from project settings
     //    Safe downcast via GetRendererType() — no RTTI needed.
     int passCount = Deki::ProjectSettings::GetPassCount();
-    if (s_Renderer && s_Renderer->GetRendererType() == Standard2DRenderer::RendererTypeID)
+    if (s_Renderer && s_Renderer->GetRendererType() == Standard2DRenderer::kRendererTypeID)
     {
         s_PassReceiver = static_cast<Standard2DRenderer*>(s_Renderer);
     }
@@ -189,7 +189,7 @@ void DekiRendering_InitSystem()
     DEKI_LOG_INTERNAL("DekiRendering: Init complete (renderer=%p, %d passes)", (void*)s_Renderer, (int)s_Passes.size());
 }
 
-void DekiRendering_ShutdownSystem()
+void DekiRenderingShutdownSystem()
 {
     Deki::Engine::GetInstance().SetRenderSystem(nullptr);
 

@@ -132,20 +132,20 @@ const Deki::ComponentTypeInfo TestSortGroup::kTypeInfo =
 
 void RegisterTestAdapters()
 {
-    static bool done = false;
-    if (done)
+    static bool s_Done = false;
+    if (s_Done)
     {
         return;
     }
-    done = true;
+    s_Done = true;
     Deki::ComponentInterfaceAdapters::Register(
-        Deki::IClipProvider::InterfaceID, ::Deki::TypeId<TestClip>(),
+        Deki::IClipProvider::kInterfaceID, ::Deki::TypeId<TestClip>(),
         [](Deki::Component* c) -> void* { return static_cast<Deki::IClipProvider*>(static_cast<TestClip*>(c)); });
     Deki::ComponentInterfaceAdapters::Register(
-        Deki::ISortableProvider::InterfaceID, ::Deki::TypeId<TestClip>(),
+        Deki::ISortableProvider::kInterfaceID, ::Deki::TypeId<TestClip>(),
         [](Deki::Component* c) -> void* { return static_cast<Deki::ISortableProvider*>(static_cast<TestClip*>(c)); });
     Deki::ComponentInterfaceAdapters::Register(
-        Deki::ISortableProvider::InterfaceID, ::Deki::TypeId<TestSortGroup>(), [](Deki::Component* c) -> void*
+        Deki::ISortableProvider::kInterfaceID, ::Deki::TypeId<TestSortGroup>(), [](Deki::Component* c) -> void*
         { return static_cast<Deki::ISortableProvider*>(static_cast<TestSortGroup*>(c)); });
 }
 
@@ -522,7 +522,7 @@ TEST(RendererGoldenTest, AdapterRegisteredAfterFirstFrameTakesEffect)
     EXPECT_EQ(target[corner] | (target[corner + 1] << 8), 0xF800) << "no adapter yet: unclipped";
 
     Deki::ComponentInterfaceAdapters::Register(
-        Deki::IClipProvider::InterfaceID, ::Deki::TypeId<TestLateClip>(),
+        Deki::IClipProvider::kInterfaceID, ::Deki::TypeId<TestLateClip>(),
         [](Deki::Component* c) -> void* { return static_cast<Deki::IClipProvider*>(static_cast<TestLateClip*>(c)); });
     std::fill(target.begin(), target.end(), 0);
     renderer.Render(&b.scene, ctx);

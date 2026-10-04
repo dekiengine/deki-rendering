@@ -69,7 +69,7 @@ public:
     /// Switch to the display's internal buffer when it exists and matches our
     /// size. Returns true when the render buffer now points at the display's.
     bool TryAdoptDisplayBuffer();
-    void Render(Deki::Scene* current_scene) override;
+    void Render(Deki::Scene* currentScene) override;
     void ClearBuffer(uint8_t r, uint8_t g, uint8_t b);
     void ClearBuffer(const Deki::Color& color);
     /// Fill [x, x+w) x [y, y+h) of the framebuffer (clipped) with a colour.

@@ -43,7 +43,7 @@ namespace DekiRendering
 
 extern "C"
 {
-    DEKI_RENDERING_API int DekiRendering_EnsureRegistered(void);
+    DEKI_RENDERING_API int DekiRenderingEnsureRegistered(void);
 
 }  // extern "C"
 

@@ -7,21 +7,21 @@ namespace DekiRendering
 
 // Forward-declared from DekiRenderingInit.h — kept here to avoid pulling the
 // init header into this registry's public surface.
-void DekiRendering_DetachPass(const char* name);
+void DekiRenderingDetachPass(const char* name);
 
 namespace DekiRenderPassRegistry
 {
 
 static std::unordered_map<std::string, RenderPassInfo>& GetRegistry()
 {
-    static std::unordered_map<std::string, RenderPassInfo> reg;
-    return reg;
+    static std::unordered_map<std::string, RenderPassInfo> s_Reg;
+    return s_Reg;
 }
 
 static AutoAttachCallback& GetAutoAttachCallback()
 {
-    static AutoAttachCallback cb;
-    return cb;
+    static AutoAttachCallback s_Cb;
+    return s_Cb;
 }
 
 void Register(const char* name, RenderPassInfo info)
@@ -33,8 +33,8 @@ void Register(const char* name, RenderPassInfo info)
 
     GetRegistry()[name] = info;
 
-    // Late-attach for packages that load after DekiRendering_InitSystem already
-    // ran its scan. The callback is installed by DekiRendering_InitSystem.
+    // Late-attach for packages that load after DekiRenderingInitSystem already
+    // ran its scan. The callback is installed by DekiRenderingInitSystem.
     if (info.autoAttach)
     {
         auto& cb = GetAutoAttachCallback();
@@ -73,7 +73,7 @@ void Unregister(const char* name)
     // to unload (the static destructor that called us runs during DLL detach).
     // Without this, deki-rendering's later shutdown deletes the pass through
     // a freed vtable.
-    DekiRendering_DetachPass(name);
+    DekiRenderingDetachPass(name);
     GetRegistry().erase(name);
 }
 

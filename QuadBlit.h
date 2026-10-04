@@ -299,30 +299,30 @@ enum class KernelOp : uint8_t
     // RGB565 source → RGB565 dest, 1:1, opaque copy. src/dst point at RGB565
     // pixels (2 bytes each). Used by both the plain opaque copy path and the
     // opaque-middle of the chroma-key row-span path.
-    RGB565_Copy_Row,
+    RGB565CopyRow,
 
     // RGB565A8 source → RGB565 dest, 1:1 alpha blend. src is 3 bytes/pixel
     // (RGB565 + 1 byte alpha), dst is 2 bytes/pixel. Kernel handles a==0 skip
     // and a==255 fast-path internally. Tint and chroma-key MUST be absent
     // (caller checks; kernel does not).
-    RGB565A8_Blend_Row,
+    RGB565A8BlendRow,
 
     // RGB565 source → RGB565A8 dest, 1:1, opaque expand. src is 2 bytes/pixel,
     // dst is 3 bytes/pixel laid out as [lo, hi, alpha]. Output alpha is set
     // to 0xFF for every pixel. Tint and chroma-key MUST be absent.
-    RGB565_to_RGB565A8_Row,
+    RGB565ToRGB565A8Row,
 
     // RGB565A8 source → RGB565A8 dest, 1:1, opaque copy. Both src and dst are
     // 3 bytes/pixel. Caller guarantees the entire row is opaque (alpha == 255
     // for every pixel) — the kernel may skip per-pixel alpha checks. Effectively
     // a `memcpy(dst, src, count*3)`. Tint and chroma-key MUST be absent.
-    RGB565A8_Copy_Row,
+    RGB565A8CopyRow,
 
     // RGB565A8 source → RGB565A8 dest, 1:1, alpha blend with src-over alpha
     // union (out.a = src.a + dst.a * (255 - src.a) / 255). Both src and dst
     // are 3 bytes/pixel. Kernel handles a==0 skip and a==255 fast-path
     // internally. Tint and chroma-key MUST be absent.
-    RGB565A8_Blend_Row_Dest_RGB565A8,
+    RGB565A8BlendRowDestRGB565A8,
 
     Count
 };

@@ -120,12 +120,12 @@ bool DekiRenderSystem::Setup(int32_t width, int32_t height, Deki::ColorFormat fo
     // null buffer — but Render() only re-queried the display for non-owned
     // buffers, so the allocation never happened and nothing was ever drawn,
     // with no error. Now Setup either yields a usable buffer or says so.
-    int bytes_per_pixel = GetBytesPerPixel(format);
-    size_t buffer_size = (size_t)width * (size_t)height * (size_t)bytes_per_pixel;
-    m_RenderBuffer = (uint8_t*)Deki::Memory::AllocateInternal(buffer_size);
+    int bytesPerPixel = GetBytesPerPixel(format);
+    size_t bufferSize = (size_t)width * (size_t)height * (size_t)bytesPerPixel;
+    m_RenderBuffer = (uint8_t*)Deki::Memory::AllocateInternal(bufferSize);
     if (!m_RenderBuffer)
     {
-        DEKI_LOG_ERROR("DekiRenderSystem::Setup: failed to allocate %zu-byte framebuffer (%dx%d)", buffer_size, width,
+        DEKI_LOG_ERROR("DekiRenderSystem::Setup: failed to allocate %zu-byte framebuffer (%dx%d)", bufferSize, width,
                        height);
         return false;
     }
@@ -157,9 +157,9 @@ bool DekiRenderSystem::TryAdoptDisplayBuffer()
     return true;
 }
 
-void DekiRenderSystem::Render(Deki::Scene* current_scene)
+void DekiRenderSystem::Render(Deki::Scene* currentScene)
 {
-    if (!current_scene || !m_Renderer)
+    if (!currentScene || !m_Renderer)
     {
         return;
     }
@@ -196,7 +196,7 @@ void DekiRenderSystem::Render(Deki::Scene* current_scene)
     // runtime turned into a dangling component. The walk is a few hundred
     // component-list checks against a frame of blits.
     CameraComponent* camera = nullptr;
-    for (Deki::Object* obj : current_scene->GetObjects())
+    for (Deki::Object* obj : currentScene->GetObjects())
     {
         Deki::Object* holder =
             FindInSubtree(obj, [](Deki::Object* o) { return o->GetComponent<CameraComponent>() != nullptr; });
@@ -264,7 +264,7 @@ void DekiRenderSystem::Render(Deki::Scene* current_scene)
     // Delegate to the active renderer
     RenderContext ctx{ camera, m_RenderBuffer, m_ScreenWidth, m_ScreenHeight, m_ColorFormat };
     ctx.trackDirty = tracking;
-    m_Renderer->Render(current_scene, ctx);
+    m_Renderer->Render(currentScene, ctx);
 
     if (!tracking)
     {

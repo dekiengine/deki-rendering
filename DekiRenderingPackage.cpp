@@ -17,9 +17,9 @@
 #include <deki/reflection/ComponentRegistry.h>
 #include <deki/reflection/ComponentFactory.h>
 
-extern void DekiRendering_RegisterComponents();
-extern int DekiRendering_GetAutoComponentCount();
-extern const Deki::ComponentMeta* DekiRendering_GetAutoComponentMeta(int index);
+extern void DekiRenderingRegisterComponents();
+extern int DekiRenderingGetAutoComponentCount();
+extern const Deki::ComponentMeta* DekiRenderingGetAutoComponentMeta(int index);
 
 namespace DekiRendering
 {
@@ -37,22 +37,22 @@ using namespace DekiRendering;
 
 extern "C"
 {
-    DEKI_RENDERING_API int DekiRendering_EnsureRegistered(void)
+    DEKI_RENDERING_API int DekiRenderingEnsureRegistered(void)
     {
         if (s_Registered)
         {
-            return ::DekiRendering_GetAutoComponentCount();
+            return ::DekiRenderingGetAutoComponentCount();
         }
         s_Registered = true;
 
         // Auto-generated: registers rendering components with ComponentRegistry + ComponentFactory
-        ::DekiRendering_RegisterComponents();
+        ::DekiRenderingRegisterComponents();
 
         // Initialize the rendering system (idempotent — may already be initialized
-        // by deki_init_package_systems() during Deki::Engine::Initialize())
-        DekiRendering_InitSystem();
+        // by DekiInitPackageSystems() during Deki::Engine::Initialize())
+        DekiRenderingInitSystem();
 
-        return ::DekiRendering_GetAutoComponentCount();
+        return ::DekiRenderingGetAutoComponentCount();
     }
 
 }  // extern "C"
@@ -65,12 +65,12 @@ extern "C"
 extern "C"
 {
 #ifndef DEKI_PLUGIN_EXPORTS
-    DEKI_PLUGIN_API const char* DekiPlugin_GetName(void)
+    DEKI_PLUGIN_API const char* DekiPluginGetName(void)
     {
         return "Deki Rendering Package";
     }
 
-    DEKI_PLUGIN_API const char* DekiPlugin_GetVersion(void)
+    DEKI_PLUGIN_API const char* DekiPluginGetVersion(void)
     {
 #ifdef DEKI_PACKAGE_VERSION
         return DEKI_PACKAGE_VERSION;
@@ -79,31 +79,31 @@ extern "C"
 #endif
     }
 
-    DEKI_PLUGIN_API int DekiPlugin_Init(void)
+    DEKI_PLUGIN_API int DekiPluginInit(void)
     {
         return 0;
     }
 
-    DEKI_PLUGIN_API void DekiPlugin_Shutdown(void)
+    DEKI_PLUGIN_API void DekiPluginShutdown(void)
     {
         // Shutdown the rendering system (shared with non-editor builds)
-        DekiRendering_ShutdownSystem();
+        DekiRenderingShutdownSystem();
         s_Registered = false;
     }
 
-    DEKI_PLUGIN_API int DekiPlugin_GetComponentCount(void)
+    DEKI_PLUGIN_API int DekiPluginGetComponentCount(void)
     {
-        return ::DekiRendering_GetAutoComponentCount();
+        return ::DekiRenderingGetAutoComponentCount();
     }
 
-    DEKI_PLUGIN_API const Deki::ComponentMeta* DekiPlugin_GetComponentMeta(int index)
+    DEKI_PLUGIN_API const Deki::ComponentMeta* DekiPluginGetComponentMeta(int index)
     {
-        return ::DekiRendering_GetAutoComponentMeta(index);
+        return ::DekiRenderingGetAutoComponentMeta(index);
     }
 
-    DEKI_PLUGIN_API void DekiPlugin_RegisterComponents(void)
+    DEKI_PLUGIN_API void DekiPluginRegisterComponents(void)
     {
-        DekiRendering_EnsureRegistered();
+        DekiRenderingEnsureRegistered();
     }
 
 #endif  // DEKI_PLUGIN_EXPORTS
@@ -114,7 +114,7 @@ extern "C"
 // Package-specific API
 // =============================================================================
 
-DEKI_RENDERING_API const char* DekiRendering_GetName(void)
+DEKI_RENDERING_API const char* DekiRenderingGetName(void)
 {
     return "Rendering";
 }
