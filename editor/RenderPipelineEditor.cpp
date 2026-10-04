@@ -46,16 +46,12 @@ public:
 
     int GetCompileTarget() const override { return 3; }  // None
 
-    bool Compile(const std::string& jsonData,
-                 std::vector<uint8_t>& rgba,
-                 int& width, int& height) override
+    bool Compile(const std::string& jsonData, std::vector<uint8_t>& rgba, int& width, int& height) override
     {
         return false;  // No texture compilation
     }
 
-    bool OnInspectorGUI(std::string& jsonData,
-                        const std::string& assetPath,
-                        const std::string& assetGuid) override
+    bool OnInspectorGUI(std::string& jsonData, const std::string& assetPath, const std::string& assetGuid) override
     {
         auto data = nlohmann::json::parse(jsonData);
         bool modified = false;
@@ -81,11 +77,13 @@ public:
         {
             std::vector<const char*> items;
             items.reserve(rendererNames.size());
-            for (auto& n : rendererNames) items.push_back(n.c_str());
+            for (auto& n : rendererNames)
+            {
+                items.push_back(n.c_str());
+            }
 
             int selected = currentRendererIdx >= 0 ? currentRendererIdx : 0;
-            if (ui.Combo("Renderer", &selected, items.data(),
-                         static_cast<int>(items.size())))
+            if (ui.Combo("Renderer", &selected, items.data(), static_cast<int>(items.size())))
             {
                 data["renderer"] = rendererNames[selected];
                 modified = true;
@@ -103,7 +101,9 @@ public:
         // --- Pass list ---
         auto& passes = data["passes"];
         if (!passes.is_array())
+        {
             passes = nlohmann::json::array();
+        }
 
         // Cache pass names for dropdowns
         std::vector<std::string> passNames;
@@ -115,15 +115,16 @@ public:
             ui.PushID(i);
             auto& pass = passes[i];
             if (!pass.is_object())
+            {
                 pass = nlohmann::json::object();
+            }
 
             std::string passType = pass.value("type", "");
 
             // Collapsible header with built-in close button
             bool passOpen = true;
-            bool open = ui.CollapsingHeader(
-                passType.empty() ? "(select pass type)" : passType.c_str(),
-                &passOpen, true);
+            bool open =
+                ui.CollapsingHeader(passType.empty() ? "(select pass type)" : passType.c_str(), &passOpen, true);
 
             if (!passOpen)
             {
@@ -150,11 +151,13 @@ public:
 
                     std::vector<const char*> passItems;
                     passItems.reserve(passNames.size());
-                    for (auto& n : passNames) passItems.push_back(n.c_str());
+                    for (auto& n : passNames)
+                    {
+                        passItems.push_back(n.c_str());
+                    }
 
                     int sel = currentPassIdx >= 0 ? currentPassIdx : 0;
-                    if (ui.Combo("Pass Type", &sel, passItems.data(),
-                                 static_cast<int>(passItems.size())))
+                    if (ui.Combo("Pass Type", &sel, passItems.data(), static_cast<int>(passItems.size())))
                     {
                         pass["type"] = passNames[sel];
                         modified = true;
@@ -167,7 +170,9 @@ public:
 
                 // Settings display
                 if (!pass.contains("settings"))
+                {
                     pass["settings"] = nlohmann::json::object();
+                }
 
                 auto& settings = pass["settings"];
                 if (!settings.empty())
@@ -177,8 +182,7 @@ public:
                     for (auto& [key, val] : settings.items())
                     {
                         char line[256];
-                        std::snprintf(line, sizeof(line), "%s: %s",
-                                      key.c_str(), val.dump().c_str());
+                        std::snprintf(line, sizeof(line), "%s: %s", key.c_str(), val.dump().c_str());
                         ui.BulletText(line);
                     }
                 }
@@ -200,12 +204,14 @@ public:
         {
             // Default to first registered pass if available
             std::string defaultType = passNames.empty() ? "" : passNames[0];
-            passes.push_back({{"type", defaultType}, {"settings", nlohmann::json::object()}});
+            passes.push_back({ { "type", defaultType }, { "settings", nlohmann::json::object() } });
             modified = true;
         }
 
         if (modified)
+        {
             jsonData = data.dump(2);
+        }
 
         return modified;
     }

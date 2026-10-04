@@ -57,7 +57,7 @@ public:
     uint8_t alpha = 255;       // used when withAlpha
     bool withAlpha = false;
     float pivotX = 0.5f, pivotY = 0.5f;
-    float sourcePpm = 16.0f;   // 4 px == 0.25 m at the default camera scale
+    float sourcePpm = 16.0f;  // 4 px == 0.25 m at the default camera scale
 
     bool GetContentExtents(float& outW, float& outH) const override
     {
@@ -76,7 +76,9 @@ public:
             m_Pixels[i * 3 + 2] = alpha;
         }
         if (withAlpha)
+        {
             outSource = QuadBlit::MakeSource(m_Pixels, 4, 4, QuadBlit::PixelLayout::RGB565A8(), false, nullptr);
+        }
         else
         {
             for (int i = 0; i < 16; ++i)
@@ -97,7 +99,8 @@ private:
     uint8_t m_Pixels[16 * 3] = {};
     uint8_t m_Packed[16 * 2] = {};
 };
-const Deki::ComponentTypeInfo TestRenderer::kTypeInfo = Deki::MakeHandWrittenTypeInfo<TestRenderer, RendererComponent>(/*declaresUpdate=*/false);
+const Deki::ComponentTypeInfo TestRenderer::kTypeInfo =
+    Deki::MakeHandWrittenTypeInfo<TestRenderer, RendererComponent>(/*declaresUpdate=*/false);
 
 // A clip region that also sorts (like ClipComponent).
 class TestClip : public Deki::Component, public Deki::IClipProvider, public Deki::ISortableProvider
@@ -124,19 +127,26 @@ public:
     int32_t order = 0;
     int32_t GetSortingOrder() const override { return order; }
 };
-const Deki::ComponentTypeInfo TestSortGroup::kTypeInfo = Deki::MakeHandWrittenTypeInfo<TestSortGroup>(/*declaresUpdate=*/false);
+const Deki::ComponentTypeInfo TestSortGroup::kTypeInfo =
+    Deki::MakeHandWrittenTypeInfo<TestSortGroup>(/*declaresUpdate=*/false);
 
 void RegisterTestAdapters()
 {
     static bool done = false;
-    if (done) return;
+    if (done)
+    {
+        return;
+    }
     done = true;
-    Deki::ComponentInterfaceAdapters::Register(Deki::IClipProvider::InterfaceID, ::Deki::TypeId<TestClip>(),
-                                         [](Deki::Component* c) -> void* { return static_cast<Deki::IClipProvider*>(static_cast<TestClip*>(c)); });
-    Deki::ComponentInterfaceAdapters::Register(Deki::ISortableProvider::InterfaceID, ::Deki::TypeId<TestClip>(),
-                                         [](Deki::Component* c) -> void* { return static_cast<Deki::ISortableProvider*>(static_cast<TestClip*>(c)); });
-    Deki::ComponentInterfaceAdapters::Register(Deki::ISortableProvider::InterfaceID, ::Deki::TypeId<TestSortGroup>(),
-                                         [](Deki::Component* c) -> void* { return static_cast<Deki::ISortableProvider*>(static_cast<TestSortGroup*>(c)); });
+    Deki::ComponentInterfaceAdapters::Register(
+        Deki::IClipProvider::InterfaceID, ::Deki::TypeId<TestClip>(),
+        [](Deki::Component* c) -> void* { return static_cast<Deki::IClipProvider*>(static_cast<TestClip*>(c)); });
+    Deki::ComponentInterfaceAdapters::Register(
+        Deki::ISortableProvider::InterfaceID, ::Deki::TypeId<TestClip>(),
+        [](Deki::Component* c) -> void* { return static_cast<Deki::ISortableProvider*>(static_cast<TestClip*>(c)); });
+    Deki::ComponentInterfaceAdapters::Register(
+        Deki::ISortableProvider::InterfaceID, ::Deki::TypeId<TestSortGroup>(), [](Deki::Component* c) -> void*
+        { return static_cast<Deki::ISortableProvider*>(static_cast<TestSortGroup*>(c)); });
 }
 
 // ---------------------------------------------------------------- scene helpers
@@ -162,8 +172,14 @@ struct SceneBuilder
         auto* o = new Deki::Object(name);
         o->SetX(x);
         o->SetY(y);
-        if (parent) parent->AddChild(o);
-        else scene.AddObject(o);
+        if (parent)
+        {
+            parent->AddChild(o);
+        }
+        else
+        {
+            scene.AddObject(o);
+        }
         return o;
     }
 
@@ -191,10 +207,10 @@ int TargetBpp(Deki::ColorFormat f)
 {
     switch (f)
     {
-    case Deki::ColorFormat::RGB565: return 2;
-    case Deki::ColorFormat::RGB888: return 3;
-    case Deki::ColorFormat::ARGB8888: return 4;
-    case Deki::ColorFormat::RGB565A8: return 3;
+        case Deki::ColorFormat::RGB565: return 2;
+        case Deki::ColorFormat::RGB888: return 3;
+        case Deki::ColorFormat::ARGB8888: return 4;
+        case Deki::ColorFormat::RGB565A8: return 3;
     }
     return 0;
 }
@@ -210,108 +226,152 @@ struct Case
 // Camera at the origin showing 3 m top to bottom: 16 px/m on the 64 x 48
 // target, screen centre is world (0, 0).
 const Case kCases[] = {
-    { "sort order", [](SceneBuilder& b) {
-        b.Sprite("back", 0.0f, 0.0f, 0xF800, 10);   // red, drawn last despite insertion order
-        b.Sprite("front", 0.05f, 0.05f, 0x07E0, 0);
-        b.Sprite("mid", -0.05f, -0.05f, 0x001F, 5); } },
-    { "sort stability", [](SceneBuilder& b) {
-        b.Sprite("a", 0.0f, 0.0f, 0xF800, 3);
-        b.Sprite("b", 0.05f, 0.0f, 0x07E0, 3);
-        b.Sprite("c", 0.10f, 0.0f, 0x001F, 3); } },
-    { "transparent container", [](SceneBuilder& b) {
-        auto* group = b.Object("group", 0.5f, 0.0f);
-        b.Sprite("child1", 0.0f, 0.0f, 0xFFE0, 2, group);
-        b.Sprite("child2", 0.1f, 0.0f, 0x07FF, 1, group);
-        b.Sprite("root", 0.55f, 0.0f, 0xF81F, 0); } },
-    { "sort group", [](SceneBuilder& b) {
-        auto* g = b.Object("g", -0.5f, 0.0f);
-        g->AddComponent<TestSortGroup>()->order = -1;
-        b.Sprite("in group", 0.0f, 0.0f, 0xF800, 50, g);
-        b.Sprite("root", -0.45f, 0.0f, 0x07E0, 0); } },
-    { "inactive subtree", [](SceneBuilder& b) {
-        auto* off = b.Object("off", 0.0f, 0.0f);
-        off->SetActive(false);
-        b.Sprite("hidden", 0.0f, 0.0f, 0xF800, 0, off);
-        b.Sprite("shown", 0.3f, 0.0f, 0x07E0, 0); } },
-    { "nested clips depth 3", [](SceneBuilder& b) {
-        Deki::Object* parent = nullptr;
-        for (int i = 0; i < 3; ++i)
-        {
-            auto* c = b.Object("clip", i == 0 ? 0.0f : 0.05f, 0.0f, parent);
-            auto* clip = c->AddComponent<TestClip>();
-            clip->width = 0.5f - 0.1f * i;
-            clip->height = 0.4f - 0.05f * i;
-            parent = c;
-        }
-        auto* big = b.Sprite("big", 0.0f, 0.0f, 0xF800, 0, parent);
-        big->sourcePpm = 4.0f;  // 4 px == 1 m: larger than every clip
-    } },
-    { "nested clips depth 40", [](SceneBuilder& b) {
-        Deki::Object* parent = nullptr;
-        for (int i = 0; i < 40; ++i)
-        {
-            auto* c = b.Object("clip", 0.0f, 0.0f, parent);
-            auto* clip = c->AddComponent<TestClip>();
-            clip->width = 2.0f - 0.03f * i;
-            clip->height = 1.5f - 0.02f * i;
-            parent = c;
-        }
-        auto* big = b.Sprite("big", 0.0f, 0.0f, 0x07E0, 0, parent);
-        big->sourcePpm = 2.0f;
-    } },
-    { "ignoreClip", [](SceneBuilder& b) {
-        auto* c = b.Object("clip", 0.0f, 0.0f);
-        auto* clip = c->AddComponent<TestClip>();
-        clip->width = 0.2f; clip->height = 0.2f;
-        auto* big = b.Sprite("big", 0.0f, 0.0f, 0x001F, 0, c);
-        big->sourcePpm = 4.0f;
-        big->ignoreClip = true;
-    } },
-    { "renderer pixelSnap off", [](SceneBuilder& b) {
-        auto* s = b.Sprite("s", 0.03f, 0.03f, 0xF800, 0);   // 0.48 px
-        s->pixelSnap = false; } },
-    { "renderer pixelSnap on", [](SceneBuilder& b) {
-        auto* s = b.Sprite("s", 0.03f, 0.03f, 0xF800, 0);
-        s->pixelSnap = true; } },
-    { "camera off the pixel grid", [](SceneBuilder& b) {
-        b.camera->GetOwner()->SetX(0.04f);
-        b.camera->GetOwner()->SetY(-0.02f);
-        b.Sprite("s", 0.0f, 0.0f, 0x07E0, 0)->pixelSnap = false;  // so the camera's snap is what differs
-    } },
-    { "pixel perfect snaps the camera", [](SceneBuilder& b) {
-        // Was the camera's own pixel snap; Pixel Perfect does the same at 1x
-        // and produces the same pixels.
-        b.camera->pixelPerfect = true;
-        b.camera->GetOwner()->SetX(0.04f);
-        b.camera->GetOwner()->SetY(-0.02f);
-        b.Sprite("s", 0.0f, 0.0f, 0x07E0, 0)->pixelSnap = false;  // so the camera's snap is what differs
-    } },
-    { "camera 2 m tall (24 px/m)", [](SceneBuilder& b) {
-        b.camera->orthoHeight = 2.0f;
-        b.Sprite("s", 0.2f, 0.1f, 0xFFE0, 0); } },
-    { "parent rotation and scale", [](SceneBuilder& b) {
-        auto* p = b.Object("p", 0.1f, 0.0f);
-        p->SetRotation(0.7f);
-        p->SetScale(1.5f, 0.75f);
-        b.Sprite("child", 0.3f, 0.1f, 0xF81F, 0, p);
-        auto* p2 = b.Object("p2", -0.5f, -0.3f);
-        p2->SetScale(3.0f, 3.0f);
-        b.Sprite("child2", 0.0f, 0.0f, 0x07FF, 0, p2); } },
-    { "off-screen culled", [](SceneBuilder& b) {
-        b.Sprite("far", 100.0f, 0.0f, 0xF800, 0);
-        b.Sprite("near", 0.0f, 0.0f, 0x07E0, 0); } },
-    { "alpha blend", [](SceneBuilder& b) {
-        b.Sprite("under", 0.0f, 0.0f, 0xF800, 0);
-        auto* over = b.Sprite("over", 0.06f, 0.06f, 0x001F, 1);
-        over->withAlpha = true;
-        over->alpha = 128;
-        auto* edge = b.Sprite("edge", -1.95f, 1.45f, 0x07E0, 2);   // partly off the corner
-        edge->withAlpha = true;
-        edge->alpha = 200; } },
+    { "sort order",
+      [](SceneBuilder& b)
+      {
+          b.Sprite("back", 0.0f, 0.0f, 0xF800, 10);  // red, drawn last despite insertion order
+          b.Sprite("front", 0.05f, 0.05f, 0x07E0, 0);
+          b.Sprite("mid", -0.05f, -0.05f, 0x001F, 5);
+      } },
+    { "sort stability",
+      [](SceneBuilder& b)
+      {
+          b.Sprite("a", 0.0f, 0.0f, 0xF800, 3);
+          b.Sprite("b", 0.05f, 0.0f, 0x07E0, 3);
+          b.Sprite("c", 0.10f, 0.0f, 0x001F, 3);
+      } },
+    { "transparent container",
+      [](SceneBuilder& b)
+      {
+          auto* group = b.Object("group", 0.5f, 0.0f);
+          b.Sprite("child1", 0.0f, 0.0f, 0xFFE0, 2, group);
+          b.Sprite("child2", 0.1f, 0.0f, 0x07FF, 1, group);
+          b.Sprite("root", 0.55f, 0.0f, 0xF81F, 0);
+      } },
+    { "sort group",
+      [](SceneBuilder& b)
+      {
+          auto* g = b.Object("g", -0.5f, 0.0f);
+          g->AddComponent<TestSortGroup>()->order = -1;
+          b.Sprite("in group", 0.0f, 0.0f, 0xF800, 50, g);
+          b.Sprite("root", -0.45f, 0.0f, 0x07E0, 0);
+      } },
+    { "inactive subtree",
+      [](SceneBuilder& b)
+      {
+          auto* off = b.Object("off", 0.0f, 0.0f);
+          off->SetActive(false);
+          b.Sprite("hidden", 0.0f, 0.0f, 0xF800, 0, off);
+          b.Sprite("shown", 0.3f, 0.0f, 0x07E0, 0);
+      } },
+    { "nested clips depth 3",
+      [](SceneBuilder& b)
+      {
+          Deki::Object* parent = nullptr;
+          for (int i = 0; i < 3; ++i)
+          {
+              auto* c = b.Object("clip", i == 0 ? 0.0f : 0.05f, 0.0f, parent);
+              auto* clip = c->AddComponent<TestClip>();
+              clip->width = 0.5f - 0.1f * i;
+              clip->height = 0.4f - 0.05f * i;
+              parent = c;
+          }
+          auto* big = b.Sprite("big", 0.0f, 0.0f, 0xF800, 0, parent);
+          big->sourcePpm = 4.0f;  // 4 px == 1 m: larger than every clip
+      } },
+    { "nested clips depth 40",
+      [](SceneBuilder& b)
+      {
+          Deki::Object* parent = nullptr;
+          for (int i = 0; i < 40; ++i)
+          {
+              auto* c = b.Object("clip", 0.0f, 0.0f, parent);
+              auto* clip = c->AddComponent<TestClip>();
+              clip->width = 2.0f - 0.03f * i;
+              clip->height = 1.5f - 0.02f * i;
+              parent = c;
+          }
+          auto* big = b.Sprite("big", 0.0f, 0.0f, 0x07E0, 0, parent);
+          big->sourcePpm = 2.0f;
+      } },
+    { "ignoreClip",
+      [](SceneBuilder& b)
+      {
+          auto* c = b.Object("clip", 0.0f, 0.0f);
+          auto* clip = c->AddComponent<TestClip>();
+          clip->width = 0.2f;
+          clip->height = 0.2f;
+          auto* big = b.Sprite("big", 0.0f, 0.0f, 0x001F, 0, c);
+          big->sourcePpm = 4.0f;
+          big->ignoreClip = true;
+      } },
+    { "renderer pixelSnap off",
+      [](SceneBuilder& b)
+      {
+          auto* s = b.Sprite("s", 0.03f, 0.03f, 0xF800, 0);  // 0.48 px
+          s->pixelSnap = false;
+      } },
+    { "renderer pixelSnap on",
+      [](SceneBuilder& b)
+      {
+          auto* s = b.Sprite("s", 0.03f, 0.03f, 0xF800, 0);
+          s->pixelSnap = true;
+      } },
+    { "camera off the pixel grid",
+      [](SceneBuilder& b)
+      {
+          b.camera->GetOwner()->SetX(0.04f);
+          b.camera->GetOwner()->SetY(-0.02f);
+          b.Sprite("s", 0.0f, 0.0f, 0x07E0, 0)->pixelSnap = false;  // so the camera's snap is what differs
+      } },
+    { "pixel perfect snaps the camera",
+      [](SceneBuilder& b)
+      {
+          // Was the camera's own pixel snap; Pixel Perfect does the same at 1x
+          // and produces the same pixels.
+          b.camera->pixelPerfect = true;
+          b.camera->GetOwner()->SetX(0.04f);
+          b.camera->GetOwner()->SetY(-0.02f);
+          b.Sprite("s", 0.0f, 0.0f, 0x07E0, 0)->pixelSnap = false;  // so the camera's snap is what differs
+      } },
+    { "camera 2 m tall (24 px/m)",
+      [](SceneBuilder& b)
+      {
+          b.camera->orthoHeight = 2.0f;
+          b.Sprite("s", 0.2f, 0.1f, 0xFFE0, 0);
+      } },
+    { "parent rotation and scale",
+      [](SceneBuilder& b)
+      {
+          auto* p = b.Object("p", 0.1f, 0.0f);
+          p->SetRotation(0.7f);
+          p->SetScale(1.5f, 0.75f);
+          b.Sprite("child", 0.3f, 0.1f, 0xF81F, 0, p);
+          auto* p2 = b.Object("p2", -0.5f, -0.3f);
+          p2->SetScale(3.0f, 3.0f);
+          b.Sprite("child2", 0.0f, 0.0f, 0x07FF, 0, p2);
+      } },
+    { "off-screen culled",
+      [](SceneBuilder& b)
+      {
+          b.Sprite("far", 100.0f, 0.0f, 0xF800, 0);
+          b.Sprite("near", 0.0f, 0.0f, 0x07E0, 0);
+      } },
+    { "alpha blend",
+      [](SceneBuilder& b)
+      {
+          b.Sprite("under", 0.0f, 0.0f, 0xF800, 0);
+          auto* over = b.Sprite("over", 0.06f, 0.06f, 0x001F, 1);
+          over->withAlpha = true;
+          over->alpha = 128;
+          auto* edge = b.Sprite("edge", -1.95f, 1.45f, 0x07E0, 2);  // partly off the corner
+          edge->withAlpha = true;
+          edge->alpha = 200;
+      } },
 };
 
 const Deki::ColorFormat kDstFmts[] = { Deki::ColorFormat::RGB565, Deki::ColorFormat::RGB888,
-                                     Deki::ColorFormat::ARGB8888, Deki::ColorFormat::RGB565A8 };
+                                       Deki::ColorFormat::ARGB8888, Deki::ColorFormat::RGB565A8 };
 
 uint64_t RunTarget(Deki::ColorFormat fmt, bool print)
 {
@@ -330,19 +390,26 @@ uint64_t RunTarget(Deki::ColorFormat fmt, bool print)
         const uint64_t caseHash = Fnv(target, 0xcbf29ce484222325ULL);
         hash = (hash ^ caseHash) * 0x100000001b3ULL;
         if (print)
+        {
             std::printf("  %-28s %016llx\n", c.name, static_cast<unsigned long long>(caseHash));
+        }
     }
     return hash;
 }
 
 // 0 means "not captured yet": the test prints the actual value and fails.
-struct Expected { Deki::ColorFormat fmt; const char* name; uint64_t hash; };
+struct Expected
+{
+    Deki::ColorFormat fmt;
+    const char* name;
+    uint64_t hash;
+};
 const Expected kExpected[] = {
     // Re-pinned 2026-09-03 when the QuadBlit clip stack lost its 16-slot cap: only
     // the "nested clips depth 40" case changed (levels 17..40 used to be clipped
     // by level 16's rect); every other case hash is identical to the first pin.
-    { Deki::ColorFormat::RGB565,   "RGB565",   0x1d8eb3cd8824484dULL },
-    { Deki::ColorFormat::RGB888,   "RGB888",   0x57549d41cf335c9bULL },
+    { Deki::ColorFormat::RGB565, "RGB565", 0x1d8eb3cd8824484dULL },
+    { Deki::ColorFormat::RGB888, "RGB888", 0x57549d41cf335c9bULL },
     { Deki::ColorFormat::ARGB8888, "ARGB8888", 0x99d8e38d9ca41e9fULL },
     { Deki::ColorFormat::RGB565A8, "RGB565A8", 0xb9a61fd457e7a6cfULL },
 };
@@ -388,14 +455,15 @@ TEST(RendererGoldenTest, ClipStackBalancedAfterDeepNesting)
 TEST(RendererGoldenTest, ClipAndRendererOnOneObjectMatchesParentChildForm)
 {
     RegisterTestAdapters();
-    auto render = [](bool sameObject) {
+    auto render = [](bool sameObject)
+    {
         SceneBuilder b;
         Deki::Object* holder = b.Object("holder", 0.1f, -0.05f);
         auto* clip = holder->AddComponent<TestClip>();
         clip->width = 0.15f;
         clip->height = 0.15f;
-        TestRenderer* r = sameObject ? holder->AddComponent<TestRenderer>()
-                                     : b.Sprite("child", 0.0f, 0.0f, 0x001F, 0, holder);
+        TestRenderer* r =
+            sameObject ? holder->AddComponent<TestRenderer>() : b.Sprite("child", 0.0f, 0.0f, 0x001F, 0, holder);
         r->colour = 0x001F;
         r->sourcePpm = 4.0f;  // 1 m square: far larger than the clip
         std::vector<uint8_t> target(static_cast<size_t>(kW) * kH * 2, 0);
@@ -428,7 +496,8 @@ public:
     float GetClipWidth() const override { return 0.15f; }
     float GetClipHeight() const override { return 0.15f; }
 };
-const Deki::ComponentTypeInfo TestLateClip::kTypeInfo = Deki::MakeHandWrittenTypeInfo<TestLateClip>(/*declaresUpdate=*/false);
+const Deki::ComponentTypeInfo TestLateClip::kTypeInfo =
+    Deki::MakeHandWrittenTypeInfo<TestLateClip>(/*declaresUpdate=*/false);
 
 TEST(RendererGoldenTest, AdapterRegisteredAfterFirstFrameTakesEffect)
 {
@@ -452,8 +521,9 @@ TEST(RendererGoldenTest, AdapterRegisteredAfterFirstFrameTakesEffect)
     const size_t corner = (static_cast<size_t>(kH / 2 - 6) * kW + kW / 2 - 6) * 2;
     EXPECT_EQ(target[corner] | (target[corner + 1] << 8), 0xF800) << "no adapter yet: unclipped";
 
-    Deki::ComponentInterfaceAdapters::Register(Deki::IClipProvider::InterfaceID, ::Deki::TypeId<TestLateClip>(),
-                                         [](Deki::Component* c) -> void* { return static_cast<Deki::IClipProvider*>(static_cast<TestLateClip*>(c)); });
+    Deki::ComponentInterfaceAdapters::Register(
+        Deki::IClipProvider::InterfaceID, ::Deki::TypeId<TestLateClip>(),
+        [](Deki::Component* c) -> void* { return static_cast<Deki::IClipProvider*>(static_cast<TestLateClip*>(c)); });
     std::fill(target.begin(), target.end(), 0);
     renderer.Render(&b.scene, ctx);
     EXPECT_EQ(QuadBlit::GetClipStackDepth(), 0);
@@ -492,12 +562,16 @@ TEST(RendererGoldenTest, DirtyTrackingIsPixelIdenticalAndCoversEveryDrawnPixel)
         ASSERT_NE(d, nullptr) << c.name;
         int uncovered = 0;
         for (int y = 0; y < kH; ++y)
+        {
             for (int x = 0; x < kW; ++x)
             {
                 const size_t i = (static_cast<size_t>(y) * kW + x) * 2;
                 if ((tracked[i] | tracked[i + 1]) != 0 && !d->Contains(x, y))
+                {
                     ++uncovered;
+                }
             }
+        }
         EXPECT_EQ(uncovered, 0) << c.name << ": drawn pixels outside the dirty region";
     }
 }

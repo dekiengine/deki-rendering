@@ -51,8 +51,14 @@ inline void QuantizeRGB565(uint8_t& r, uint8_t& g, uint8_t& b)
 /// (dst.a == 0) this is src.a, which is what "is covered" consumers expect.
 inline uint8_t AlphaUnion(uint8_t srcA, uint8_t dstA)
 {
-    if (srcA == 255) return 255;
-    if (dstA == 0) return srcA;
+    if (srcA == 255)
+    {
+        return 255;
+    }
+    if (dstA == 0)
+    {
+        return srcA;
+    }
     return static_cast<uint8_t>(srcA + Div255(static_cast<uint32_t>(dstA) * (255u - srcA)));
 }
 
@@ -61,14 +67,9 @@ inline uint8_t AlphaUnion(uint8_t srcA, uint8_t dstA)
 /// opaquely when its alpha exceeds the threshold at (x & 7, y & 7).
 /// https://en.wikipedia.org/wiki/Ordered_dithering
 inline constexpr uint8_t kBayer8x8[64] = {
-      0, 128,  32, 160,   8, 136,  40, 168,
-    192,  64, 224,  96, 200,  72, 232, 104,
-     48, 176,  16, 144,  56, 184,  24, 152,
-    240, 112, 208,  80, 248, 120, 216,  88,
-     12, 140,  44, 172,   4, 132,  36, 164,
-    204,  76, 236, 108, 196,  68, 228, 100,
-     60, 188,  28, 156,  52, 180,  20, 148,
-    252, 124, 220,  92, 244, 116, 212,  84,
+    0,   128, 32,  160, 8,   136, 40,  168, 192, 64,  224, 96,  200, 72,  232, 104, 48,  176, 16,  144, 56,  184,
+    24,  152, 240, 112, 208, 80,  248, 120, 216, 88,  12,  140, 44,  172, 4,   132, 36,  164, 204, 76,  236, 108,
+    196, 68,  228, 100, 60,  188, 28,  156, 52,  180, 20,  148, 252, 124, 220, 92,  244, 116, 212, 84,
 };
 
 inline uint8_t BayerThreshold(int32_t px, int32_t py)
@@ -87,7 +88,14 @@ inline uint8_t BayerThreshold(int32_t px, int32_t py)
 // RGBA8888 is the 4-byte non-565 layout, RGB888 3 bytes, ALPHA8 a
 // coverage-only byte (a font/icon atlas drawn as a sprite: its colour is the
 // tint, white when untinted).
-enum class SrcKind { RGB565, RGB565A8, RGBA8888, RGB888, ALPHA8 };
+enum class SrcKind
+{
+    RGB565,
+    RGB565A8,
+    RGBA8888,
+    RGB888,
+    ALPHA8
+};
 
 template <SrcKind SK>
 inline void ReadSrcPixel(const uint8_t* p, bool hasAlpha, uint8_t& r, uint8_t& g, uint8_t& b, uint8_t& a)
@@ -98,18 +106,28 @@ inline void ReadSrcPixel(const uint8_t* p, bool hasAlpha, uint8_t& r, uint8_t& g
         memcpy(&v, p, 2);
         UnpackRGB565(v, r, g, b);
         if constexpr (SK == SrcKind::RGB565A8)
+        {
             a = hasAlpha ? p[2] : 255;
+        }
         else
+        {
             a = 255;
+        }
     }
     else if constexpr (SK == SrcKind::RGBA8888)
     {
-        r = p[0]; g = p[1]; b = p[2]; a = p[3];
+        r = p[0];
+        g = p[1];
+        b = p[2];
+        a = p[3];
         (void)hasAlpha;
     }
     else if constexpr (SK == SrcKind::RGB888)
     {
-        r = p[0]; g = p[1]; b = p[2]; a = 255;
+        r = p[0];
+        g = p[1];
+        b = p[2];
+        a = 255;
         (void)hasAlpha;
     }
     else
@@ -131,13 +149,17 @@ inline void ReadDstPixel(const uint8_t* target, size_t idx, uint8_t& r, uint8_t&
     }
     else if constexpr (F == Deki::ColorFormat::RGB888)
     {
-        r = target[idx * 3]; g = target[idx * 3 + 1]; b = target[idx * 3 + 2];
+        r = target[idx * 3];
+        g = target[idx * 3 + 1];
+        b = target[idx * 3 + 2];
         a = 255;
     }
     else if constexpr (F == Deki::ColorFormat::ARGB8888)
     {
         const uint32_t v = ((const uint32_t*)target)[idx];
-        r = (v >> 16) & 0xFF; g = (v >> 8) & 0xFF; b = v & 0xFF;
+        r = (v >> 16) & 0xFF;
+        g = (v >> 8) & 0xFF;
+        b = v & 0xFF;
         a = 255;
     }
     else  // RGB565A8: [lo, hi, alpha]
@@ -160,7 +182,9 @@ inline void WriteDstPixel(uint8_t* target, size_t idx, uint8_t r, uint8_t g, uin
     }
     else if constexpr (F == Deki::ColorFormat::RGB888)
     {
-        target[idx * 3] = r; target[idx * 3 + 1] = g; target[idx * 3 + 2] = b;
+        target[idx * 3] = r;
+        target[idx * 3 + 1] = g;
+        target[idx * 3 + 2] = b;
         (void)a;
     }
     else if constexpr (F == Deki::ColorFormat::ARGB8888)
@@ -176,6 +200,5 @@ inline void WriteDstPixel(uint8_t* target, size_t idx, uint8_t r, uint8_t g, uin
         target[idx * 3 + 2] = a;
     }
 }
-
 
 }  // namespace DekiPixel

@@ -5,7 +5,10 @@
 #include "FrameCamera.h"
 
 // Forward declarations
-namespace Deki { class Scene; }
+namespace Deki
+{
+class Scene;
+}
 
 namespace DekiRendering
 {

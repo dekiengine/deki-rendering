@@ -11,11 +11,23 @@
 #include <vector>
 
 // Forward declarations
-namespace Deki { class Object; }
-namespace Deki { class Component; }
+namespace Deki
+{
+class Object;
+}
+namespace Deki
+{
+class Component;
+}
 
-namespace Deki { class IClipProvider; }
-namespace Deki { class ISortableProvider; }
+namespace Deki
+{
+class IClipProvider;
+}
+namespace Deki
+{
+class ISortableProvider;
+}
 
 namespace DekiRendering
 {
@@ -46,7 +58,7 @@ class RendererComponent;
 class Standard2DRenderer : public DekiRenderer
 {
 public:
-    static constexpr uint32_t RendererTypeID = 0x53324452; // "S2DR"
+    static constexpr uint32_t RendererTypeID = 0x53324452;  // "S2DR"
     uint32_t GetRendererType() const override { return RendererTypeID; }
 
     void Render(Deki::Scene* scene, const RenderContext& ctx) override;
@@ -127,7 +139,7 @@ private:
     {
         Deki::Object* obj;
         RendererComponent* renderer;  // may be null (sort group, clip-only, callback-claimed)
-        Deki::IClipProvider* clip;          // may be null
+        Deki::IClipProvider* clip;    // may be null
         int32_t order;
         uint32_t seq;
     };

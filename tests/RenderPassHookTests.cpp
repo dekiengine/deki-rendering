@@ -47,18 +47,20 @@ public:
     // Hand-written (not reflected): the class attaches its own entry.
     static const Deki::ComponentTypeInfo kTypeInfo;
     DotRenderer() { SetTypeInfo(&kTypeInfo); }
-    bool RenderContent(const Deki::Object*, QuadBlit::Source& out, float& px, float& py,
-                       uint8_t& r, uint8_t& g, uint8_t& b, uint8_t& a) override
+    bool RenderContent(const Deki::Object*, QuadBlit::Source& out, float& px, float& py, uint8_t& r, uint8_t& g,
+                       uint8_t& b, uint8_t& a) override
     {
         out = QuadBlit::MakeSource(m_Pixel, 1, 1, QuadBlit::PixelLayout::RGB565(), false, nullptr);
         px = py = 0.5f;
         r = g = b = a = 255;
         return true;
     }
+
 private:
     uint8_t m_Pixel[2] = { 0xFF, 0xFF };
 };
-const Deki::ComponentTypeInfo DotRenderer::kTypeInfo = Deki::MakeHandWrittenTypeInfo<DotRenderer, RendererComponent>(/*declaresUpdate=*/false);
+const Deki::ComponentTypeInfo DotRenderer::kTypeInfo =
+    Deki::MakeHandWrittenTypeInfo<DotRenderer, RendererComponent>(/*declaresUpdate=*/false);
 
 struct HookScene
 {
@@ -67,7 +69,8 @@ struct HookScene
     std::vector<uint8_t> target;
     static constexpr int kObjects = 5;
 
-    HookScene() : target(32 * 32 * 2, 0)
+    HookScene()
+        : target(32 * 32 * 2, 0)
     {
         auto* camObj = new Deki::Object("Camera");
         camera = camObj->AddComponent<CameraComponent>();
@@ -154,7 +157,11 @@ TEST(RenderPassHooks, FrameCameraIsCapturedForPasses)
         bool valid = false;
         float halfW = 0.0f;
         uint32_t HookMask() const override { return RenderPassHooks::Execute; }
-        void Execute(Deki::Object*, RenderContext& ctx) override { valid = ctx.cam.valid; halfW = ctx.cam.halfW; }
+        void Execute(Deki::Object*, RenderContext& ctx) override
+        {
+            valid = ctx.cam.valid;
+            halfW = ctx.cam.halfW;
+        }
     };
     HookScene s;
     Standard2DRenderer renderer;

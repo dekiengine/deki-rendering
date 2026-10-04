@@ -7,9 +7,11 @@
 #include "DirtyRegion.h"
 #include <deki/providers/IRenderSystem.h>
 
-
 // Forward declarations
-namespace Deki { class Object; }
+namespace Deki
+{
+class Object;
+}
 
 namespace DekiRendering
 {
@@ -18,7 +20,7 @@ class DekiRenderer;
 
 class DekiRenderSystem : public Deki::IRenderSystem
 {
-   private:
+private:
     uint8_t* m_RenderBuffer;
     int32_t m_ScreenWidth;
     int32_t m_ScreenHeight;
@@ -60,7 +62,7 @@ class DekiRenderSystem : public Deki::IRenderSystem
     BufferHistory& HistoryFor(const uint8_t* buffer);
     void ResetDirtyHistory();
 
-   public:
+public:
     DekiRenderSystem();
     ~DekiRenderSystem() override;
     bool Setup(int32_t width, int32_t height, Deki::ColorFormat format) override;
@@ -97,14 +99,12 @@ class DekiRenderSystem : public Deki::IRenderSystem
     int GetBytesPerPixel(Deki::ColorFormat format);
 
     // Deki::IRenderSystem interface — delegates to the static implementation
-    void RenderToBuffer(Deki::Scene* scene, Deki::ICamera* camera,
-                        uint8_t* buffer, int32_t width, int32_t height,
+    void RenderToBuffer(Deki::Scene* scene, Deki::ICamera* camera, uint8_t* buffer, int32_t width, int32_t height,
                         Deki::ColorFormat format) override;
 
     // Static render function (the actual implementation)
-    static void RenderToBufferStatic(Deki::Scene* scene, Deki::ICamera* camera,
-                                     uint8_t* buffer, int32_t width, int32_t height,
-                                     Deki::ColorFormat format);
+    static void RenderToBufferStatic(Deki::Scene* scene, Deki::ICamera* camera, uint8_t* buffer, int32_t width,
+                                     int32_t height, Deki::ColorFormat format);
 };
 
 }  // namespace DekiRendering

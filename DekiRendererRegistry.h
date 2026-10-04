@@ -32,7 +32,8 @@ class DekiRenderer;
 
 using DekiRendererFactory = std::function<DekiRenderer*()>;
 
-namespace DekiRendererRegistry {
+namespace DekiRendererRegistry
+{
 
 /**
  * @brief Register a renderer factory by name
@@ -54,6 +55,6 @@ DekiRenderer* Create(const char* name);
  */
 void GetAllNames(std::vector<std::string>& outNames);
 
-} // namespace DekiRendererRegistry
+}  // namespace DekiRendererRegistry
 
 }  // namespace DekiRendering

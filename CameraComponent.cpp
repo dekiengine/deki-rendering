@@ -9,13 +9,13 @@ namespace DekiRendering
 {
 
 // Register ICamera adapter so editor can use FindInterface<ICamera>()
-static struct CameraInterfaceRegistrar {
-    CameraInterfaceRegistrar() {
+static struct CameraInterfaceRegistrar
+{
+    CameraInterfaceRegistrar()
+    {
         Deki::ComponentInterfaceAdapters::Register(
             Deki::ICamera::InterfaceID, ::Deki::TypeId<CameraComponent>(),
-            [](Deki::Component* c) -> void* {
-                return static_cast<Deki::ICamera*>(static_cast<CameraComponent*>(c));
-            });
+            [](Deki::Component* c) -> void* { return static_cast<Deki::ICamera*>(static_cast<CameraComponent*>(c)); });
     }
 } s_cameraInterfaceReg;
 
@@ -26,7 +26,9 @@ CameraComponent::CameraComponent()
 float CameraComponent::GetPixelsPerMeter(int bufferWidth, int bufferHeight) const
 {
     if (m_FixedPixelsPerMeter > 0.0f)
+    {
         return m_FixedPixelsPerMeter;
+    }
 
     (void)bufferWidth;  // the height is fixed; the width follows the screen
     return Deki::OrthoPixelsPerMeter(bufferHeight, orthoHeight, pixelPerfect,
@@ -89,34 +91,36 @@ FrameCamera CameraComponent::CaptureFrameCamera(int screenWidth, int screenHeigh
 Deki::Mat4 CameraComponent::GetProjectionMatrix(int bufferWidth, int bufferHeight) const
 {
     if (bufferWidth <= 0 || bufferHeight <= 0)
+    {
         return Deki::Mat4::Identity();
+    }
 
     if (projection == Deki::ProjectionMode::Perspective)
     {
         constexpr float kDegToRad = 3.14159265358979f / 180.0f;
         return Deki::Mat4::Perspective(fieldOfView * kDegToRad,
-                                       static_cast<float>(bufferWidth) / static_cast<float>(bufferHeight),
-                                       nearPlane, farPlane);
+                                       static_cast<float>(bufferWidth) / static_cast<float>(bufferHeight), nearPlane,
+                                       farPlane);
     }
 
     const float ppm = GetPixelsPerMeter(bufferWidth, bufferHeight);
     if (ppm <= 0.0f)
+    {
         return Deki::Mat4::Identity();
+    }
     const float halfW = (static_cast<float>(bufferWidth) * 0.5f) / ppm;
     const float halfH = (static_cast<float>(bufferHeight) * 0.5f) / ppm;
     return Deki::Mat4::Ortho(-halfW, halfW, -halfH, halfH, -1.0f, 1.0f);
 }
 
-void CameraComponent::WorldToScreen(float worldX, float worldY,
-                                     int screenWidth, int screenHeight,
-                                     float& screenX, float& screenY) const
+void CameraComponent::WorldToScreen(float worldX, float worldY, int screenWidth, int screenHeight, float& screenX,
+                                    float& screenY) const
 {
     CaptureFrameCamera(screenWidth, screenHeight).WorldToScreen(worldX, worldY, screenX, screenY);
 }
 
-void CameraComponent::ScreenToWorld(float screenX, float screenY,
-                                     int screenWidth, int screenHeight,
-                                     float& worldX, float& worldY) const
+void CameraComponent::ScreenToWorld(float screenX, float screenY, int screenWidth, int screenHeight, float& worldX,
+                                    float& worldY) const
 {
     // Inverse of WorldToScreen, through the same snapshot.
     const FrameCamera fc = CaptureFrameCamera(screenWidth, screenHeight);

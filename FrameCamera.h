@@ -22,7 +22,7 @@ namespace DekiRendering
  */
 struct FrameCamera
 {
-    float camX = 0.0f;   // camera world position (metres), already camera-pixel-snapped
+    float camX = 0.0f;  // camera world position (metres), already camera-pixel-snapped
     float camY = 0.0f;
     float ppm = 1.0f;    // framebuffer pixels per world metre
     float halfW = 0.0f;  // target centre (pixels): screen origin of world (camX, camY)
@@ -36,8 +36,14 @@ struct FrameCamera
 
     /// Under Pixel Perfect, round a screen position to the art-pixel grid
     /// around the centre; otherwise return it unchanged.
-    float SnapX(float screenX) const { return snapStep > 0 ? halfW + std::round((screenX - halfW) / snapStep) * snapStep : screenX; }
-    float SnapY(float screenY) const { return snapStep > 0 ? halfH + std::round((screenY - halfH) / snapStep) * snapStep : screenY; }
+    float SnapX(float screenX) const
+    {
+        return snapStep > 0 ? halfW + std::round((screenX - halfW) / snapStep) * snapStep : screenX;
+    }
+    float SnapY(float screenY) const
+    {
+        return snapStep > 0 ? halfH + std::round((screenY - halfH) / snapStep) * snapStep : screenY;
+    }
 
     void WorldToScreen(float worldX, float worldY, float& screenX, float& screenY) const
     {

@@ -7,7 +7,10 @@
 #include "QuadBlit.h"
 
 // Forward declarations
-namespace Deki { class Object; }
+namespace Deki
+{
+class Object;
+}
 
 namespace DekiRendering
 {
@@ -19,9 +22,9 @@ class CameraComponent;
  */
 enum class MaskRenderMode : uint8_t
 {
-    None = 0,  // No masking
+    None = 0,           // No masking
     RenderOutside = 1,  // Render only outside the mask
-    RenderInside = 2  // Render only inside the mask
+    RenderInside = 2    // Render only inside the mask
 };
 #endif
 
@@ -65,8 +68,7 @@ void SetCurrentDrawView(const DrawView& view);
 
 class RendererComponent : public Deki::Component, public Deki::ISortableProvider
 {
-   public:
-
+public:
     // Pure virtual destructor makes this class abstract
     virtual ~RendererComponent() = 0;
 
@@ -76,7 +78,8 @@ class RendererComponent : public Deki::Component, public Deki::ISortableProvider
 
     /** @brief If true, this renderer ignores parent Deki2D::ClipComponent bounds */
     DEKI_EXPORT
-    DEKI_TOOLTIP("Draw even when an ancestor clips its children. For something that must escape its container, like a dropdown.")
+    DEKI_TOOLTIP(
+        "Draw even when an ancestor clips its children. For something that must escape its container, like a dropdown.")
     bool ignoreClip = false;
 
     /**
@@ -88,10 +91,13 @@ class RendererComponent : public Deki::Component, public Deki::ISortableProvider
      *        particle effect can coexist in the same scene.
      */
     DEKI_EXPORT
-    DEKI_TOOLTIP("Round the final position to whole pixels. Keeps pixel art crisp; leave it off for something that should move smoothly at small steps.")
+    DEKI_TOOLTIP("Round the final position to whole pixels. Keeps pixel art crisp; leave it off for something that "
+                 "should move smoothly at small steps.")
     bool pixelSnap = true;
 
-    DEKI_TOOLTIP("How partial-alpha pixels are rendered. Blend = smooth alpha blend (slower, no artifacts). OrderedDither = stippling pattern (much faster, visible dither — best for fades and retro pixel art). ")
+    DEKI_TOOLTIP(
+        "How partial-alpha pixels are rendered. Blend = smooth alpha blend (slower, no artifacts). OrderedDither = "
+        "stippling pattern (much faster, visible dither — best for fades and retro pixel art). ")
     DEKI_EXPORT
     AlphaMode alphaMode = AlphaMode::Blend;
 
@@ -147,19 +153,13 @@ class RendererComponent : public Deki::Component, public Deki::ISortableProvider
         return false;
     }
 
-    virtual bool RenderContent(const Deki::Object* owner,
-                               QuadBlit::Source& outSource,
-                               float& outPivotX,
-                               float& outPivotY,
-                               uint8_t& outTintR,
-                               uint8_t& outTintG,
-                               uint8_t& outTintB,
+    virtual bool RenderContent(const Deki::Object* owner, QuadBlit::Source& outSource, float& outPivotX,
+                               float& outPivotY, uint8_t& outTintR, uint8_t& outTintG, uint8_t& outTintB,
                                uint8_t& outTintA)
     {
         outTintR = outTintG = outTintB = outTintA = 255;
         return false;
     }
-
 };
 
 // Generated property metadata (after class definition for offsetof)

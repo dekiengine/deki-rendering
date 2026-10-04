@@ -26,7 +26,11 @@ struct CameraFixture
 {
     Deki::Object* owner;
     CameraComponent* camera;
-    CameraFixture() : owner(new Deki::Object("cam")), camera(owner->AddComponent<CameraComponent>()) {}
+    CameraFixture()
+        : owner(new Deki::Object("cam")),
+          camera(owner->AddComponent<CameraComponent>())
+    {
+    }
     ~CameraFixture() { delete owner; }
 };
 
@@ -38,6 +42,7 @@ void ExpectSnapshotMatchesCamera(const CameraComponent& camera, int w, int h)
 
     const float samples[] = { -137.25f, -3.0f, -0.51f, -0.03f, 0.0f, 0.03f, 0.49f, 1.0f, 2.5f, 99.875f };
     for (float wx : samples)
+    {
         for (float wy : samples)
         {
             float sx1, sy1, sx2, sy2;
@@ -52,10 +57,17 @@ void ExpectSnapshotMatchesCamera(const CameraComponent& camera, int w, int h)
             EXPECT_NEAR(bx, wx, 1e-3f * (1.0f + std::fabs(wx)));
             EXPECT_NEAR(by, wy, 1e-3f * (1.0f + std::fabs(wy)));
         }
+    }
 }
 
-float VisibleWidth(const CameraComponent& c, int w, int h) { return c.GetVisibleWidth(w, h); }
-float VisibleHeight(const CameraComponent& c, int w, int h) { return c.GetVisibleHeight(w, h); }
+float VisibleWidth(const CameraComponent& c, int w, int h)
+{
+    return c.GetVisibleWidth(w, h);
+}
+float VisibleHeight(const CameraComponent& c, int w, int h)
+{
+    return c.GetVisibleHeight(w, h);
+}
 
 }  // namespace
 
@@ -127,7 +139,7 @@ TEST(FrameCamera, PixelPerfectScalesByWholeNumbers)
     EXPECT_EQ(f.camera->GetPixelsPerMeter(1280, 720), 48.0f);  // 3x
     EXPECT_EQ(f.camera->GetPixelsPerMeter(400, 300), 16.0f);   // 1.25 rounds down: a little more world
     EXPECT_FLOAT_EQ(VisibleHeight(*f.camera, 400, 300), 18.75f);
-    EXPECT_EQ(f.camera->GetPixelsPerMeter(200, 150), 16.0f);   // smaller: stays 1x and crops
+    EXPECT_EQ(f.camera->GetPixelsPerMeter(200, 150), 16.0f);  // smaller: stays 1x and crops
     EXPECT_FLOAT_EQ(VisibleHeight(*f.camera, 200, 150), 9.375f);
 
     f.camera->orthoHeight = 10.0f;  // 1.5x at 240 rounds down to 1x
@@ -140,8 +152,8 @@ TEST(FrameCamera, PixelPerfectPutsTheCameraOnTheArtGrid)
     CameraFixture f;
     f.camera->orthoHeight = 15.0f;
     f.camera->pixelPerfect = true;
-    f.owner->SetX(0.04f);   // 0.64 art px: snaps to 1
-    f.owner->SetY(-0.02f);  // -0.32 art px: snaps to 0
+    f.owner->SetX(0.04f);                                           // 0.64 art px: snaps to 1
+    f.owner->SetY(-0.02f);                                          // -0.32 art px: snaps to 0
     const FrameCamera fc = f.camera->CaptureFrameCamera(641, 481);  // 2x, odd size
     EXPECT_EQ(fc.camX, 1.0f / 16.0f);
     EXPECT_EQ(fc.camY, 0.0f);

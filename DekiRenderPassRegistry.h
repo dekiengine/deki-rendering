@@ -42,7 +42,7 @@ using RenderPassFactory = std::function<RenderPass*()>;
  */
 struct RenderPassInfo
 {
-    RenderPassFactory factory;           // Creates a new pass instance
+    RenderPassFactory factory;  // Creates a new pass instance
 
     // If true, the rendering init auto-attaches this pass to the active
     // Standard2DRenderer when it isn't already listed in the project's
@@ -53,7 +53,8 @@ struct RenderPassInfo
     bool autoAttach = false;
 };
 
-namespace DekiRenderPassRegistry {
+namespace DekiRenderPassRegistry
+{
 
 /**
  * @brief Register a render pass factory by name
@@ -101,6 +102,6 @@ void GetAllNames(std::vector<std::string>& outNames);
 using AutoAttachCallback = std::function<void(const char*, const RenderPassInfo&)>;
 void SetAutoAttachCallback(AutoAttachCallback cb);
 
-} // namespace DekiRenderPassRegistry
+}  // namespace DekiRenderPassRegistry
 
 }  // namespace DekiRendering

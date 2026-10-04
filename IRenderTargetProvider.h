@@ -35,7 +35,7 @@ namespace DekiRendering
 class IRenderTargetProvider
 {
 public:
-    static constexpr uint32_t InterfaceID = 0x52544754; // "RTGT"
+    static constexpr uint32_t InterfaceID = 0x52544754;  // "RTGT"
 
     virtual ~IRenderTargetProvider() = default;
     virtual const char* GetRenderTargetTag() const = 0;

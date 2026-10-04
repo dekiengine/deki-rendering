@@ -9,7 +9,8 @@ struct ScopedArtDensity
 {
     float saved;
 
-    explicit ScopedArtDensity(float ppm = 16.0f) : saved(Deki::EngineSettings::Global().pixelsPerMeter)
+    explicit ScopedArtDensity(float ppm = 16.0f)
+        : saved(Deki::EngineSettings::Global().pixelsPerMeter)
     {
         Deki::EngineSettings::Global().pixelsPerMeter = ppm;
     }

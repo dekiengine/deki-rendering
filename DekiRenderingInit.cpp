@@ -46,9 +46,17 @@ static bool IsBuiltinPassName(const char* name)
 
 static void AttachPass(const char* name, const RenderPassInfo& info)
 {
-    if (!s_PassReceiver || !info.factory) return;
+    if (!s_PassReceiver || !info.factory)
+    {
+        return;
+    }
     for (const AttachedPass& p : s_Passes)
-        if (p.name == name) return;  // already attached
+    {
+        if (p.name == name)
+        {
+            return;  // already attached
+        }
+    }
 
     RenderPass* pass = info.factory();
     s_Passes.push_back({ name, pass });
@@ -56,23 +64,29 @@ static void AttachPass(const char* name, const RenderPassInfo& info)
     DEKI_LOG_INTERNAL("DekiRendering: Attached pass '%s'", name);
 }
 
-
 void DekiRendering_DetachPass(const char* name)
 {
-    if (!name) return;
+    if (!name)
+    {
+        return;
+    }
     for (auto it = s_Passes.begin(); it != s_Passes.end(); ++it)
     {
-        if (it->name != name) continue;
+        if (it->name != name)
+        {
+            continue;
+        }
 
         if (s_PassReceiver)
+        {
             s_PassReceiver->RemovePass(it->pass);
+        }
         delete it->pass;
         s_Passes.erase(it);
         DEKI_LOG_INTERNAL("DekiRendering: Detached pass '%s'", name);
         return;
     }
 }
-
 
 }  // namespace DekiRendering
 
@@ -82,7 +96,9 @@ using namespace DekiRendering;
 void DekiRendering_InitSystem()
 {
     if (s_RenderSystem)
+    {
         return;
+    }
 
     // 1. Create render system (framebuffer + camera management)
     s_RenderSystem = new DekiRenderSystem();
@@ -104,18 +120,26 @@ void DekiRendering_InitSystem()
     //    Safe downcast via GetRendererType() — no RTTI needed.
     int passCount = Deki::ProjectSettings::GetPassCount();
     if (s_Renderer && s_Renderer->GetRendererType() == Standard2DRenderer::RendererTypeID)
+    {
         s_PassReceiver = static_cast<Standard2DRenderer*>(s_Renderer);
+    }
 
     for (int i = 0; i < passCount; i++)
     {
         const char* passName = Deki::ProjectSettings::GetPassName(i);
         const RenderPassInfo* info = DekiRenderPassRegistry::Get(passName);
         if (info && info->factory)
+        {
             AttachPass(passName, *info);
+        }
         else if (IsBuiltinPassName(passName))
+        {
             continue;  // the renderer does it itself; see IsBuiltinPassName
+        }
         else
+        {
             DEKI_LOG_WARNING("DekiRendering: No pass registered for '%s'", passName ? passName : "(null)");
+        }
     }
 
     // 3b. Auto-attach passes flagged autoAttach=true that the project's
@@ -130,7 +154,10 @@ void DekiRendering_InitSystem()
         for (const auto& name : allPassNames)
         {
             const RenderPassInfo* info = DekiRenderPassRegistry::Get(name.c_str());
-            if (!info || !info->autoAttach) continue;
+            if (!info || !info->autoAttach)
+            {
+                continue;
+            }
             AttachPass(name.c_str(), *info);
         }
     }
@@ -139,8 +166,8 @@ void DekiRendering_InitSystem()
     //     that load after deki-rendering inits) still get auto-attached. This
     //     is the path deki-tilemap takes — its DLL loads after the rendering
     //     system has already finished its first scan.
-    DekiRenderPassRegistry::SetAutoAttachCallback(
-        [](const char* name, const RenderPassInfo& info) { AttachPass(name, info); });
+    DekiRenderPassRegistry::SetAutoAttachCallback([](const char* name, const RenderPassInfo& info)
+                                                  { AttachPass(name, info); });
 
     // 4. Add all registered sorting callbacks (always-on, not tied to passes)
     if (s_PassReceiver)
@@ -148,9 +175,13 @@ void DekiRendering_InitSystem()
         std::vector<SortingCallback> sortingCallbacks;
         DekiSortingCallbackRegistry::GetAll(sortingCallbacks);
         for (auto cb : sortingCallbacks)
+        {
             s_PassReceiver->AddSortingCallback(cb);
+        }
         if (!sortingCallbacks.empty())
+        {
             DEKI_LOG_INTERNAL("DekiRendering: Added %d sorting callbacks", (int)sortingCallbacks.size());
+        }
     }
 
     // 5. Register with engine
@@ -167,7 +198,9 @@ void DekiRendering_ShutdownSystem()
     DekiRenderPassRegistry::SetAutoAttachCallback(nullptr);
 
     for (AttachedPass& p : s_Passes)
+    {
         delete p.pass;
+    }
     s_Passes.clear();
     s_PassReceiver = nullptr;
 

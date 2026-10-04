@@ -14,7 +14,9 @@ using namespace DekiRendering;
 // GetBytesPerPixel Tests
 // ============================================================================
 
-class RenderSystemBPPTest : public ::testing::Test {};
+class RenderSystemBPPTest : public ::testing::Test
+{
+};
 
 TEST_F(RenderSystemBPPTest, RGB565_Returns2)
 {

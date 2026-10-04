@@ -4,7 +4,10 @@
 #include <cstdint>
 #endif
 
-namespace Deki { struct ComponentMeta; }
+namespace Deki
+{
+struct ComponentMeta;
+}
 
 namespace DekiRendering
 {
@@ -25,25 +28,25 @@ namespace DekiRendering
 
 // DLL export macro
 #ifdef _WIN32
-    #if defined(DEKI_RENDERING_EXPORTS) || defined(DEKI_PLUGIN_EXPORTS)
-        #define DEKI_RENDERING_API __declspec(dllexport)
-    #else
-        #define DEKI_RENDERING_API __declspec(dllimport)
-    #endif
+#if defined(DEKI_RENDERING_EXPORTS) || defined(DEKI_PLUGIN_EXPORTS)
+#define DEKI_RENDERING_API __declspec(dllexport)
 #else
-    #define DEKI_RENDERING_API __attribute__((visibility("default")))
+#define DEKI_RENDERING_API __declspec(dllimport)
+#endif
+#else
+#define DEKI_RENDERING_API __attribute__((visibility("default")))
 #endif
 
 #ifdef DEKI_EDITOR
 
 // Forward declarations
 
-extern "C" {
+extern "C"
+{
+    DEKI_RENDERING_API int DekiRendering_EnsureRegistered(void);
 
-DEKI_RENDERING_API int DekiRendering_EnsureRegistered(void);
+}  // extern "C"
 
-} // extern "C"
-
-#endif // DEKI_EDITOR
+#endif  // DEKI_EDITOR
 
 }  // namespace DekiRendering

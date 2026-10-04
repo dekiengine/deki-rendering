@@ -41,10 +41,14 @@ void MigrateCameraFraming(nlohmann::json& components)
     for (auto& comp : components)
     {
         if (!comp.is_object() || !IsCameraType(comp.value("type", "")) || !comp.contains("properties"))
+        {
             continue;
+        }
         nlohmann::json& props = comp["properties"];
         if (!props.is_object())
+        {
             continue;
+        }
 
         bool pixelPerfect = legacy.pixelPerfect;
         if (props.contains("pixelSnap"))
@@ -67,17 +71,23 @@ void MigrateCameraFraming(nlohmann::json& components)
         // A camera saved with an ortho height is current; anything else is
         // older, including one saved at every default (no zoom key = zoom 1).
         if (props.contains("orthoHeight"))
+        {
             continue;
+        }
         float zoom = 1.0f;
         if (props.contains("zoom"))
         {
             if (props["zoom"].is_number() && props["zoom"].get<float>() > 0.0f)
+            {
                 zoom = props["zoom"].get<float>();
+            }
             props.erase("zoom");
         }
         props["orthoHeight"] = legacy.designHeight / zoom;
         if (!props.contains("pixelPerfect"))
+        {
             props["pixelPerfect"] = pixelPerfect;
+        }
     }
 }
 
@@ -126,7 +136,9 @@ public:
         const float art = Deki::EngineSettings::Global().pixelsPerMeter;
         const float ppm = cam.GetPixelsPerMeter(pw, ph);
         if (ppm <= 0.0f || art <= 0.0f)
+        {
             return;
+        }
         char badge[16];
         std::snprintf(badge, sizeof(badge), "x%.3g", ppm / art);
         float x0, y0, x1, y1, tw, th;
@@ -145,7 +157,9 @@ public:
         const int pw = SceneView::Get().GetPreviewWidth(), ph = SceneView::Get().GetPreviewHeight();
         const float ppm = cam->GetPixelsPerMeter(pw, ph);
         if (cam->projection != Deki::ProjectionMode::Orthographic || ppm <= 0.0f || art <= 0.0f)
+        {
             return false;
+        }
         outWidth = pw / ppm * art;
         outHeight = ph / ppm * art;
         return outWidth > 0.0f && outHeight > 0.0f;
@@ -159,7 +173,9 @@ public:
         const float w = view.GetDisplayWidth();
         const float h = view.GetDisplayHeight();
         if (w <= 0 || h <= 0)
+        {
             return;
+        }
 
         // DisplayWidth/Height are buffer pixels; each is editor zoom screen pixels.
         const float zoom = view.GetZoom();
@@ -172,15 +188,14 @@ public:
         // EditorTheme's Palette::Accent, spelled out here because a package DLL
         // does not pull in the editor's ImGui theme header. Selected draws it
         // opaque, unselected at 70%.
-        const uint32_t color = view.IsCurrentObjectSelected()
-            ? SceneView::Rgba(58, 195, 255, 255)
-            : SceneView::Rgba(58, 195, 255, 180);
+        const uint32_t color =
+            view.IsCurrentObjectSelected() ? SceneView::Rgba(58, 195, 255, 255) : SceneView::Rgba(58, 195, 255, 180);
         view.DrawRect(cx - halfW, cy - halfH, cx + halfW, cy + halfH, color, 1.0f);
     }
 };
 
 REGISTER_EDITOR(CameraCustomEditor)
 
-} // namespace DekiEditor
+}  // namespace DekiEditor
 
-#endif // DEKI_EDITOR
+#endif  // DEKI_EDITOR

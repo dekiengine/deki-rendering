@@ -33,7 +33,7 @@ class ScriptedRenderer : public DekiRenderer
 {
 public:
     std::vector<Deki::Rect> draws;
-    bool unknown = false;   // report nothing (like a renderer that cannot track)
+    bool unknown = false;  // report nothing (like a renderer that cannot track)
     bool sawTracking = false;
 
     uint32_t GetRendererType() const override { return 0x54455354; }
@@ -44,8 +44,12 @@ public:
         for (const Deki::Rect& r : draws)
         {
             for (int32_t y = std::max<int32_t>(r.top, 0); y < std::min<int32_t>(r.bottom, ctx.height); ++y)
+            {
                 for (int32_t x = std::max<int32_t>(r.left, 0); x < std::min<int32_t>(r.right, ctx.width); ++x)
+                {
                     reinterpret_cast<uint16_t*>(ctx.buffer)[y * ctx.width + x] = 0xFFFF;
+                }
+            }
             m_Dirty.Add(r);
         }
     }
@@ -66,7 +70,17 @@ public:
     bool Initialize(int32_t, int32_t) override { return true; }
     void Shutdown() override {}
     void Present(const uint8_t*, int, int, Deki::ColorFormat) override {}
-    void GetDisplaySize(int32_t* w, int32_t* h) const override { if (w) *w = kW; if (h) *h = kH; }
+    void GetDisplaySize(int32_t* w, int32_t* h) const override
+    {
+        if (w)
+        {
+            *w = kW;
+        }
+        if (h)
+        {
+            *h = kH;
+        }
+    }
     Deki::ColorFormat GetColorFormat() const override { return Deki::ColorFormat::RGB565; }
     bool IsInitialized() const override { return true; }
     void RequestFullRefresh() override {}
@@ -79,8 +93,14 @@ public:
     void ClearActiveUIOverlay() override {}
     uint8_t* GetRenderBuffer(int32_t* w, int32_t* h) override
     {
-        if (w) *w = kW;
-        if (h) *h = kH;
+        if (w)
+        {
+            *w = kW;
+        }
+        if (h)
+        {
+            *h = kH;
+        }
         return bufs[index].data();
     }
 };
@@ -129,8 +149,14 @@ struct Fixture
         DirtyRegion r;
         r.Reset(kW, kH);
         r.SetFullCoverageRatio(2.0f);
-        if (count < 0) r.SetFull();
-        for (int32_t i = 0; i < count; ++i) r.Add(rects[i]);
+        if (count < 0)
+        {
+            r.SetFull();
+        }
+        for (int32_t i = 0; i < count; ++i)
+        {
+            r.Add(rects[i]);
+        }
         return r;
     }
 };
@@ -138,8 +164,15 @@ struct Fixture
 bool RegionCovers(const DirtyRegion& r, const Deki::Rect& q)
 {
     for (int32_t y = q.top; y < q.bottom; ++y)
+    {
         for (int32_t x = q.left; x < q.right; ++x)
-            if (!r.Contains(x, y)) return false;
+        {
+            if (!r.Contains(x, y))
+            {
+                return false;
+            }
+        }
+    }
     return true;
 }
 
@@ -254,21 +287,29 @@ TEST(DirtyHistory, DoubleBufferedDisplayKeepsPerBufferHistory)
     engine.SetDisplay(nullptr, "");
     engine.SetDisplay(&display, "two-buffer");
 
-    auto frame = [&](const std::vector<Deki::Rect>& draws) {
+    auto frame = [&](const std::vector<Deki::Rect>& draws)
+    {
         renderer.draws = draws;
         reference.draws = draws;
         tracked.Render(&scene);
         // The reference renders into its own buffer with a full clear each frame.
         plain.Render(&scene);
-        EXPECT_EQ(tracked.GetFrameBuffer(), display.bufs[display.index].data()) << "renders into the display's current buffer";
+        EXPECT_EQ(tracked.GetFrameBuffer(), display.bufs[display.index].data())
+            << "renders into the display's current buffer";
         EXPECT_EQ(std::memcmp(tracked.GetFrameBuffer(), plain.GetFrameBuffer(), kW * kH * 2), 0);
         int32_t count = -2;
         const Deki::Rect* rects = tracked.GetPresentRects(&count);
         DirtyRegion r;
         r.Reset(kW, kH);
         r.SetFullCoverageRatio(2.0f);
-        if (count < 0) r.SetFull();
-        for (int32_t i = 0; i < count; ++i) r.Add(rects[i]);
+        if (count < 0)
+        {
+            r.SetFull();
+        }
+        for (int32_t i = 0; i < count; ++i)
+        {
+            r.Add(rects[i]);
+        }
         display.Flip();
         return std::make_pair(count, r);
     };
@@ -278,7 +319,7 @@ TEST(DirtyHistory, DoubleBufferedDisplayKeepsPerBufferHistory)
     auto third = frame({ { 24, 8, 32, 16 } });          // buffer A again: partial
     EXPECT_GT(third.first, 0);
     EXPECT_TRUE(RegionCovers(third.second, { 16, 8, 32, 16 }));  // previous frame (on B) and this one
-    auto fourth = frame({ { 24, 8, 32, 16 } });         // buffer B: partial, object still
+    auto fourth = frame({ { 24, 8, 32, 16 } });                  // buffer B: partial, object still
     EXPECT_GT(fourth.first, 0);
     EXPECT_TRUE(RegionCovers(fourth.second, { 24, 8, 32, 16 }));
     EXPECT_FALSE(fourth.second.Contains(8, 8)) << "the first frame's rectangle is long gone";

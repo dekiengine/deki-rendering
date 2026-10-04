@@ -25,11 +25,12 @@
 namespace DekiRendering
 {
 
-namespace DekiSortingCallbackRegistry {
+namespace DekiSortingCallbackRegistry
+{
 
 void Register(const char* name, SortingCallback callback);
 void GetAll(std::vector<SortingCallback>& outCallbacks);
 
-} // namespace DekiSortingCallbackRegistry
+}  // namespace DekiSortingCallbackRegistry
 
 }  // namespace DekiRendering

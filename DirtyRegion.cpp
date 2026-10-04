@@ -21,12 +21,18 @@ void DirtyRegion::SetFull()
 
 void DirtyRegion::Add(int32_t left, int32_t top, int32_t right, int32_t bottom)
 {
-    if (m_Full) return;
+    if (m_Full)
+    {
+        return;
+    }
     left = std::max<int32_t>(left, 0);
     top = std::max<int32_t>(top, 0);
     right = std::min<int32_t>(right, m_Width);
     bottom = std::min<int32_t>(bottom, m_Height);
-    if (right <= left || bottom <= top) return;
+    if (right <= left || bottom <= top)
+    {
+        return;
+    }
 
     // A rectangle inside one we already have adds nothing; one that swallows
     // an existing rectangle replaces it. Both are common (a sprite drawn
@@ -35,7 +41,9 @@ void DirtyRegion::Add(int32_t left, int32_t top, int32_t right, int32_t bottom)
     for (Deki::Rect& r : m_Rects)
     {
         if (left >= r.left && top >= r.top && right <= r.right && bottom <= r.bottom)
+        {
             return;
+        }
         if (left <= r.left && top <= r.top && right >= r.right && bottom >= r.bottom)
         {
             r = { left, top, right, bottom };
@@ -46,25 +54,35 @@ void DirtyRegion::Add(int32_t left, int32_t top, int32_t right, int32_t bottom)
 
     m_Rects.push_back({ left, top, right, bottom });
     while (m_Rects.size() > m_MergeThreshold)
+    {
         MergeOnePair();
+    }
     CollapseIfCovered();
 }
 
 void DirtyRegion::Union(const DirtyRegion& other)
 {
-    if (m_Full) return;
+    if (m_Full)
+    {
+        return;
+    }
     if (other.m_Full)
     {
         SetFull();
         return;
     }
     for (const Deki::Rect& r : other.m_Rects)
+    {
         Add(r.left, r.top, r.right, r.bottom);
+    }
 }
 
 void DirtyRegion::Align(int32_t granularity)
 {
-    if (m_Full || granularity <= 1) return;
+    if (m_Full || granularity <= 1)
+    {
+        return;
+    }
     for (Deki::Rect& r : m_Rects)
     {
         r.left = (r.left / granularity) * granularity;
@@ -76,25 +94,42 @@ void DirtyRegion::Align(int32_t granularity)
     std::vector<Deki::Rect> aligned;
     aligned.swap(m_Rects);
     for (const Deki::Rect& r : aligned)
+    {
         Add(r.left, r.top, r.right, r.bottom);
+    }
 }
 
 int64_t DirtyRegion::CoveredArea() const
 {
-    if (m_Full) return static_cast<int64_t>(m_Width) * m_Height;
+    if (m_Full)
+    {
+        return static_cast<int64_t>(m_Width) * m_Height;
+    }
     int64_t area = 0;
     for (const Deki::Rect& r : m_Rects)
+    {
         area += static_cast<int64_t>(r.Width()) * r.Height();
+    }
     return area;
 }
 
 bool DirtyRegion::Contains(int32_t x, int32_t y) const
 {
-    if (x < 0 || y < 0 || x >= m_Width || y >= m_Height) return false;
-    if (m_Full) return true;
+    if (x < 0 || y < 0 || x >= m_Width || y >= m_Height)
+    {
+        return false;
+    }
+    if (m_Full)
+    {
+        return true;
+    }
     for (const Deki::Rect& r : m_Rects)
+    {
         if (x >= r.left && x < r.right && y >= r.top && y < r.bottom)
+        {
             return true;
+        }
+    }
     return false;
 }
 
@@ -103,7 +138,10 @@ void DirtyRegion::MergeOnePair()
     // Merge the pair whose bounding union adds the least new area. Quadratic
     // in the (small, threshold-bounded) rectangle count.
     const size_t n = m_Rects.size();
-    if (n < 2) return;
+    if (n < 2)
+    {
+        return;
+    }
     size_t bestA = 0, bestB = 1;
     int64_t bestGrowth = INT64_MAX;
     for (size_t i = 0; i < n; ++i)
@@ -133,10 +171,15 @@ void DirtyRegion::MergeOnePair()
 
 void DirtyRegion::CollapseIfCovered()
 {
-    if (m_Full || m_Width <= 0 || m_Height <= 0) return;
+    if (m_Full || m_Width <= 0 || m_Height <= 0)
+    {
+        return;
+    }
     const int64_t total = static_cast<int64_t>(m_Width) * m_Height;
     if (static_cast<double>(CoveredArea()) >= static_cast<double>(total) * m_FullRatio)
+    {
         SetFull();
+    }
 }
 
 }  // namespace DekiRendering

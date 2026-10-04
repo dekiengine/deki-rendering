@@ -2,7 +2,10 @@
 #include <cstdint>
 
 // Forward declarations
-namespace Deki { class Object; }
+namespace Deki
+{
+class Object;
+}
 
 namespace DekiRendering
 {
@@ -46,12 +49,12 @@ namespace RenderPassHooks
 {
 enum : uint32_t
 {
-    BeginFrame  = 1u << 0,
-    PreExecute  = 1u << 1,
-    Execute     = 1u << 2,
+    BeginFrame = 1u << 0,
+    PreExecute = 1u << 1,
+    Execute = 1u << 2,
     PostExecute = 1u << 3,
-    EndFrame    = 1u << 4,
-    All         = BeginFrame | PreExecute | Execute | PostExecute | EndFrame,
+    EndFrame = 1u << 4,
+    All = BeginFrame | PreExecute | Execute | PostExecute | EndFrame,
 };
 }
 
@@ -117,8 +120,8 @@ public:
  * Returns true if the object is a sortable render item, setting outOrder.
  * Register on Standard2DRenderer via AddSortingCallback().
  */
-using SortingCallback = bool(*)(Deki::Object* obj, int32_t& outOrder);
+using SortingCallback = bool (*)(Deki::Object* obj, int32_t& outOrder);
 
-// 
+//
 
 }  // namespace DekiRendering

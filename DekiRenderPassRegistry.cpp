@@ -9,7 +9,8 @@ namespace DekiRendering
 // init header into this registry's public surface.
 void DekiRendering_DetachPass(const char* name);
 
-namespace DekiRenderPassRegistry {
+namespace DekiRenderPassRegistry
+{
 
 static std::unordered_map<std::string, RenderPassInfo>& GetRegistry()
 {
@@ -26,7 +27,9 @@ static AutoAttachCallback& GetAutoAttachCallback()
 void Register(const char* name, RenderPassInfo info)
 {
     if (!name || !info.factory)
+    {
         return;
+    }
 
     GetRegistry()[name] = info;
 
@@ -35,19 +38,26 @@ void Register(const char* name, RenderPassInfo info)
     if (info.autoAttach)
     {
         auto& cb = GetAutoAttachCallback();
-        if (cb) cb(name, info);
+        if (cb)
+        {
+            cb(name, info);
+        }
     }
 }
 
 const RenderPassInfo* Get(const char* name)
 {
     if (!name || name[0] == '\0')
+    {
         return nullptr;
+    }
 
     auto& reg = GetRegistry();
     auto it = reg.find(name);
     if (it != reg.end())
+    {
         return &it->second;
+    }
 
     return nullptr;
 }
@@ -55,7 +65,9 @@ const RenderPassInfo* Get(const char* name)
 void Unregister(const char* name)
 {
     if (!name)
+    {
         return;
+    }
     // Tear down the live pass instance before removing the factory. The
     // instance's vtable lives in the caller's DLL, which is typically about
     // to unload (the static destructor that called us runs during DLL detach).
@@ -69,7 +81,9 @@ void GetAllNames(std::vector<std::string>& outNames)
 {
     outNames.clear();
     for (const auto& [name, info] : GetRegistry())
+    {
         outNames.push_back(name);
+    }
 }
 
 void SetAutoAttachCallback(AutoAttachCallback cb)
@@ -77,6 +91,6 @@ void SetAutoAttachCallback(AutoAttachCallback cb)
     GetAutoAttachCallback() = std::move(cb);
 }
 
-} // namespace DekiRenderPassRegistry
+}  // namespace DekiRenderPassRegistry
 
 }  // namespace DekiRendering

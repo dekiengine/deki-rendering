@@ -22,20 +22,25 @@ DEKI_FORMER_NAME("RenderingProjectSettings")
 class RenderingProjectSettings : public Deki::Component
 {
 public:
-
-    DEKI_TOOLTIP("Render at half horizontal resolution and double-up at present time. Halves blit cost and framebuffer memory but pixel art looks 2:1-stretched horizontally.")
+    DEKI_TOOLTIP("Render at half horizontal resolution and double-up at present time. Halves blit cost and framebuffer "
+                 "memory but pixel art looks 2:1-stretched horizontally.")
     DEKI_EXPORT
     bool halfWidthFramebuffer = false;
 
-    DEKI_TOOLTIP("Render odd scanlines one frame, even the next, at 60Hz. Halves per-frame work but produces visible combing on vertical motion.")
+    DEKI_TOOLTIP("Render odd scanlines one frame, even the next, at 60Hz. Halves per-frame work but produces visible "
+                 "combing on vertical motion.")
     DEKI_EXPORT
     bool interlaced60hz = false;
 
-    DEKI_TOOLTIP("Dirty-rect tracking: record the rectangles each frame draws, clear only those next frame and push only what changed (this frame's and last frame's rectangles) to the display. Big win for mostly-static scenes; small bookkeeping cost for fully-animating ones. Displays that cannot present partial frames still receive whole frames.")
+    DEKI_TOOLTIP("Dirty-rect tracking: record the rectangles each frame draws, clear only those next frame and push "
+                 "only what changed (this frame's and last frame's rectangles) to the display. Big win for "
+                 "mostly-static scenes; small bookkeeping cost for fully-animating ones. Displays that cannot present "
+                 "partial frames still receive whole frames.")
     DEKI_EXPORT
     bool dirtyTileTracking = false;
 
-    DEKI_TOOLTIP("Alignment of dirty rectangles in pixels: each rectangle is rounded out to multiples of this. Larger = fewer, bigger pushes and a small movement reuses the same rectangle; smaller = tighter rectangles.")
+    DEKI_TOOLTIP("Alignment of dirty rectangles in pixels: each rectangle is rounded out to multiples of this. Larger "
+                 "= fewer, bigger pushes and a small movement reuses the same rectangle; smaller = tighter rectangles.")
     DEKI_RANGE(1, 256)
     DEKI_VISIBLE_WHEN(dirtyTileTracking, 1)
     DEKI_EXPORT
@@ -43,4 +48,3 @@ public:
 };
 
 }  // namespace DekiRendering
-

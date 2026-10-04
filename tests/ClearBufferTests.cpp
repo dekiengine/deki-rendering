@@ -24,16 +24,16 @@ std::vector<uint8_t> ExpectedPixel(Deki::ColorFormat f, uint8_t r, uint8_t g, ui
     const uint16_t v = static_cast<uint16_t>(((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3));
     switch (f)
     {
-    case Deki::ColorFormat::RGB565: return { static_cast<uint8_t>(v & 0xFF), static_cast<uint8_t>(v >> 8) };
-    case Deki::ColorFormat::RGB888: return { r, g, b };
-    case Deki::ColorFormat::ARGB8888: return { b, g, r, 0xFF };  // little-endian 0xFFRRGGBB
-    case Deki::ColorFormat::RGB565A8: return { static_cast<uint8_t>(v & 0xFF), static_cast<uint8_t>(v >> 8), 0xFF };
+        case Deki::ColorFormat::RGB565: return { static_cast<uint8_t>(v & 0xFF), static_cast<uint8_t>(v >> 8) };
+        case Deki::ColorFormat::RGB888: return { r, g, b };
+        case Deki::ColorFormat::ARGB8888: return { b, g, r, 0xFF };  // little-endian 0xFFRRGGBB
+        case Deki::ColorFormat::RGB565A8: return { static_cast<uint8_t>(v & 0xFF), static_cast<uint8_t>(v >> 8), 0xFF };
     }
     return {};
 }
 
 const Deki::ColorFormat kFormats[] = { Deki::ColorFormat::RGB565, Deki::ColorFormat::RGB888,
-                                     Deki::ColorFormat::ARGB8888, Deki::ColorFormat::RGB565A8 };
+                                       Deki::ColorFormat::ARGB8888, Deki::ColorFormat::RGB565A8 };
 
 // Every pixel of the framebuffer equals `px` inside the rect and `outside`
 // elsewhere.
@@ -44,6 +44,7 @@ void ExpectFill(const DekiRenderSystem& rs, int w, int h, int l, int t, int r, i
     const size_t bpp = inside.size();
     int bad = 0;
     for (int y = 0; y < h && bad < 5; ++y)
+    {
         for (int x = 0; x < w && bad < 5; ++x)
         {
             const bool in = x >= l && x < r && y >= t && y < b;
@@ -54,6 +55,7 @@ void ExpectFill(const DekiRenderSystem& rs, int w, int h, int l, int t, int r, i
                 ++bad;
             }
         }
+    }
 }
 
 }  // namespace
@@ -87,13 +89,16 @@ TEST(ClearBuffer, ClearRectClipsToTheFramebuffer)
     DekiRenderSystem rs;
     ASSERT_TRUE(rs.Setup(16, 12, Deki::ColorFormat::RGB565));
     rs.ClearBuffer(0, 0, 0);
-    rs.ClearRect(-4, -4, 8, 8, 255, 255, 255);      // top-left corner, partly outside
-    rs.ClearRect(12, 8, 100, 100, 255, 255, 255);    // bottom-right corner, partly outside
-    rs.ClearRect(20, 20, 4, 4, 255, 255, 255);       // fully outside: no-op
-    rs.ClearRect(3, 3, 0, 5, 255, 255, 255);         // empty: no-op
+    rs.ClearRect(-4, -4, 8, 8, 255, 255, 255);     // top-left corner, partly outside
+    rs.ClearRect(12, 8, 100, 100, 255, 255, 255);  // bottom-right corner, partly outside
+    rs.ClearRect(20, 20, 4, 4, 255, 255, 255);     // fully outside: no-op
+    rs.ClearRect(3, 3, 0, 5, 255, 255, 255);       // empty: no-op
     const uint16_t* fb = reinterpret_cast<const uint16_t*>(rs.GetFrameBuffer());
     int white = 0;
-    for (int i = 0; i < 16 * 12; ++i) white += (fb[i] == 0xFFFF);
+    for (int i = 0; i < 16 * 12; ++i)
+    {
+        white += (fb[i] == 0xFFFF);
+    }
     EXPECT_EQ(white, 4 * 4 + 4 * 4);
     EXPECT_EQ(fb[0], 0xFFFF);
     EXPECT_EQ(fb[11 * 16 + 15], 0xFFFF);

@@ -3,8 +3,14 @@
 #include <deki/assets/Texture2D.h>  // TextureFormat, for PixelLayout::FromTexture
 
 // Forward declarations
-namespace Deki { enum class ColorFormat; }
-namespace DekiRendering { class DirtyRegion; }
+namespace Deki
+{
+enum class ColorFormat;
+}
+namespace DekiRendering
+{
+class DirtyRegion;
+}
 
 /**
  * @brief Centralized quad blitting with full 2D transforms
@@ -15,355 +21,330 @@ namespace DekiRendering { class DirtyRegion; }
  */
 namespace QuadBlit
 {
+/**
+ * @brief Clip rectangle for restricting rendering output
+ */
+struct ClipRect
+{
+    int32_t left = 0;
+    int32_t top = 0;
+    int32_t right = INT32_MAX;
+    int32_t bottom = INT32_MAX;
+
+    bool IsSet() const { return right != INT32_MAX; }
+};
+
+/**
+ * @brief Push a clip rect onto the stack (intersects with parent)
+ */
+void PushClipRect(int32_t left, int32_t top, int32_t right, int32_t bottom);
+
+/**
+ * @brief Pop the current clip rect from the stack
+ */
+void PopClipRect();
+
+/**
+ * @brief Get the current active clip rect
+ */
+ClipRect GetCurrentClipRect();
+
+/**
+ * @brief Clear the clip rect stack (call at frame start)
+ */
+void ClearClipStack();
+
+/**
+ * @brief Temporarily enable/disable clip rect enforcement
+ * @param enabled If false, blits ignore the clip stack until re-enabled
+ */
+void SetClipEnabled(bool enabled);
+
+/**
+ * @brief Check if clipping is currently enabled
+ */
+bool IsClipEnabled();
+
+/**
+ * @brief Get current clip stack depth (diagnostic)
+ */
+int GetClipStackDepth();
+
+/**
+ * @brief Dirty-rect tracking.
+ *
+ * While set, every blit whose target is `trackedTarget` adds its clipped
+ * destination rectangle to `region`; blits into any other buffer (a
+ * particle composite, a pass's scratch target) are ignored.
+ * Standard2DRenderer sets this for the frame when RenderContext::trackDirty
+ * is on and clears it afterwards. Pass nullptr to stop.
+ */
+void SetDirtyTracking(DekiRendering::DirtyRegion* region, const uint8_t* trackedTarget);
+
+/**
+ * @brief Add a rectangle to the tracked region, for code that writes the
+ *        tracked target without going through a blit. No-op when nothing
+ *        is tracked.
+ */
+void MarkDirty(int32_t left, int32_t top, int32_t right, int32_t bottom);
+
+/**
+ * @brief Everything changed (a whole-frame composite written directly).
+ */
+void MarkAllDirty();
+
+/**
+ * @brief The buffer currently tracked, or nullptr.
+ */
+const uint8_t* GetDirtyTrackedTarget();
+
+/**
+ * @brief How a source buffer stores one pixel
+ *
+ * QuadBlit takes the SHAPE of a source, not a format enum: it lives in
+ * deki-rendering and cannot name deki-2d's Deki::Texture2D::TextureFormat, nor
+ * should it — a blitter needs to know how to read bytes, not which asset
+ * pipeline produced them.
+ *
+ * What it should not take is three loose values in a row. That is what
+ * this replaces: MakeSource(data, w, h, 2, false, true, false), where
+ * transposing hasAlpha and isRGB565 compiles, blits wrong, and is visible
+ * only in a comment beside the call.
+ *
+ * The named layouts are the shapes real sources come in. Anything else is
+ * still expressible — a test reaching for an unusual combination writes
+ * the aggregate with designated initialisers, which names the fields at
+ * the call site just as well.
+ */
+struct PixelLayout
+{
+    int32_t bytesPerPixel;
+    bool hasAlpha;
+    bool isRGB565;
+
+    /// 16-bit colour, no alpha. Baked gradients, opaque sprites.
+    static constexpr PixelLayout RGB565() { return { 2, false, true }; }
+
+    /// 16-bit colour plus a separate alpha byte. Sprites with alpha, baked text.
+    static constexpr PixelLayout RGB565A8() { return { 3, true, true }; }
+
+    /// The RGB565A8 byte shape with its alpha ignored.
+    static constexpr PixelLayout RGB565A8NoAlpha() { return { 3, false, true }; }
+
+    /// 32-bit colour with alpha.
+    static constexpr PixelLayout RGBA8888() { return { 4, true, false }; }
+
+    /// 24-bit colour, no alpha.
+    static constexpr PixelLayout RGB888() { return { 3, false, false }; }
+
+    /// A single alpha byte per pixel. Font atlases.
+    static constexpr PixelLayout Alpha8() { return { 1, true, false }; }
+
     /**
-     * @brief Clip rectangle for restricting rendering output
+     * @brief The layout of a texture asset stored in `format`
+     *
+     * `hasAlpha` is separate because it is a property of the asset, not of
+     * the format: a sprite stored as RGB565A8 may still declare itself
+     * opaque, and then the alpha plane is there but ignored.
+     *
+     * This derivation used to be written out at three call sites — in
+     * Deki2D::SpriteComponent, ParticleEmitterComponent and TilemapRenderSystem —
+     * each deciding for itself that RGB565 and RGB565A8 are the 565 ones.
      */
-    struct ClipRect
+    static PixelLayout FromTexture(Deki::Texture2D::TextureFormat format, bool hasAlpha)
     {
-        int32_t left = 0;
-        int32_t top = 0;
-        int32_t right = INT32_MAX;
-        int32_t bottom = INT32_MAX;
+        const bool isRGB565 =
+            (format == Deki::Texture2D::TextureFormat::RGB565 || format == Deki::Texture2D::TextureFormat::RGB565A8);
+        return { static_cast<int32_t>(Deki::Texture2D::GetBytesPerPixel(format)), hasAlpha, isRGB565 };
+    }
+};
 
-        bool IsSet() const { return right != INT32_MAX; }
-    };
+/**
+ * @brief Source buffer descriptor
+ */
+struct Source
+{
+    const uint8_t* pixels;  // Source pixel data
+    int32_t width;          // Width in pixels
+    int32_t height;         // Height in pixels
+    int32_t bytesPerPixel;  // Bytes per pixel (2, 3, or 4)
+    bool hasAlpha;          // Whether source has alpha channel
+    uint8_t alphaOffset;    // Byte offset to alpha (for RGB565A8: 2, for RGBA8888: 3)
 
-    /**
-     * @brief Push a clip rect onto the stack (intersects with parent)
-     */
-    void PushClipRect(int32_t left, int32_t top, int32_t right, int32_t bottom);
+    // Pixel format info for color extraction
+    bool isRGB565;  // True if RGB565 or RGB565A8 format
 
-    /**
-     * @brief Pop the current clip rect from the stack
-     */
-    void PopClipRect();
+    // Per-row opaque span data (optional, nullptr if not available)
+    // Packed int16_t pairs: [opaqueStart, opaqueEnd] per row
+    const int16_t* alphaRowSpans;
 
-    /**
-     * @brief Get the current active clip rect
-     */
-    ClipRect GetCurrentClipRect();
-
-    /**
-     * @brief Clear the clip rect stack (call at frame start)
-     */
-    void ClearClipStack();
-
-    /**
-     * @brief Temporarily enable/disable clip rect enforcement
-     * @param enabled If false, blits ignore the clip stack until re-enabled
-     */
-    void SetClipEnabled(bool enabled);
-
-    /**
-     * @brief Check if clipping is currently enabled
-     */
-    bool IsClipEnabled();
-
-    /**
-     * @brief Get current clip stack depth (diagnostic)
-     */
-    int GetClipStackDepth();
-
-    /**
-     * @brief Dirty-rect tracking.
-     *
-     * While set, every blit whose target is `trackedTarget` adds its clipped
-     * destination rectangle to `region`; blits into any other buffer (a
-     * particle composite, a pass's scratch target) are ignored.
-     * Standard2DRenderer sets this for the frame when RenderContext::trackDirty
-     * is on and clears it afterwards. Pass nullptr to stop.
-     */
-    void SetDirtyTracking(DekiRendering::DirtyRegion* region, const uint8_t* trackedTarget);
-
-    /**
-     * @brief Add a rectangle to the tracked region, for code that writes the
-     *        tracked target without going through a blit. No-op when nothing
-     *        is tracked.
-     */
-    void MarkDirty(int32_t left, int32_t top, int32_t right, int32_t bottom);
-
-    /**
-     * @brief Everything changed (a whole-frame composite written directly).
-     */
-    void MarkAllDirty();
-
-    /**
-     * @brief The buffer currently tracked, or nullptr.
-     */
-    const uint8_t* GetDirtyTrackedTarget();
-
-    /**
-     * @brief How a source buffer stores one pixel
-     *
-     * QuadBlit takes the SHAPE of a source, not a format enum: it lives in
-     * deki-rendering and cannot name deki-2d's Deki::Texture2D::TextureFormat, nor
-     * should it — a blitter needs to know how to read bytes, not which asset
-     * pipeline produced them.
-     *
-     * What it should not take is three loose values in a row. That is what
-     * this replaces: MakeSource(data, w, h, 2, false, true, false), where
-     * transposing hasAlpha and isRGB565 compiles, blits wrong, and is visible
-     * only in a comment beside the call.
-     *
-     * The named layouts are the shapes real sources come in. Anything else is
-     * still expressible — a test reaching for an unusual combination writes
-     * the aggregate with designated initialisers, which names the fields at
-     * the call site just as well.
-     */
-    struct PixelLayout
-    {
-        int32_t bytesPerPixel;
-        bool hasAlpha;
-        bool isRGB565;
-
-        /// 16-bit colour, no alpha. Baked gradients, opaque sprites.
-        static constexpr PixelLayout RGB565() { return { 2, false, true }; }
-
-        /// 16-bit colour plus a separate alpha byte. Sprites with alpha, baked text.
-        static constexpr PixelLayout RGB565A8() { return { 3, true, true }; }
-
-        /// The RGB565A8 byte shape with its alpha ignored.
-        static constexpr PixelLayout RGB565A8NoAlpha() { return { 3, false, true }; }
-
-        /// 32-bit colour with alpha.
-        static constexpr PixelLayout RGBA8888() { return { 4, true, false }; }
-
-        /// 24-bit colour, no alpha.
-        static constexpr PixelLayout RGB888() { return { 3, false, false }; }
-
-        /// A single alpha byte per pixel. Font atlases.
-        static constexpr PixelLayout Alpha8() { return { 1, true, false }; }
-
-        /**
-         * @brief The layout of a texture asset stored in `format`
-         *
-         * `hasAlpha` is separate because it is a property of the asset, not of
-         * the format: a sprite stored as RGB565A8 may still declare itself
-         * opaque, and then the alpha plane is there but ignored.
-         *
-         * This derivation used to be written out at three call sites — in
-         * Deki2D::SpriteComponent, ParticleEmitterComponent and TilemapRenderSystem —
-         * each deciding for itself that RGB565 and RGB565A8 are the 565 ones.
-         */
-        static PixelLayout FromTexture(Deki::Texture2D::TextureFormat format, bool hasAlpha)
-        {
-            const bool isRGB565 = (format == Deki::Texture2D::TextureFormat::RGB565 ||
-                                   format == Deki::Texture2D::TextureFormat::RGB565A8);
-            return { static_cast<int32_t>(Deki::Texture2D::GetBytesPerPixel(format)),
-                     hasAlpha, isRGB565 };
-        }
-    };
-
-    /**
-     * @brief Source buffer descriptor
-     */
-    struct Source
-    {
-        const uint8_t* pixels;    // Source pixel data
-        int32_t width;            // Width in pixels
-        int32_t height;           // Height in pixels
-        int32_t bytesPerPixel;    // Bytes per pixel (2, 3, or 4)
-        bool hasAlpha;            // Whether source has alpha channel
-        uint8_t alphaOffset;      // Byte offset to alpha (for RGB565A8: 2, for RGBA8888: 3)
-
-        // Pixel format info for color extraction
-        bool isRGB565;            // True if RGB565 or RGB565A8 format
-
-        // Per-row opaque span data (optional, nullptr if not available)
-        // Packed int16_t pairs: [opaqueStart, opaqueEnd] per row
-        const int16_t* alphaRowSpans;
-
-        // Ownership transfer. False (the default) means the component keeps
-        // its buffer, which is what every component in-tree does: sprites,
-        // baked text, baked gradients and the particle composite all reuse
-        // one across frames.
-        //
-        // True hands the buffer to the renderer, which releases it through
-        // Deki::Memory after the blit. A buffer transferred that way must
-        // have come from Deki::Memory — Deki::Buffer<T>::Release() is the
-        // normal way to produce one — because that is what frees it.
-        bool ownsPixels;
-
-        // Bytes per row in source memory. 0 means tightly packed
-        // (width * bytesPerPixel). Set non-zero to point Source at a sub-rect
-        // of a larger buffer (e.g. an atlas tile) without copying.
-        int32_t stride = 0;
-
-        // Optional chroma-key transparency. When hasChromaKey is true, blits
-        // skip pixels whose RGB matches (keyR, keyG, keyB). For RGB565 sources
-        // the key must be pre-quantized to 5/6/5 precision (low bits zeroed)
-        // since the source pixels are extracted at that precision.
-        bool    hasChromaKey = false;
-        uint8_t keyR = 0;
-        uint8_t keyG = 0;
-        uint8_t keyB = 0;
-
-        // Optional per-row non-key column spans. Same layout as alphaRowSpans:
-        // packed int16 pairs [opaqueStart, opaqueEnd] per source row. When
-        // present, blits in the 1:1 chroma path skip the per-pixel compare —
-        // pixels in [start, end) are guaranteed non-key (direct write); pixels
-        // outside the range are guaranteed key (skip without reading source).
-        // A row whose run contains a key pixel is recorded as (-1, -1) and is
-        // compared pixel by pixel.
-        const int16_t* chromaRowSpans = nullptr;
-
-        // Source pixels per world unit. The renderer divides the world→screen
-        // scale by this value so a 32×32 sprite with pixelsPerMeter=16 covers
-        // 2×2 world units instead of 32×32. Default 1 means "treat source
-        // pixels as world units" (legacy pixel mode).
-        float pixelsPerMeter = 1.0f;
-
-        // Mirror the source when sampling. Tiled's flags map straight onto these:
-        // flipD transposes (x<->y, square sources only), then flipH mirrors
-        // horizontally, then flipV vertically. Flipped blits take the generic
-        // per-pixel path; a negative destWidth/destHeight is NOT a flip and is
-        // rejected (which is how every flipped tile used to vanish).
-        bool flipH = false;
-        bool flipV = false;
-        bool flipD = false;
-    };
-
-    /**
-     * @brief Create source descriptor for a given texture format
-     * @param ownsPixels Transfer the buffer to the renderer, which releases
-     *        it through Deki::Memory after the blit. Defaults to false: a
-     *        component that keeps its own buffer is both the common case and
-     *        the safe one, since the other way round frees memory the
-     *        component is still using next frame.
-     */
-    Source MakeSource(const uint8_t* pixels, int32_t width, int32_t height,
-                      PixelLayout layout, bool ownsPixels = false,
-                      const int16_t* alphaRowSpans = nullptr);
-
-    /**
-     * @brief Blit source buffer to target with full 2D transforms
-     *
-     * @param source Source buffer descriptor
-     * @param target Target buffer pointer
-     * @param targetWidth Target buffer width
-     * @param targetHeight Target buffer height
-     * @param targetFormat Target color format (RGB565, RGB888, ARGB8888)
-     * @param screenX Screen X position (after WorldToScreen)
-     * @param screenY Screen Y position (after WorldToScreen)
-     * @param scaleX Horizontal scale factor (from world_scale_x)
-     * @param scaleY Vertical scale factor (from world_scale_y)
-     * @param rotation Rotation in radians (from world_rotation; engine convention).
-     * @param pivotX Pivot X (0.0 = left, 0.5 = center, 1.0 = right)
-     * @param pivotY Pivot Y (0.0 = top, 0.5 = center, 1.0 = bottom)
-     * @param tintR Tint color red (255 = no tint)
-     * @param tintG Tint color green (255 = no tint)
-     * @param tintB Tint color blue (255 = no tint)
-     * @param tintA Tint alpha (255 = opaque, 0 = invisible)
-     */
-    void Blit(const Source& source,
-              uint8_t* target,
-              int32_t targetWidth,
-              int32_t targetHeight,
-              Deki::ColorFormat targetFormat,
-              int32_t screenX,
-              int32_t screenY,
-              float scaleX,
-              float scaleY,
-              float rotation,
-              float pivotX,
-              float pivotY,
-              uint8_t tintR = 255,
-              uint8_t tintG = 255,
-              uint8_t tintB = 255,
-              uint8_t tintA = 255,
-              bool useOrderedDither = false);
-
-    /**
-     * @brief Simplified blit without rotation (faster path)
-     *
-     * @param useOrderedDither When true and the source has per-pixel alpha,
-     *        partial-alpha pixels are output via 8x8 Bayer-matrix ordered
-     *        dithering instead of standard alpha blending. The dither path
-     *        skips the destination-read step (no read-modify-write per pixel)
-     *        and does no per-channel blend math, so it's substantially faster
-     *        on PSRAM-bound targets. Visible tradeoff: a fixed stippling
-     *        pattern at any non-fully-opaque alpha. Solid (a==0 or a==255)
-     *        pixels are unaffected. Source has no alpha → flag is a no-op.
-     *        See https://en.wikipedia.org/wiki/Ordered_dithering for the
-     *        algorithm.
-     */
-    void BlitScaled(const Source& source,
-                    uint8_t* target,
-                    int32_t targetWidth,
-                    int32_t targetHeight,
-                    Deki::ColorFormat targetFormat,
-                    int32_t destX,
-                    int32_t destY,
-                    int32_t destWidth,
-                    int32_t destHeight,
-                    uint8_t tintR = 255,
-                    uint8_t tintG = 255,
-                    uint8_t tintB = 255,
-                    uint8_t tintA = 255,
-                    bool useOrderedDither = false);
-
-    // ============================================================================
-    // Per-row kernel dispatch
-    // ============================================================================
+    // Ownership transfer. False (the default) means the component keeps
+    // its buffer, which is what every component in-tree does: sprites,
+    // baked text, baked gradients and the particle composite all reuse
+    // one across frames.
     //
-    // Platform packages can register hand-tuned SIMD kernels for specific
-    // format pairs. The blit dispatcher checks preconditions (format, no
-    // rotation, no scale, alignment, no tint) up-front; when they hold AND
-    // a kernel is registered, the SIMD kernel runs. Otherwise the existing
-    // scalar inner loop runs. This is a predicate-gated dispatch, not a
-    // runtime-failure fallback — the choice is deterministic.
+    // True hands the buffer to the renderer, which releases it through
+    // Deki::Memory after the blit. A buffer transferred that way must
+    // have come from Deki::Memory — Deki::Buffer<T>::Release() is the
+    // normal way to produce one — because that is what frees it.
+    bool ownsPixels;
 
-    enum class KernelOp : uint8_t
-    {
-        // RGB565 source → RGB565 dest, 1:1, opaque copy. src/dst point at RGB565
-        // pixels (2 bytes each). Used by both the plain opaque copy path and the
-        // opaque-middle of the chroma-key row-span path.
-        RGB565_Copy_Row,
+    // Bytes per row in source memory. 0 means tightly packed
+    // (width * bytesPerPixel). Set non-zero to point Source at a sub-rect
+    // of a larger buffer (e.g. an atlas tile) without copying.
+    int32_t stride = 0;
 
-        // RGB565A8 source → RGB565 dest, 1:1 alpha blend. src is 3 bytes/pixel
-        // (RGB565 + 1 byte alpha), dst is 2 bytes/pixel. Kernel handles a==0 skip
-        // and a==255 fast-path internally. Tint and chroma-key MUST be absent
-        // (caller checks; kernel does not).
-        RGB565A8_Blend_Row,
+    // Optional chroma-key transparency. When hasChromaKey is true, blits
+    // skip pixels whose RGB matches (keyR, keyG, keyB). For RGB565 sources
+    // the key must be pre-quantized to 5/6/5 precision (low bits zeroed)
+    // since the source pixels are extracted at that precision.
+    bool hasChromaKey = false;
+    uint8_t keyR = 0;
+    uint8_t keyG = 0;
+    uint8_t keyB = 0;
 
-        // RGB565 source → RGB565A8 dest, 1:1, opaque expand. src is 2 bytes/pixel,
-        // dst is 3 bytes/pixel laid out as [lo, hi, alpha]. Output alpha is set
-        // to 0xFF for every pixel. Tint and chroma-key MUST be absent.
-        RGB565_to_RGB565A8_Row,
+    // Optional per-row non-key column spans. Same layout as alphaRowSpans:
+    // packed int16 pairs [opaqueStart, opaqueEnd] per source row. When
+    // present, blits in the 1:1 chroma path skip the per-pixel compare —
+    // pixels in [start, end) are guaranteed non-key (direct write); pixels
+    // outside the range are guaranteed key (skip without reading source).
+    // A row whose run contains a key pixel is recorded as (-1, -1) and is
+    // compared pixel by pixel.
+    const int16_t* chromaRowSpans = nullptr;
 
-        // RGB565A8 source → RGB565A8 dest, 1:1, opaque copy. Both src and dst are
-        // 3 bytes/pixel. Caller guarantees the entire row is opaque (alpha == 255
-        // for every pixel) — the kernel may skip per-pixel alpha checks. Effectively
-        // a `memcpy(dst, src, count*3)`. Tint and chroma-key MUST be absent.
-        RGB565A8_Copy_Row,
+    // Source pixels per world unit. The renderer divides the world→screen
+    // scale by this value so a 32×32 sprite with pixelsPerMeter=16 covers
+    // 2×2 world units instead of 32×32. Default 1 means "treat source
+    // pixels as world units" (legacy pixel mode).
+    float pixelsPerMeter = 1.0f;
 
-        // RGB565A8 source → RGB565A8 dest, 1:1, alpha blend with src-over alpha
-        // union (out.a = src.a + dst.a * (255 - src.a) / 255). Both src and dst
-        // are 3 bytes/pixel. Kernel handles a==0 skip and a==255 fast-path
-        // internally. Tint and chroma-key MUST be absent.
-        RGB565A8_Blend_Row_Dest_RGB565A8,
+    // Mirror the source when sampling. Tiled's flags map straight onto these:
+    // flipD transposes (x<->y, square sources only), then flipH mirrors
+    // horizontally, then flipV vertically. Flipped blits take the generic
+    // per-pixel path; a negative destWidth/destHeight is NOT a flip and is
+    // rejected (which is how every flipped tile used to vanish).
+    bool flipH = false;
+    bool flipV = false;
+    bool flipD = false;
+};
 
-        Count
-    };
+/**
+ * @brief Create source descriptor for a given texture format
+ * @param ownsPixels Transfer the buffer to the renderer, which releases
+ *        it through Deki::Memory after the blit. Defaults to false: a
+ *        component that keeps its own buffer is both the common case and
+ *        the safe one, since the other way round frees memory the
+ *        component is still using next frame.
+ */
+Source MakeSource(const uint8_t* pixels, int32_t width, int32_t height, PixelLayout layout, bool ownsPixels = false,
+                  const int16_t* alphaRowSpans = nullptr);
 
-    // Per-row kernel signature.
-    //   src, dst       — 16-byte-aligned source/destination row pointers
-    //   pixelCount     — number of pixels to process (NOT bytes)
-    //   tintR/G/B/A    — passed through for kernels that opt to use them; the
-    //                    no-tint kernel slots receive (255,255,255,255)
-    //
-    // Alignment, format, scale=1, rotation=0, and tint-identity (where
-    // applicable) are guaranteed by the caller. The kernel is free to assume
-    // them and use unrolled / SIMD loads.
-    using RowKernelFn = void (*)(const uint8_t* src, uint8_t* dst, int32_t pixelCount,
-                                 uint8_t tintR, uint8_t tintG, uint8_t tintB, uint8_t tintA);
+/**
+ * @brief Blit source buffer to target with full 2D transforms
+ *
+ * @param source Source buffer descriptor
+ * @param target Target buffer pointer
+ * @param targetWidth Target buffer width
+ * @param targetHeight Target buffer height
+ * @param targetFormat Target color format (RGB565, RGB888, ARGB8888)
+ * @param screenX Screen X position (after WorldToScreen)
+ * @param screenY Screen Y position (after WorldToScreen)
+ * @param scaleX Horizontal scale factor (from world_scale_x)
+ * @param scaleY Vertical scale factor (from world_scale_y)
+ * @param rotation Rotation in radians (from world_rotation; engine convention).
+ * @param pivotX Pivot X (0.0 = left, 0.5 = center, 1.0 = right)
+ * @param pivotY Pivot Y (0.0 = top, 0.5 = center, 1.0 = bottom)
+ * @param tintR Tint color red (255 = no tint)
+ * @param tintG Tint color green (255 = no tint)
+ * @param tintB Tint color blue (255 = no tint)
+ * @param tintA Tint alpha (255 = opaque, 0 = invisible)
+ */
+void Blit(const Source& source, uint8_t* target, int32_t targetWidth, int32_t targetHeight,
+          Deki::ColorFormat targetFormat, int32_t screenX, int32_t screenY, float scaleX, float scaleY, float rotation,
+          float pivotX, float pivotY, uint8_t tintR = 255, uint8_t tintG = 255, uint8_t tintB = 255,
+          uint8_t tintA = 255, bool useOrderedDither = false);
 
-    // Register a kernel for the given op. Pass nullptr to clear.
-    // Typically called once at package init from a platform integration package.
-    void RegisterKernel(KernelOp op, RowKernelFn fn);
+/**
+ * @brief Simplified blit without rotation (faster path)
+ *
+ * @param useOrderedDither When true and the source has per-pixel alpha,
+ *        partial-alpha pixels are output via 8x8 Bayer-matrix ordered
+ *        dithering instead of standard alpha blending. The dither path
+ *        skips the destination-read step (no read-modify-write per pixel)
+ *        and does no per-channel blend math, so it's substantially faster
+ *        on PSRAM-bound targets. Visible tradeoff: a fixed stippling
+ *        pattern at any non-fully-opaque alpha. Solid (a==0 or a==255)
+ *        pixels are unaffected. Source has no alpha → flag is a no-op.
+ *        See https://en.wikipedia.org/wiki/Ordered_dithering for the
+ *        algorithm.
+ */
+void BlitScaled(const Source& source, uint8_t* target, int32_t targetWidth, int32_t targetHeight,
+                Deki::ColorFormat targetFormat, int32_t destX, int32_t destY, int32_t destWidth, int32_t destHeight,
+                uint8_t tintR = 255, uint8_t tintG = 255, uint8_t tintB = 255, uint8_t tintA = 255,
+                bool useOrderedDither = false);
 
-    // Returns the registered kernel for the op, or nullptr if none.
-    // Exposed primarily for tests; the dispatcher calls this internally.
-    RowKernelFn GetKernel(KernelOp op);
+// ============================================================================
+// Per-row kernel dispatch
+// ============================================================================
+//
+// Platform packages can register hand-tuned SIMD kernels for specific
+// format pairs. The blit dispatcher checks preconditions (format, no
+// rotation, no scale, alignment, no tint) up-front; when they hold AND
+// a kernel is registered, the SIMD kernel runs. Otherwise the existing
+// scalar inner loop runs. This is a predicate-gated dispatch, not a
+// runtime-failure fallback — the choice is deterministic.
 
-}
+enum class KernelOp : uint8_t
+{
+    // RGB565 source → RGB565 dest, 1:1, opaque copy. src/dst point at RGB565
+    // pixels (2 bytes each). Used by both the plain opaque copy path and the
+    // opaque-middle of the chroma-key row-span path.
+    RGB565_Copy_Row,
+
+    // RGB565A8 source → RGB565 dest, 1:1 alpha blend. src is 3 bytes/pixel
+    // (RGB565 + 1 byte alpha), dst is 2 bytes/pixel. Kernel handles a==0 skip
+    // and a==255 fast-path internally. Tint and chroma-key MUST be absent
+    // (caller checks; kernel does not).
+    RGB565A8_Blend_Row,
+
+    // RGB565 source → RGB565A8 dest, 1:1, opaque expand. src is 2 bytes/pixel,
+    // dst is 3 bytes/pixel laid out as [lo, hi, alpha]. Output alpha is set
+    // to 0xFF for every pixel. Tint and chroma-key MUST be absent.
+    RGB565_to_RGB565A8_Row,
+
+    // RGB565A8 source → RGB565A8 dest, 1:1, opaque copy. Both src and dst are
+    // 3 bytes/pixel. Caller guarantees the entire row is opaque (alpha == 255
+    // for every pixel) — the kernel may skip per-pixel alpha checks. Effectively
+    // a `memcpy(dst, src, count*3)`. Tint and chroma-key MUST be absent.
+    RGB565A8_Copy_Row,
+
+    // RGB565A8 source → RGB565A8 dest, 1:1, alpha blend with src-over alpha
+    // union (out.a = src.a + dst.a * (255 - src.a) / 255). Both src and dst
+    // are 3 bytes/pixel. Kernel handles a==0 skip and a==255 fast-path
+    // internally. Tint and chroma-key MUST be absent.
+    RGB565A8_Blend_Row_Dest_RGB565A8,
+
+    Count
+};
+
+// Per-row kernel signature.
+//   src, dst       — 16-byte-aligned source/destination row pointers
+//   pixelCount     — number of pixels to process (NOT bytes)
+//   tintR/G/B/A    — passed through for kernels that opt to use them; the
+//                    no-tint kernel slots receive (255,255,255,255)
+//
+// Alignment, format, scale=1, rotation=0, and tint-identity (where
+// applicable) are guaranteed by the caller. The kernel is free to assume
+// them and use unrolled / SIMD loads.
+using RowKernelFn = void (*)(const uint8_t* src, uint8_t* dst, int32_t pixelCount, uint8_t tintR, uint8_t tintG,
+                             uint8_t tintB, uint8_t tintA);
+
+// Register a kernel for the given op. Pass nullptr to clear.
+// Typically called once at package init from a platform integration package.
+void RegisterKernel(KernelOp op, RowKernelFn fn);
+
+// Returns the registered kernel for the op, or nullptr if none.
+// Exposed primarily for tests; the dispatcher calls this internally.
+RowKernelFn GetKernel(KernelOp op);
+
+}  // namespace QuadBlit
