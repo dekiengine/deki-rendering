@@ -17,7 +17,6 @@ namespace DekiRendering
 /// they are set.
 DEKI_CATEGORY("Settings")
 DEKI_SETTINGS_SECTION("Rendering")
-DEKI_FORMER_NAME("RenderingProjectSettings")
 class RenderingProjectSettings : public Deki::Component
 {
 public:

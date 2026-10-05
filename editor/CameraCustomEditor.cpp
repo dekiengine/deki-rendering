@@ -5,7 +5,6 @@
 #include <deki-editor/EditorUI.h>
 #include <deki-editor/SceneView.h>
 #include <deki/Engine.h>
-#include <deki/SceneMigration.h>
 #include <nlohmann/json.hpp>
 #include "../CameraComponent.h"
 #include <cmath>
@@ -14,85 +13,6 @@
 
 // Editor extensions live in DekiEditor; the package's own types are in DekiRendering.
 using namespace DekiRendering;
-
-namespace
-{
-bool IsCameraType(const std::string& type)
-{
-    return type == "DekiRendering::CameraComponent" || type == "CameraComponent";
-}
-
-// Converts cameras saved in older forms. Before 0.18 a camera stored its own
-// pixels per meter (0 = the project's) and a pixel snap; 0.18 stored a zoom
-// over the project's design area, with Pixel Perfect as a project setting. A
-// camera now shows orthoHeight meters top to bottom and has its own Pixel
-// Perfect, so:
-//
-//   pixelsPerMeter p  ->  zoom = p / projectPpm (0 -> 1)
-//   zoom z            ->  orthoHeight = the old design area's height / z
-//   pixelSnap, the project's Pixel Perfect  ->  pixelPerfect
-//
-// On a screen with the old design area's shape, the picture is identical. The
-// old design height and Pixel Perfect come from the project's framebuffer.json
-// (SceneView::GetLegacyFraming), which the editor reads when the project opens.
-void MigrateCameraFraming(nlohmann::json& components)
-{
-    const DekiEditor::SceneView::LegacyFraming& legacy = DekiEditor::SceneView::Get().GetLegacyFraming();
-    for (auto& comp : components)
-    {
-        if (!comp.is_object() || !IsCameraType(comp.value("type", "")) || !comp.contains("properties"))
-        {
-            continue;
-        }
-        nlohmann::json& props = comp["properties"];
-        if (!props.is_object())
-        {
-            continue;
-        }
-
-        bool pixelPerfect = legacy.pixelPerfect;
-        if (props.contains("pixelSnap"))
-        {
-            pixelPerfect = pixelPerfect || (props["pixelSnap"].is_boolean() && props["pixelSnap"].get<bool>());
-            props.erase("pixelSnap");
-        }
-
-        if (props.contains("pixelsPerMeter"))
-        {
-            if (!props.contains("zoom"))
-            {
-                const float p = props["pixelsPerMeter"].is_number() ? props["pixelsPerMeter"].get<float>() : 0.0f;
-                const float project = Deki::EngineSettings::Global().pixelsPerMeter;
-                props["zoom"] = (p > 0.0f && project > 0.0f) ? p / project : 1.0f;
-            }
-            props.erase("pixelsPerMeter");
-        }
-
-        // A camera saved with an ortho height is current. Anything else is
-        // older, including one saved with all defaults (no zoom key means 1).
-        if (props.contains("orthoHeight"))
-        {
-            continue;
-        }
-        float zoom = 1.0f;
-        if (props.contains("zoom"))
-        {
-            if (props["zoom"].is_number() && props["zoom"].get<float>() > 0.0f)
-            {
-                zoom = props["zoom"].get<float>();
-            }
-            props.erase("zoom");
-        }
-        props["orthoHeight"] = legacy.designHeight / zoom;
-        if (!props.contains("pixelPerfect"))
-        {
-            props["pixelPerfect"] = pixelPerfect;
-        }
-    }
-}
-
-Deki::ComponentsMigrationRegistrar s_CameraFramingMigration(&MigrateCameraFraming);
-}  // namespace
 
 namespace DekiEditor
 {

@@ -15,6 +15,12 @@ alongside one that has them.
 - The functions the editor finds by name are PascalCase: DekiRenderingRegisterComponents, DekiRenderingGetAutoComponentCount, DekiRenderingEnsureRegistered and the rest. Built against engine ABI 21; a build of this package from before does not load and is rebuilt.
 - Renamed: `kInterfaceID`, `kRendererTypeID`, and the QuadBlit row functions (`RGB565A8BlendRow`, `RGB565CopyRow`, ...).
 
+### Removed
+- The camera migration from `pixelsPerMeter`, `zoom` and `pixelSnap` to
+  `orthoHeight` and `pixelPerfect`.
+- The former names from before 0.16.0 (bare class names, and deki-gpio's
+  `DekiEsp32::ESP32PinSetup`). A scene that old is upgraded with 0.17 first.
+
 ## 0.17.0
 
 ### Added

@@ -27,7 +27,6 @@ namespace DekiRendering
 /// the camera sits on the art-pixel grid.
 DEKI_CATEGORY("Core")
 DEKI_DESCRIPTION("The view: position, how much world it shows, and clear color.")
-DEKI_FORMER_NAME("CameraComponent")
 class CameraComponent : public Deki::Component, public Deki::ICamera
 {
 public:
