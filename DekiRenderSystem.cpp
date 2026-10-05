@@ -8,6 +8,7 @@
 #include "CameraComponent.h"
 #include <deki/Object.h>
 #include <deki/Scene.h>
+#include <deki/ScreenAnchor.h>
 #include "RenderingProjectSettings.h"
 #include <deki/ProjectSettings.h>
 #include <deki/reflection/SettingsRegistry.h>
@@ -219,6 +220,10 @@ void DekiRenderSystem::Render(Deki::Scene* currentScene)
     {
         return;
     }
+
+    // Before anything draws, so a HUD pinned to the screen is where this
+    // frame's camera puts the screen.
+    Deki::ScreenAnchor::PlaceAll(currentScene, *camera, m_ScreenWidth, m_ScreenHeight);
 
     // ---- dirty-rect present -------------------------------------------------
     // Whenever the bookkeeping is unsure (first use of a buffer, a size or
