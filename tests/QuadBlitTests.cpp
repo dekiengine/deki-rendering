@@ -1,6 +1,7 @@
 // QuadBlit: the clip stack, MakeSource, blitting.
 
 #include <gtest/gtest.h>
+#include <algorithm>
 #include <cstring>
 #include <cstdint>
 #include "QuadBlit.h"
@@ -1220,6 +1221,81 @@ TEST(QuadBlitTintRows, EveryPixelMatchesThePipelinesArithmetic)
         {
             ASSERT_EQ(target[i], expected[i]) << "pixel " << i << " tint " << int(t[0]) << "," << int(t[1]) << ","
                                               << int(t[2]) << "," << int(t[3]);
+        }
+    }
+}
+
+// The scaled RGB565A8-target loop (particles into their composite) against the
+// scaled pipeline: its 16.16 stepping, the composite above, and the alpha union.
+TEST(QuadBlitTintScaledRows, EveryPixelMatchesThePipelinesArithmetic)
+{
+    constexpr int kSW = 11, kSH = 7;  // source
+    constexpr int kTW = 31, kTH = 13;  // target
+    uint32_t seed = 777;
+    auto next = [&seed]()
+    {
+        seed = seed * 1664525u + 1013904223u;
+        return seed >> 8;
+    };
+    const uint8_t tints[][4] = { { 255, 255, 255, 255 }, { 58, 91, 160, 255 }, { 255, 255, 255, 128 },
+                                 { 200, 30, 255, 77 } };
+    // Destination rectangles: shrunk, grown, 1:1, and partly off the target.
+    const int rects[][4] = { { 2, 1, 23, 9 }, { 0, 0, 5, 4 }, { 3, 2, kSW, kSH }, { 25, -3, 17, 10 } };
+    for (const auto& t : tints)
+    {
+        for (const auto& r : rects)
+        {
+            uint8_t src[kSW * kSH * 3];
+            for (int i = 0; i < kSW * kSH; ++i)
+            {
+                const uint16_t v = static_cast<uint16_t>(next());
+                const uint32_t pick = next() % 4;
+                src[i * 3] = static_cast<uint8_t>(v & 0xFF);
+                src[i * 3 + 1] = static_cast<uint8_t>(v >> 8);
+                src[i * 3 + 2] = pick == 0 ? 0 : pick == 1 ? 255 : static_cast<uint8_t>(next());
+            }
+            uint8_t target[kTW * kTH * 3];
+            uint8_t expected[kTW * kTH * 3];
+            for (int i = 0; i < kTW * kTH * 3; ++i)
+            {
+                target[i] = expected[i] = static_cast<uint8_t>(next());
+            }
+            const uint32_t xStep = (static_cast<uint32_t>(kSW) << 16) / static_cast<uint32_t>(r[2]);
+            const uint32_t yStep = (static_cast<uint32_t>(kSH) << 16) / static_cast<uint32_t>(r[3]);
+            for (int y = std::max(0, r[1]); y < std::min(kTH, r[1] + r[3]); ++y)
+            {
+                for (int x = std::max(0, r[0]); x < std::min(kTW, r[0] + r[2]); ++x)
+                {
+                    const int sx = static_cast<int>((static_cast<uint32_t>(x - r[0]) * xStep) >> 16);
+                    const int sy = static_cast<int>((static_cast<uint32_t>(y - r[1]) * yStep) >> 16);
+                    const uint8_t* sp = src + (sy * kSW + sx) * 3;
+                    uint8_t* dp = expected + (y * kTW + x) * 3;
+                    const uint8_t a = sp[2];
+                    const uint32_t effA = t[3] != 255 ? RefDiv255(a * t[3]) : a;
+                    if (a == 0 || effA == 0)
+                    {
+                        continue;
+                    }
+                    const uint16_t v = static_cast<uint16_t>(sp[0] | (sp[1] << 8));
+                    const uint16_t bg = static_cast<uint16_t>(dp[0] | (dp[1] << 8));
+                    const uint16_t out = RefComposite(v, a, bg, t[0], t[1], t[2], t[3]);
+                    dp[0] = static_cast<uint8_t>(out & 0xFF);
+                    dp[1] = static_cast<uint8_t>(out >> 8);
+                    dp[2] = effA == 255 ? 255
+                            : dp[2] == 0
+                                ? static_cast<uint8_t>(effA)
+                                : static_cast<uint8_t>(effA + RefDiv255(static_cast<uint32_t>(dp[2]) * (255 - effA)));
+                }
+            }
+            const QuadBlit::Source source = QuadBlit::MakeSource(src, kSW, kSH, QuadBlit::PixelLayout::RGB565A8());
+            QuadBlit::BlitScaled(source, target, kTW, kTH, Deki::ColorFormat::RGB565A8, r[0], r[1], r[2], r[3], t[0],
+                                 t[1], t[2], t[3]);
+            for (int i = 0; i < kTW * kTH * 3; ++i)
+            {
+                ASSERT_EQ(target[i], expected[i]) << "byte " << i << " rect " << r[0] << "," << r[1] << "," << r[2]
+                                                  << "x" << r[3] << " tint " << int(t[0]) << "," << int(t[1]) << ","
+                                                  << int(t[2]) << "," << int(t[3]);
+            }
         }
     }
 }

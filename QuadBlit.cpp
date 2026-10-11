@@ -488,6 +488,76 @@ static DEKI_FAST_ATTR void TintRows_RGB565(const Source& source, uint16_t* targe
     }
 }
 
+// RGB565 or RGB565A8 -> RGB565A8, at any scale, any tint and alpha tint; no
+// key, dither or flips. The scaled pipeline's stepping and arithmetic in one
+// tight loop per row: a particle emitter draws each particle this way into
+// its composite, dozens a frame.
+template <bool SourceAlpha>
+static DEKI_FAST_ATTR void TintScaledRows_RGB565A8(const Source& source, uint8_t* target, int32_t targetWidth,
+                                                   int32_t destX, int32_t destY, int32_t destWidth, int32_t destHeight,
+                                                   const BlitBounds& b, const BlitParams& p)
+{
+    TintTables t;
+    MakeTintTables(t, p.tintR, p.tintG, p.tintB);
+    const int32_t stride = SourceStride(source);
+    const int32_t bpp = source.bytesPerPixel;
+    const bool alphaTint = p.hasAlphaTint;
+    const uint32_t tintA = p.tintA;
+    const uint32_t xStep = ((uint32_t)source.width << 16) / (uint32_t)destWidth;
+    const uint32_t yStep = ((uint32_t)source.height << 16) / (uint32_t)destHeight;
+
+    for (int32_t py = b.startY; py < b.endY; py++)
+    {
+        const int32_t srcY = (int32_t)(((uint32_t)(py - destY) * yStep) >> 16);
+        const uint8_t* srcRow = source.pixels + srcY * stride;
+        uint8_t* dp = target + ((size_t)py * (size_t)targetWidth + b.startX) * 3;
+        uint32_t acc = (uint32_t)(b.startX - destX) * xStep;
+        for (int32_t px = b.startX; px < b.endX; px++, dp += 3)
+        {
+            const uint8_t* sp = srcRow + (int32_t)(acc >> 16) * bpp;
+            acc += xStep;
+            uint32_t a = 255;
+            if constexpr (SourceAlpha)
+            {
+                a = sp[2];
+                if (a == 0)
+                {
+                    continue;
+                }
+            }
+            if (alphaTint)
+            {
+                a = Div255(a * tintA);
+                if (a == 0)
+                {
+                    continue;
+                }
+            }
+            const uint32_t v = static_cast<uint32_t>(sp[0]) | (static_cast<uint32_t>(sp[1]) << 8);
+            const uint32_t r5 = v >> 11;
+            const uint32_t g6 = (v >> 5) & 0x3F;
+            const uint32_t b5 = v & 0x1F;
+            uint32_t out;
+            if (a == 255)
+            {
+                out = t.pr[r5] | t.pg[g6] | t.pb[b5];
+                dp[2] = 255;
+            }
+            else
+            {
+                const uint32_t bg = static_cast<uint32_t>(dp[0]) | (static_cast<uint32_t>(dp[1]) << 8);
+                const uint32_t invA = 255u - a;
+                out = PackRGB565(Div255(t.r[r5] * a + ((bg >> 11) << 3) * invA),
+                                 Div255(t.g[g6] * a + (((bg >> 5) & 0x3F) << 2) * invA),
+                                 Div255(t.b[b5] * a + ((bg & 0x1F) << 3) * invA));
+                dp[2] = AlphaUnion(static_cast<uint8_t>(a), dp[2]);
+            }
+            dp[0] = static_cast<uint8_t>(out & 0xFF);
+            dp[1] = static_cast<uint8_t>(out >> 8);
+        }
+    }
+}
+
 // RGB565 -> RGB565, no tint or key: row copy (the SIMD kernel when aligned).
 static DEKI_FAST_ATTR bool CopyRows_RGB565(const Source& source, uint16_t* target16, int32_t targetWidth, int32_t destX,
                                            int32_t destY, const BlitBounds& b)
@@ -879,6 +949,23 @@ void BlitScaled(const Source& source, uint8_t* target, int32_t targetWidth, int3
             }
             return;
         }
+    }
+
+    // Onto RGB565A8 from an RGB565 or RGB565A8 source, scaled or tinted (a
+    // particle into its emitter's composite): TintScaledRows_RGB565A8. A plain
+    // 1:1 blit is left to the copy and expand paths below.
+    if (!p.hasKey && !p.dither && !p.flips && targetFormat == Deki::ColorFormat::RGB565A8 &&
+        (kind == SrcKind::RGB565 || kind == SrcKind::RGB565A8) && !(plain && oneToOne))
+    {
+        if (kind == SrcKind::RGB565A8 && source.hasAlpha)
+        {
+            TintScaledRows_RGB565A8<true>(source, target, targetWidth, destX, destY, destWidth, destHeight, bounds, p);
+        }
+        else
+        {
+            TintScaledRows_RGB565A8<false>(source, target, targetWidth, destX, destY, destWidth, destHeight, bounds, p);
+        }
+        return;
     }
 
     // 1:1 row fast paths: the same pixels as the pipeline, in fewer instructions.

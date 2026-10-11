@@ -8,6 +8,27 @@ breaking change bumps the minor across the editor, the engine and every
 package together, so a package with no changes of its own is still released
 alongside one that has them.
 
+## Unreleased
+
+### Added
+- `RenderProfiler`: once enabled, the draws, content time, blit time and
+  pixels per frame of each component type, and the frame's clear. The ESP32's
+  `DEKI:PROFILE` console request reports it.
+
+### Changed
+- **Blits are several times faster on the ESP32.**
+  - A pixel is read from RGB565 sources byte by byte. With `memcpy`, which
+    GCC makes a function call on the ESP32's Xtensa when the pixel may be
+    unaligned, every pixel cost a call.
+  - A 1:1 sprite drawn onto RGB565 with a tint or alpha tint runs in one loop
+    per row, with the tint worked out once for each of RGB565's channel
+    values. It went through the per-pixel pipeline.
+  - So does a sprite drawn onto RGB565A8 scaled or tinted: each particle into
+    its emitter's composite. The demo's two fountains took 3.6 ms a frame
+    on a LilyGO T-Deck, now 2.4 ms.
+
+  The pixels are the same as before.
+
 ## 0.18.0
 
 ### Added
