@@ -1146,3 +1146,80 @@ TEST_F(QuadBlitSpanRegressionTest, RotationPath_ARGBTargetMatchesRGB565)
     EXPECT_NEAR((c565 >> 11) << 3, (c888 >> 16) & 0xFF, 8);
     EXPECT_NEAR((c565 & 0x1F) << 3, c888 & 0xFF, 8);
 }
+
+// ============================================================================
+// The 1:1 tinted/blended RGB565 row loop against the pipeline's arithmetic
+// ============================================================================
+
+namespace
+{
+uint8_t RefDiv255(uint32_t x)
+{
+    return static_cast<uint8_t>((x + 1 + (x >> 8)) >> 8);
+}
+
+// What CompositePixel does for an RGB565A8 source on an RGB565 target, written
+// out from scratch, so the fast loop is checked against the definition.
+uint16_t RefComposite(uint16_t src, uint8_t a, uint16_t bg, uint8_t tR, uint8_t tG, uint8_t tB, uint8_t tA)
+{
+    if (a == 0)
+    {
+        return bg;
+    }
+    uint32_t r = (src >> 11) << 3, g = ((src >> 5) & 0x3F) << 2, b = (src & 0x1F) << 3;
+    r = RefDiv255(r * tR);
+    g = RefDiv255(g * tG);
+    b = RefDiv255(b * tB);
+    const uint32_t effA = tA != 255 ? RefDiv255(a * tA) : a;
+    if (effA == 0)
+    {
+        return bg;
+    }
+    if (effA != 255)
+    {
+        const uint32_t inv = 255 - effA;
+        r = RefDiv255(r * effA + ((bg >> 11) << 3) * inv);
+        g = RefDiv255(g * effA + (((bg >> 5) & 0x3F) << 2) * inv);
+        b = RefDiv255(b * effA + ((bg & 0x1F) << 3) * inv);
+    }
+    return static_cast<uint16_t>(((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3));
+}
+}  // namespace
+
+TEST(QuadBlitTintRows, EveryPixelMatchesThePipelinesArithmetic)
+{
+    constexpr int kW = 37, kH = 5;  // odd width: no alignment luck
+    uint32_t seed = 12345;
+    auto next = [&seed]()
+    {
+        seed = seed * 1664525u + 1013904223u;
+        return seed >> 8;
+    };
+    const uint8_t tints[][4] = { { 255, 255, 255, 255 }, { 58, 91, 160, 255 }, { 255, 255, 255, 128 },
+                                 { 200, 30, 255, 77 },  { 0, 0, 0, 255 },    { 255, 128, 64, 0 } };
+    for (const auto& t : tints)
+    {
+        uint8_t src[kW * kH * 3];
+        uint16_t target[kW * kH];
+        uint16_t expected[kW * kH];
+        for (int i = 0; i < kW * kH; ++i)
+        {
+            const uint16_t v = static_cast<uint16_t>(next());
+            const uint32_t pick = next() % 4;
+            const uint8_t a = pick == 0 ? 0 : pick == 1 ? 255 : static_cast<uint8_t>(next());
+            src[i * 3] = static_cast<uint8_t>(v & 0xFF);
+            src[i * 3 + 1] = static_cast<uint8_t>(v >> 8);
+            src[i * 3 + 2] = a;
+            target[i] = static_cast<uint16_t>(next());
+            expected[i] = t[3] == 0 ? target[i] : RefComposite(v, a, target[i], t[0], t[1], t[2], t[3]);
+        }
+        const QuadBlit::Source source = QuadBlit::MakeSource(src, kW, kH, QuadBlit::PixelLayout::RGB565A8());
+        QuadBlit::BlitScaled(source, reinterpret_cast<uint8_t*>(target), kW, kH, Deki::ColorFormat::RGB565, 0, 0, kW,
+                             kH, t[0], t[1], t[2], t[3]);
+        for (int i = 0; i < kW * kH; ++i)
+        {
+            ASSERT_EQ(target[i], expected[i]) << "pixel " << i << " tint " << int(t[0]) << "," << int(t[1]) << ","
+                                              << int(t[2]) << "," << int(t[3]);
+        }
+    }
+}

@@ -1,4 +1,5 @@
 #include "DekiRenderSystem.h"
+#include "RenderProfiler.h"
 #include "DekiRenderer.h"
 #include <deki/Engine.h>
 #include <deki/LogSystem.h>
@@ -249,7 +250,12 @@ void DekiRenderSystem::Render(Deki::Scene* currentScene)
     {
         if (full || hist->lastDrawn.IsFull())
         {
+            const uint64_t clearStart = RenderProfiler::IsEnabled() ? RenderProfiler::Now() : 0;
             ClearBuffer(clear);
+            if (RenderProfiler::IsEnabled())
+            {
+                RenderProfiler::AddContent(RenderProfiler::kClear, RenderProfiler::Now() - clearStart);
+            }
         }
         else
         {
@@ -260,6 +266,7 @@ void DekiRenderSystem::Render(Deki::Scene* currentScene)
         }
     }
 
+    RenderProfiler::CountFrame();
     RenderContext ctx{ camera, m_RenderBuffer, m_ScreenWidth, m_ScreenHeight, m_ColorFormat };
     ctx.trackDirty = tracking;
     m_Renderer->Render(currentScene, ctx);

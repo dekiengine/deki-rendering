@@ -1,4 +1,5 @@
 #include "Standard2DRenderer.h"
+#include "RenderProfiler.h"
 #include "DekiRendererRegistry.h"
 #include <deki/IClipProvider.h>
 #include <deki/ISortableProvider.h>
@@ -203,7 +204,14 @@ void Standard2DRenderer::ExecuteBuiltins(const SortItem& item, RenderContext& ct
         QuadBlit::Source source;
         float pivotX, pivotY;
         uint8_t tintR, tintG, tintB, tintA;
-        if (renderer->RenderContent(obj, source, pivotX, pivotY, tintR, tintG, tintB, tintA))
+        const bool profiling = RenderProfiler::IsEnabled();
+        const uint64_t contentStart = profiling ? RenderProfiler::Now() : 0;
+        const bool hasContent = renderer->RenderContent(obj, source, pivotX, pivotY, tintR, tintG, tintB, tintA);
+        if (profiling)
+        {
+            RenderProfiler::AddContent(renderer->GetType(), RenderProfiler::Now() - contentStart);
+        }
+        if (hasContent)
         {
             // ignoreClip: switch clipping off for this blit.
             bool wasClipEnabled = QuadBlit::IsClipEnabled();
@@ -242,8 +250,14 @@ void Standard2DRenderer::ExecuteBuiltins(const SortItem& item, RenderContext& ct
                                            ? static_cast<int32_t>(std::lround(fScreenY))
                                            : static_cast<int32_t>(fScreenY);
 
+            const uint64_t blitStart = profiling ? RenderProfiler::Now() : 0;
             QuadBlit::Blit(source, ctx.buffer, ctx.width, ctx.height, ctx.format, intScreenX, intScreenY, drawScaleX,
                            drawScaleY, wt.rotation, pivotX, pivotY, tintR, tintG, tintB, tintA, useOrderedDither);
+            if (profiling)
+            {
+                RenderProfiler::AddBlit(renderer->GetType(), RenderProfiler::Now() - blitStart,
+                                        static_cast<uint64_t>(source.width) * static_cast<uint64_t>(source.height));
+            }
 
             if (renderer->ignoreClip)
             {

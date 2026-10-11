@@ -100,8 +100,11 @@ inline void ReadSrcPixel(const uint8_t* p, bool hasAlpha, uint8_t& r, uint8_t& g
 {
     if constexpr (SK == SrcKind::RGB565 || SK == SrcKind::RGB565A8)
     {
-        uint16_t v;
-        memcpy(&v, p, 2);
+        // Byte by byte, little-endian, rather than memcpy: the pixel is often
+        // unaligned (RGB565A8 is 3 bytes), and on the ESP32's Xtensa, which
+        // has no unaligned loads, GCC makes such a memcpy a function call:
+        // one per pixel, which made blits six times slower.
+        const uint16_t v = static_cast<uint16_t>(p[0] | (p[1] << 8));
         UnpackRGB565(v, r, g, b);
         if constexpr (SK == SrcKind::RGB565A8)
         {

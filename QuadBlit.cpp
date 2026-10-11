@@ -404,6 +404,90 @@ static inline void CompositePixel(const Source& source, const uint8_t* sp, uint8
 // Each returns true when it handled the whole blit. They exist only for
 // speed: the pipeline above produces the same pixels.
 
+// A tint as lookup tables over the RGB565 channel values: an RGB565 source
+// has only 32 reds, 64 greens and 32 blues, so the pipeline's tinted channel,
+// Div255(channel8 * tint), is one of those, worked out once per blit instead
+// of per pixel. The packed tables are the same values already shifted into
+// place, so an opaque pixel is three lookups. An untinted blit uses tint 255,
+// which gives the channel back unchanged.
+struct TintTables
+{
+    uint8_t r[32], g[64], b[32];      // the tinted 8-bit channel
+    uint16_t pr[32], pg[64], pb[32];  // the same, packed into RGB565
+};
+
+static void MakeTintTables(TintTables& t, uint8_t tintR, uint8_t tintG, uint8_t tintB)
+{
+    for (uint32_t i = 0; i < 32; i++)
+    {
+        t.r[i] = Div255((i << 3) * tintR);
+        t.b[i] = Div255((i << 3) * tintB);
+        t.pr[i] = static_cast<uint16_t>((t.r[i] >> 3) << 11);
+        t.pb[i] = static_cast<uint16_t>(t.b[i] >> 3);
+    }
+    for (uint32_t i = 0; i < 64; i++)
+    {
+        t.g[i] = Div255((i << 2) * tintG);
+        t.pg[i] = static_cast<uint16_t>((t.g[i] >> 2) << 5);
+    }
+}
+
+// RGB565 or RGB565A8 -> RGB565, 1:1, any tint and alpha tint; no key, dither or
+// flips. The pipeline's arithmetic in one tight loop per row: CompositePixel
+// per pixel cost several times as much, most of it for opaque pixels that
+// need no blending at all.
+template <bool SourceAlpha>
+static DEKI_FAST_ATTR void TintRows_RGB565(const Source& source, uint16_t* target16, int32_t targetWidth, int32_t destX,
+                                           int32_t destY, const BlitBounds& b, const BlitParams& p)
+{
+    TintTables t;
+    MakeTintTables(t, p.tintR, p.tintG, p.tintB);
+    const int32_t stride = SourceStride(source);
+    const int32_t bpp = source.bytesPerPixel;
+    const bool alphaTint = p.hasAlphaTint;
+    const uint32_t tintA = p.tintA;
+
+    for (int32_t py = b.startY; py < b.endY; py++)
+    {
+        const uint8_t* sp = source.pixels + (py - destY) * stride + (b.startX - destX) * bpp;
+        uint16_t* dp = target16 + py * targetWidth + b.startX;
+        for (int32_t px = b.startX; px < b.endX; px++, sp += bpp, dp++)
+        {
+            uint32_t a = 255;
+            if constexpr (SourceAlpha)
+            {
+                a = sp[2];
+                if (a == 0)
+                {
+                    continue;
+                }
+            }
+            if (alphaTint)
+            {
+                a = Div255(a * tintA);
+                if (a == 0)
+                {
+                    continue;
+                }
+            }
+            const uint32_t v = static_cast<uint32_t>(sp[0]) | (static_cast<uint32_t>(sp[1]) << 8);
+            const uint32_t r5 = v >> 11;
+            const uint32_t g6 = (v >> 5) & 0x3F;
+            const uint32_t b5 = v & 0x1F;
+            if (a == 255)
+            {
+                *dp = static_cast<uint16_t>(t.pr[r5] | t.pg[g6] | t.pb[b5]);
+                continue;
+            }
+            const uint32_t bg = *dp;
+            const uint32_t invA = 255u - a;
+            *dp = PackRGB565(Div255(t.r[r5] * a + ((bg >> 11) << 3) * invA),
+                             Div255(t.g[g6] * a + (((bg >> 5) & 0x3F) << 2) * invA),
+                             Div255(t.b[b5] * a + ((bg & 0x1F) << 3) * invA));
+        }
+    }
+}
+
 // RGB565 -> RGB565, no tint or key: row copy (the SIMD kernel when aligned).
 static DEKI_FAST_ATTR bool CopyRows_RGB565(const Source& source, uint16_t* target16, int32_t targetWidth, int32_t destX,
                                            int32_t destY, const BlitBounds& b)
@@ -519,7 +603,8 @@ static DEKI_FAST_ATTR bool BlendRows_RGB565A8_to_RGB565(const Source& source, ui
             const uint8_t* srcPtr = rowBase + clampedStart * bpp;
             for (int32_t sx = clampedStart; sx < clampedEnd; sx++, srcPtr += bpp)
             {
-                memcpy(&dstRow[destX + sx], srcPtr, 2);
+                // Bytes, not memcpy: see ReadSrcPixel.
+                dstRow[destX + sx] = static_cast<uint16_t>(srcPtr[0] | (srcPtr[1] << 8));
             }
 
             // Right alpha region. Starts at the clip start when the opaque span
@@ -567,7 +652,9 @@ static DEKI_FAST_ATTR bool ExpandRows_RGB565_to_RGB565A8(const Source& source, u
         }
         for (int32_t i = 0; i < rowPixels; i++)
         {
-            memcpy(dstPtr + i * 3, srcPtr + i, 2);
+            const uint16_t v = srcPtr[i];
+            dstPtr[i * 3] = static_cast<uint8_t>(v & 0xFF);
+            dstPtr[i * 3 + 1] = static_cast<uint8_t>(v >> 8);
             dstPtr[i * 3 + 2] = 0xFF;
         }
     }
@@ -768,6 +855,31 @@ void BlitScaled(const Source& source, uint8_t* target, int32_t targetWidth, int3
     const SrcKind kind = KindOf(source);
     const bool oneToOne = (destWidth == source.width && destHeight == source.height);
     const bool plain = !p.hasTint && !p.hasAlphaTint && !p.hasKey && !p.dither && !p.flips;
+
+    // 1:1 onto RGB565 from an RGB565 or RGB565A8 source, tinted or blended: one
+    // tight loop per row (TintRows_RGB565). Left to the paths below: a plain
+    // RGB565 copy, a plain blend with opaque spans to copy, and a plain blend
+    // a SIMD kernel does.
+    if (oneToOne && !p.hasKey && !p.dither && !p.flips && targetFormat == Deki::ColorFormat::RGB565 &&
+        (kind == SrcKind::RGB565 || kind == SrcKind::RGB565A8))
+    {
+        const bool plainCopy = plain && kind == SrcKind::RGB565;
+        const bool plainSpans = plain && kind == SrcKind::RGB565A8 && source.hasAlpha &&
+                                (source.alphaRowSpans || s_Kernels[(int)KernelOp::RGB565A8BlendRow]);
+        if (!plainCopy && !plainSpans)
+        {
+            uint16_t* target16 = (uint16_t*)target;
+            if (kind == SrcKind::RGB565A8 && source.hasAlpha)
+            {
+                TintRows_RGB565<true>(source, target16, targetWidth, destX, destY, bounds, p);
+            }
+            else
+            {
+                TintRows_RGB565<false>(source, target16, targetWidth, destX, destY, bounds, p);
+            }
+            return;
+        }
+    }
 
     // 1:1 row fast paths: the same pixels as the pipeline, in fewer instructions.
     if (oneToOne && !p.hasTint && !p.hasAlphaTint && !p.dither && !p.flips)
