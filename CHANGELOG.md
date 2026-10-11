@@ -8,7 +8,7 @@ breaking change bumps the minor across the editor, the engine and every
 package together, so a package with no changes of its own is still released
 alongside one that has them.
 
-## Unreleased
+## 0.18.2
 
 ### Added
 - `RenderProfiler`: once enabled, the draws, content time, blit time and
