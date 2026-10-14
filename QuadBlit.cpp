@@ -38,9 +38,12 @@
 using DekiPixel::AlphaUnion;
 using DekiPixel::BayerThreshold;
 using DekiPixel::Div255;
+using DekiPixel::FromMemory565;
+using DekiPixel::Load565;
 using DekiPixel::LoadU16;
 using DekiPixel::PackRGB565;
 using DekiPixel::StoreU16;
+using DekiPixel::ToMemory565;
 using DekiPixel::UnpackRGB565;
 using DekiPixel::SrcKind;
 using DekiPixel::ReadSrcPixel;
@@ -410,12 +413,13 @@ static inline void CompositePixel(const Source& source, const uint8_t* sp, uint8
 // has only 32 reds, 64 greens and 32 blues, so the pipeline's tinted channel,
 // Div255(channel8 * tint), is one of those, worked out once per blit instead
 // of per pixel. The packed tables are the same values already shifted into
-// place, so an opaque pixel is three lookups. An untinted blit uses tint 255,
-// which gives the channel back unchanged.
+// place and in memory's byte order, so an opaque pixel is three lookups and a
+// store. An untinted blit uses tint 255, which gives the channel back
+// unchanged.
 struct TintTables
 {
     uint8_t r[32], g[64], b[32];      // the tinted 8-bit channel
-    uint16_t pr[32], pg[64], pb[32];  // the same, packed into RGB565
+    uint16_t pr[32], pg[64], pb[32];  // the same, packed into RGB565 as stored
 };
 
 static void MakeTintTables(TintTables& t, uint8_t tintR, uint8_t tintG, uint8_t tintB)
@@ -424,13 +428,13 @@ static void MakeTintTables(TintTables& t, uint8_t tintR, uint8_t tintG, uint8_t 
     {
         t.r[i] = Div255((i << 3) * tintR);
         t.b[i] = Div255((i << 3) * tintB);
-        t.pr[i] = static_cast<uint16_t>((t.r[i] >> 3) << 11);
-        t.pb[i] = static_cast<uint16_t>(t.b[i] >> 3);
+        t.pr[i] = ToMemory565(static_cast<uint16_t>((t.r[i] >> 3) << 11));
+        t.pb[i] = ToMemory565(static_cast<uint16_t>(t.b[i] >> 3));
     }
     for (uint32_t i = 0; i < 64; i++)
     {
         t.g[i] = Div255((i << 2) * tintG);
-        t.pg[i] = static_cast<uint16_t>((t.g[i] >> 2) << 5);
+        t.pg[i] = ToMemory565(static_cast<uint16_t>((t.g[i] >> 2) << 5));
     }
 }
 
@@ -472,7 +476,7 @@ static DEKI_FAST_ATTR void TintRows_RGB565(const Source& source, uint16_t* targe
                     continue;
                 }
             }
-            const uint32_t v = LoadU16(sp);
+            const uint32_t v = Load565(sp);
             const uint32_t r5 = v >> 11;
             const uint32_t g6 = (v >> 5) & 0x3F;
             const uint32_t b5 = v & 0x1F;
@@ -481,11 +485,11 @@ static DEKI_FAST_ATTR void TintRows_RGB565(const Source& source, uint16_t* targe
                 *dp = static_cast<uint16_t>(t.pr[r5] | t.pg[g6] | t.pb[b5]);
                 continue;
             }
-            const uint32_t bg = *dp;
+            const uint32_t bg = FromMemory565(*dp);
             const uint32_t invA = 255u - a;
-            *dp = PackRGB565(Div255(t.r[r5] * a + ((bg >> 11) << 3) * invA),
-                             Div255(t.g[g6] * a + (((bg >> 5) & 0x3F) << 2) * invA),
-                             Div255(t.b[b5] * a + ((bg & 0x1F) << 3) * invA));
+            *dp = ToMemory565(PackRGB565(Div255(t.r[r5] * a + ((bg >> 11) << 3) * invA),
+                                         Div255(t.g[g6] * a + (((bg >> 5) & 0x3F) << 2) * invA),
+                                         Div255(t.b[b5] * a + ((bg & 0x1F) << 3) * invA)));
         }
     }
 }
@@ -535,11 +539,11 @@ static DEKI_FAST_ATTR void TintScaledRows_RGB565A8(const Source& source, uint8_t
                     continue;
                 }
             }
-            const uint32_t v = LoadU16(sp);
+            const uint32_t v = Load565(sp);
             const uint32_t r5 = v >> 11;
             const uint32_t g6 = (v >> 5) & 0x3F;
             const uint32_t b5 = v & 0x1F;
-            uint32_t out;
+            uint32_t out;  // as stored
             if (a == 255)
             {
                 out = t.pr[r5] | t.pg[g6] | t.pb[b5];
@@ -547,11 +551,11 @@ static DEKI_FAST_ATTR void TintScaledRows_RGB565A8(const Source& source, uint8_t
             }
             else
             {
-                const uint32_t bg = LoadU16(dp);
+                const uint32_t bg = Load565(dp);
                 const uint32_t invA = 255u - a;
-                out = PackRGB565(Div255(t.r[r5] * a + ((bg >> 11) << 3) * invA),
-                                 Div255(t.g[g6] * a + (((bg >> 5) & 0x3F) << 2) * invA),
-                                 Div255(t.b[b5] * a + ((bg & 0x1F) << 3) * invA));
+                out = ToMemory565(PackRGB565(Div255(t.r[r5] * a + ((bg >> 11) << 3) * invA),
+                                             Div255(t.g[g6] * a + (((bg >> 5) & 0x3F) << 2) * invA),
+                                             Div255(t.b[b5] * a + ((bg & 0x1F) << 3) * invA)));
                 dp[2] = AlphaUnion(static_cast<uint8_t>(a), dp[2]);
             }
             StoreU16(dp, static_cast<uint16_t>(out));
@@ -593,9 +597,9 @@ static DEKI_FAST_ATTR bool CopyRows_RGB565_ChromaSpans(const Source& source, uin
     const int16_t* spans = source.chromaRowSpans;
     RowKernelFn copyKernel = s_Kernels[(int)KernelOp::RGB565CopyRow];
     // The key is quantised to 5/6/5, so comparing packed pixels is the same
-    // test the per-pixel pipeline makes on the unpacked channels.
-    const uint16_t key565 =
-        static_cast<uint16_t>(((source.keyR >> 3) << 11) | ((source.keyG >> 2) << 5) | (source.keyB >> 3));
+    // test the per-pixel pipeline makes on the unpacked channels. It is
+    // compared with pixels as stored, so it is in memory's byte order too.
+    const uint16_t key565 = ToMemory565(PackRGB565(source.keyR, source.keyG, source.keyB));
     for (int32_t py = b.startY; py < b.endY; py++)
     {
         const int32_t srcY = py - destY;

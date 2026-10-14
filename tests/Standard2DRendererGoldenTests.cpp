@@ -32,6 +32,7 @@
 #include "Standard2DRenderer.h"
 #include "DirtyRegion.h"
 #include "QuadBlit.h"
+#include "PixelFormat.h"
 
 // Tests name the package's types unqualified.
 using namespace DekiRendering;
@@ -67,8 +68,7 @@ public:
     {
         for (int i = 0; i < 16; ++i)
         {
-            m_Pixels[i * 3] = static_cast<uint8_t>(colour & 0xFF);
-            m_Pixels[i * 3 + 1] = static_cast<uint8_t>(colour >> 8);
+            DekiPixel::Store565(&m_Pixels[i * 3], colour);  // as a loaded image is
             m_Pixels[i * 3 + 2] = alpha;
         }
         if (withAlpha)
@@ -79,8 +79,7 @@ public:
         {
             for (int i = 0; i < 16; ++i)
             {
-                m_Packed[i * 2] = static_cast<uint8_t>(colour & 0xFF);
-                m_Packed[i * 2 + 1] = static_cast<uint8_t>(colour >> 8);
+                DekiPixel::Store565(&m_Packed[i * 2], colour);
             }
             outSource = QuadBlit::MakeSource(m_Packed, 4, 4, QuadBlit::PixelLayout::RGB565(), false, nullptr);
         }
@@ -383,6 +382,12 @@ uint64_t RunTarget(Deki::ColorFormat fmt, bool print)
         RenderContext ctx{ b.camera, target.data(), kW, kH, fmt };
         renderer.Render(&b.scene, ctx);
         QuadBlit::ClearClipStack();
+        // Hashed in the file's byte order, so a big-endian build matches the
+        // same hashes.
+        if (fmt == Deki::ColorFormat::RGB565 || fmt == Deki::ColorFormat::RGB565A8)
+        {
+            DekiPixel::FileToMemory565(target.data(), static_cast<size_t>(kW) * kH, bpp);
+        }
         const uint64_t caseHash = Fnv(target, 0xcbf29ce484222325ULL);
         hash = (hash ^ caseHash) * 0x100000001b3ULL;
         if (print)
@@ -474,7 +479,7 @@ TEST(RendererGoldenTest, ClipAndRendererOnOneObjectMatchesParentChildForm)
     EXPECT_EQ(same[1], 0u);
     // ... while the centre is blue.
     const size_t centre = (static_cast<size_t>(kH / 2) * kW + kW / 2 + 1) * 2;
-    EXPECT_EQ(same[centre] | (same[centre + 1] << 8), 0x001F);
+    EXPECT_EQ(DekiPixel::Load565(&same[centre]), 0x001F);
 }
 
 // A component type that gains an IClipProvider adapter after the renderer has
@@ -512,7 +517,7 @@ TEST(RendererGoldenTest, AdapterRegisteredAfterFirstFrameTakesEffect)
     QuadBlit::ClearClipStack();
     // 6 px from the centre: inside the 16 px sprite, outside the 2.4 px clip.
     const size_t corner = (static_cast<size_t>(kH / 2 - 6) * kW + kW / 2 - 6) * 2;
-    EXPECT_EQ(target[corner] | (target[corner + 1] << 8), 0xF800) << "no adapter yet: unclipped";
+    EXPECT_EQ(DekiPixel::Load565(&target[corner]), 0xF800) << "no adapter yet: unclipped";
 
     Deki::ComponentInterfaceAdapters::Register(
         Deki::IClipProvider::kInterfaceID, ::Deki::TypeId<TestLateClip>(),
@@ -520,9 +525,9 @@ TEST(RendererGoldenTest, AdapterRegisteredAfterFirstFrameTakesEffect)
     std::fill(target.begin(), target.end(), 0);
     renderer.Render(&b.scene, ctx);
     EXPECT_EQ(QuadBlit::GetClipStackDepth(), 0);
-    EXPECT_EQ(target[corner] | (target[corner + 1] << 8), 0x0000) << "adapter registered: clipped";
+    EXPECT_EQ(DekiPixel::Load565(&target[corner]), 0x0000) << "adapter registered: clipped";
     const size_t centre = (static_cast<size_t>(kH / 2) * kW + kW / 2) * 2;
-    EXPECT_EQ(target[centre] | (target[centre + 1] << 8), 0xF800);
+    EXPECT_EQ(DekiPixel::Load565(&target[centre]), 0xF800);
 }
 
 // With dirty tracking on, every case renders the same pixels, and every pixel

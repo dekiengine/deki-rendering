@@ -76,8 +76,9 @@ inline uint8_t BayerThreshold(int32_t px, int32_t py)
 }
 
 // ---------------------------------------------------------------------------
-// 16-bit loads and stores at any address, little-endian. An RGB565 pixel in an
-// RGB565A8 image (3 bytes each) is at an odd address every other pixel.
+// 16-bit loads and stores at any address, in the CPU's byte order. An RGB565
+// pixel in an RGB565A8 image (3 bytes each) is at an odd address every other
+// pixel.
 //
 // The ESP32's Xtensa cores load and store unaligned 16- and 32-bit values in
 // hardware (XCHAL_UNALIGNED_LOAD_HW and _STORE_HW in ESP-IDF's core-isa.h).
@@ -114,6 +115,68 @@ inline void StoreU16(uint8_t* p, uint16_t v)
 }
 
 // ---------------------------------------------------------------------------
+// RGB565 in memory. Pixels are stored in Deki::kRGB565BigEndian's byte order:
+// low byte first, or high byte first on a board that defines
+// DEKI_RGB565_BIG_ENDIAN, the order its SPI panel takes. Anything that reads
+// or writes a 565 value's bits goes through these; a copy of whole pixels
+// between two buffers needs nothing, since both are in the same order.
+//
+// ToMemory565 turns a value (red in the top bits, as PackRGB565 makes it) into
+// the bits as stored, FromMemory565 back. A constant, a key or a lookup table
+// can be converted once and compared or combined with stored pixels directly:
+// the swap distributes over | and &, and keeps == and !=.
+// ---------------------------------------------------------------------------
+
+inline constexpr uint16_t ToMemory565(uint16_t v)
+{
+    if constexpr (Deki::kRGB565BigEndian)
+    {
+        return static_cast<uint16_t>((v >> 8) | (v << 8));
+    }
+    else
+    {
+        return v;
+    }
+}
+
+inline constexpr uint16_t FromMemory565(uint16_t v)
+{
+    return ToMemory565(v);  // a byte swap is its own inverse
+}
+
+inline uint16_t Load565(const uint8_t* p)
+{
+    return FromMemory565(LoadU16(p));
+}
+
+inline void Store565(uint8_t* p, uint16_t v)
+{
+    StoreU16(p, ToMemory565(v));
+}
+
+/// Converts `pixels` RGB565 values, `stride` bytes apart, from the order files
+/// keep them in (low byte first) to the order they are drawn from. Loaders call
+/// it once per image; it does nothing unless the board is big-endian.
+inline void FileToMemory565(uint8_t* data, size_t pixels, size_t stride)
+{
+    if constexpr (Deki::kRGB565BigEndian)
+    {
+        for (size_t i = 0; i < pixels; ++i, data += stride)
+        {
+            const uint8_t lo = data[0];
+            data[0] = data[1];
+            data[1] = lo;
+        }
+    }
+    else
+    {
+        (void)data;
+        (void)pixels;
+        (void)stride;
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Per-format pixel access, shared by the 2D blitter (QuadBlit) and deki-3d's
 // rasteriser so both read and write every format the same way. Templates, so
 // each format compiles to its own tight loop.
@@ -138,7 +201,7 @@ inline void ReadSrcPixel(const uint8_t* p, bool hasAlpha, uint8_t& r, uint8_t& g
 {
     if constexpr (SK == SrcKind::RGB565 || SK == SrcKind::RGB565A8)
     {
-        UnpackRGB565(LoadU16(p), r, g, b);
+        UnpackRGB565(Load565(p), r, g, b);
         if constexpr (SK == SrcKind::RGB565A8)
         {
             a = hasAlpha ? p[2] : 255;
@@ -178,7 +241,7 @@ inline void ReadDstPixel(const uint8_t* target, size_t idx, uint8_t& r, uint8_t&
 {
     if constexpr (F == Deki::ColorFormat::RGB565)
     {
-        UnpackRGB565(((const uint16_t*)target)[idx], r, g, b);
+        UnpackRGB565(FromMemory565(((const uint16_t*)target)[idx]), r, g, b);
         a = 255;
     }
     else if constexpr (F == Deki::ColorFormat::RGB888)
@@ -196,9 +259,9 @@ inline void ReadDstPixel(const uint8_t* target, size_t idx, uint8_t& r, uint8_t&
         b = v & 0xFF;
         a = 255;
     }
-    else  // RGB565A8: [lo, hi, alpha]
+    else  // RGB565A8: [565, alpha]
     {
-        UnpackRGB565(LoadU16(target + idx * 3), r, g, b);
+        UnpackRGB565(Load565(target + idx * 3), r, g, b);
         a = target[idx * 3 + 2];
     }
 }
@@ -209,7 +272,7 @@ inline void WriteDstPixel(uint8_t* target, size_t idx, uint8_t r, uint8_t g, uin
 {
     if constexpr (F == Deki::ColorFormat::RGB565)
     {
-        ((uint16_t*)target)[idx] = PackRGB565(r, g, b);
+        ((uint16_t*)target)[idx] = ToMemory565(PackRGB565(r, g, b));
         (void)a;
     }
     else if constexpr (F == Deki::ColorFormat::RGB888)
@@ -226,7 +289,7 @@ inline void WriteDstPixel(uint8_t* target, size_t idx, uint8_t r, uint8_t g, uin
     }
     else
     {
-        StoreU16(target + idx * 3, PackRGB565(r, g, b));
+        Store565(target + idx * 3, PackRGB565(r, g, b));
         target[idx * 3 + 2] = a;
     }
 }

@@ -13,6 +13,7 @@
 #include <cstdlib>
 #include <vector>
 #include "QuadBlit.h"
+#include "PixelFormat.h"
 #include <deki/Engine.h>  // Deki::ColorFormat
 
 // Tests name the package's types unqualified.
@@ -171,9 +172,8 @@ SrcBuf MakeSrc(SrcFmt f, int w, int h, uint32_t seed, int stridePad, bool chroma
                 case SrcFmt::RGB565A8:
                 case SrcFmt::RGB565A8NoAlpha:
                 {
-                    const uint16_t v = static_cast<uint16_t>(((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3));
-                    p[0] = static_cast<uint8_t>(v & 0xFF);
-                    p[1] = static_cast<uint8_t>(v >> 8);
+                    // In memory's byte order, as a loaded image is.
+                    DekiPixel::Store565(p, DekiPixel::PackRGB565(r, g, b));
                     if (bpp == 3)
                     {
                         p[2] = (f == SrcFmt::RGB565A8) ? a : rng.Byte();
@@ -283,6 +283,14 @@ uint64_t RunTarget(Deki::ColorFormat dst, bool print)
             {
                 b = noise.Byte();
             }
+            // The same noise pixels in either byte order, and hashed in the
+            // file's order below, so a big-endian build must match the same
+            // hashes: it draws the same picture.
+            const bool target565 = dst == Deki::ColorFormat::RGB565 || dst == Deki::ColorFormat::RGB565A8;
+            if (target565)
+            {
+                DekiPixel::FileToMemory565(target.data(), static_cast<size_t>(kTW) * kTH, tbpp);
+            }
 
             QuadBlit::ClearClipStack();
             if (c.clip)
@@ -301,6 +309,10 @@ uint64_t RunTarget(Deki::ColorFormat dst, bool print)
                                      c.ta, c.dither);
             }
             QuadBlit::ClearClipStack();
+            if (target565)
+            {
+                DekiPixel::FileToMemory565(target.data(), static_cast<size_t>(kTW) * kTH, tbpp);  // and back
+            }
             // Each case is hashed on its own, so two builds can be compared
             // case by case; the per-target value folds the case hashes in order.
             const uint64_t caseHash = Fnv(target, 0xcbf29ce484222325ULL);

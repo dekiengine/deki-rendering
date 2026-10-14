@@ -10,6 +10,14 @@ alongside one that has them.
 
 ## Unreleased
 
+### Added
+- Big-endian RGB565 (`DEKI_RGB565_BIG_ENDIAN`, see `Deki::kRGB565BigEndian`):
+  `DekiPixel::Load565`, `Store565`, `ToMemory565`, `FromMemory565` and
+  `FileToMemory565` read and write 565 values in memory's byte order. The
+  blitter, its tint tables and chroma keys, clears and `GetPixel` use them.
+  Copies of whole pixels are unchanged. The golden tests run in both byte
+  orders and give the same hashes.
+
 ### Changed
 - On the ESP32's Xtensa cores an RGB565 pixel is read and written with one
   16-bit access, aligned or not (`DekiPixel::LoadU16` and `StoreU16`). The

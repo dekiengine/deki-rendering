@@ -1,6 +1,7 @@
 #include "DekiRenderSystem.h"
 #include "RenderProfiler.h"
 #include "DekiRenderer.h"
+#include "PixelFormat.h"
 #include <deki/Engine.h>
 #include <deki/LogSystem.h>
 #include <deki/SceneSystem.h>
@@ -395,11 +396,8 @@ inline size_t WritePixel(uint8_t* p, Deki::ColorFormat format, uint8_t r, uint8_
     switch (format)
     {
         case Deki::ColorFormat::RGB565:
-        {
-            const uint16_t v = static_cast<uint16_t>(((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3));
-            memcpy(p, &v, 2);
+            DekiPixel::Store565(p, DekiPixel::PackRGB565(r, g, b));
             return 2;
-        }
         case Deki::ColorFormat::RGB888:
             p[0] = r;
             p[1] = g;
@@ -412,13 +410,9 @@ inline size_t WritePixel(uint8_t* p, Deki::ColorFormat format, uint8_t r, uint8_
             return 4;
         }
         case Deki::ColorFormat::RGB565A8:
-        {
-            const uint16_t v = static_cast<uint16_t>(((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3));
-            p[0] = static_cast<uint8_t>(v & 0xFF);
-            p[1] = static_cast<uint8_t>(v >> 8);
+            DekiPixel::Store565(p, DekiPixel::PackRGB565(r, g, b));
             p[2] = 0xFF;  // opaque
             return 3;
-        }
     }
     return 0;
 }
@@ -495,10 +489,7 @@ DEKI_FAST_ATTR void DekiRenderSystem::GetPixel(int32_t x, int32_t y, uint8_t* r,
         case Deki::ColorFormat::RGB565:
         {
             size_t pixel_index = (y * m_ScreenWidth + x) * 2;
-            uint16_t pixel = *((uint16_t*)(m_RenderBuffer + pixel_index));
-            *r = ((pixel >> 11) & 0x1F) << 3;  // 5 bits -> 8 bits
-            *g = ((pixel >> 5) & 0x3F) << 2;   // 6 bits -> 8 bits
-            *b = (pixel & 0x1F) << 3;          // 5 bits -> 8 bits
+            DekiPixel::UnpackRGB565(DekiPixel::Load565(m_RenderBuffer + pixel_index), *r, *g, *b);
             break;
         }
         case Deki::ColorFormat::RGB888:
@@ -521,10 +512,7 @@ DEKI_FAST_ATTR void DekiRenderSystem::GetPixel(int32_t x, int32_t y, uint8_t* r,
         case Deki::ColorFormat::RGB565A8:
         {
             size_t pixel_index = (y * m_ScreenWidth + x) * 3;
-            uint16_t pixel = *((uint16_t*)(m_RenderBuffer + pixel_index));
-            *r = ((pixel >> 11) & 0x1F) << 3;
-            *g = ((pixel >> 5) & 0x3F) << 2;
-            *b = (pixel & 0x1F) << 3;
+            DekiPixel::UnpackRGB565(DekiPixel::Load565(m_RenderBuffer + pixel_index), *r, *g, *b);
             break;
         }
     }

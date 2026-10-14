@@ -19,12 +19,15 @@ namespace
 std::vector<uint8_t> ExpectedPixel(Deki::ColorFormat f, uint8_t r, uint8_t g, uint8_t b)
 {
     const uint16_t v = static_cast<uint16_t>(((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3));
+    // RGB565 is low byte first, or high byte first in a big-endian build.
+    const uint8_t lo = static_cast<uint8_t>(v & 0xFF), hi = static_cast<uint8_t>(v >> 8);
+    const uint8_t first = Deki::kRGB565BigEndian ? hi : lo, second = Deki::kRGB565BigEndian ? lo : hi;
     switch (f)
     {
-        case Deki::ColorFormat::RGB565: return { static_cast<uint8_t>(v & 0xFF), static_cast<uint8_t>(v >> 8) };
+        case Deki::ColorFormat::RGB565: return { first, second };
         case Deki::ColorFormat::RGB888: return { r, g, b };
         case Deki::ColorFormat::ARGB8888: return { b, g, r, 0xFF };  // little-endian 0xFFRRGGBB
-        case Deki::ColorFormat::RGB565A8: return { static_cast<uint8_t>(v & 0xFF), static_cast<uint8_t>(v >> 8), 0xFF };
+        case Deki::ColorFormat::RGB565A8: return { first, second, 0xFF };
     }
     return {};
 }

@@ -5,6 +5,7 @@
 #include <cstring>
 #include <cstdint>
 #include "QuadBlit.h"
+#include "PixelFormat.h"
 #include <deki/Engine.h>  // Deki::ColorFormat
 
 // Tests name the package's types unqualified.
@@ -927,15 +928,17 @@ uint16_t Pack565(uint8_t r, uint8_t g, uint8_t b)
 {
     return static_cast<uint16_t>(((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3));
 }
+// The pixel as stored: compare it with stored pixels, or FromMemory565 it to
+// compare it with a value.
 uint16_t Read565(const uint8_t* buf, int w, int x, int y)
 {
     return reinterpret_cast<const uint16_t*>(buf)[y * w + x];
 }
-// RGB565A8: 2 bytes of colour then 1 byte of alpha, per pixel.
+// RGB565A8: 2 bytes of colour (the value `rgb`, as stored) then 1 byte of
+// alpha, per pixel.
 void Put565A8(uint8_t* dst, int i, uint16_t rgb, uint8_t a)
 {
-    dst[i * 3 + 0] = static_cast<uint8_t>(rgb & 0xFF);
-    dst[i * 3 + 1] = static_cast<uint8_t>(rgb >> 8);
+    DekiPixel::Store565(dst + i * 3, rgb);
     dst[i * 3 + 2] = a;
 }
 }  // namespace
@@ -972,7 +975,7 @@ TEST_F(QuadBlitSpanRegressionTest, EmptyOpaqueSpan_BlendsEachPixelOnce)
         EXPECT_EQ(Read565(withSpans, w, x, 0), Read565(withoutSpans, w, x, 0)) << "x=" << x;
     }
     // Half-alpha white over black is mid grey; blending twice would give white.
-    EXPECT_LT(Read565(withSpans, w, 0, 0), Pack565(200, 200, 200));
+    EXPECT_LT(DekiPixel::FromMemory565(Read565(withSpans, w, 0, 0)), Pack565(200, 200, 200));
 }
 
 // The right alpha region must start at the clip start when the clip rect
@@ -1136,12 +1139,12 @@ TEST_F(QuadBlitSpanRegressionTest, RotationPath_ARGBTargetMatchesRGB565)
     uint8_t t888[w * h * 4];
     for (int i = 0; i < w * h; i++)
     {
-        reinterpret_cast<uint16_t*>(t565)[i] = Pack565(0, 0, 255);
+        reinterpret_cast<uint16_t*>(t565)[i] = DekiPixel::ToMemory565(Pack565(0, 0, 255));
         reinterpret_cast<uint32_t*>(t888)[i] = 0xFF0000FFu;
     }
     QuadBlit::Blit(source, t565, w, h, Deki::ColorFormat::RGB565, 4, 4, 1.0f, 1.0f, 0.7f, 0.5f, 0.5f, 255, 0, 0, 255);
     QuadBlit::Blit(source, t888, w, h, Deki::ColorFormat::ARGB8888, 4, 4, 1.0f, 1.0f, 0.7f, 0.5f, 0.5f, 255, 0, 0, 255);
-    const uint16_t c565 = Read565(t565, w, 4, 4);
+    const uint16_t c565 = DekiPixel::FromMemory565(Read565(t565, w, 4, 4));
     const uint32_t c888 = reinterpret_cast<const uint32_t*>(t888)[4 * w + 4];
     // Both blends of half-alpha red over blue: red ~128, blue ~127 (5/6/5 quantised).
     EXPECT_NEAR((c565 >> 11) << 3, (c888 >> 16) & 0xFF, 8);
@@ -1208,11 +1211,12 @@ TEST(QuadBlitTintRows, EveryPixelMatchesThePipelinesArithmetic)
             const uint16_t v = static_cast<uint16_t>(next());
             const uint32_t pick = next() % 4;
             const uint8_t a = pick == 0 ? 0 : pick == 1 ? 255 : static_cast<uint8_t>(next());
-            src[i * 3] = static_cast<uint8_t>(v & 0xFF);
-            src[i * 3 + 1] = static_cast<uint8_t>(v >> 8);
+            DekiPixel::Store565(src + i * 3, v);
             src[i * 3 + 2] = a;
-            target[i] = static_cast<uint16_t>(next());
-            expected[i] = t[3] == 0 ? target[i] : RefComposite(v, a, target[i], t[0], t[1], t[2], t[3]);
+            target[i] = static_cast<uint16_t>(next());  // as stored
+            expected[i] = t[3] == 0 ? target[i]
+                                    : DekiPixel::ToMemory565(RefComposite(v, a, DekiPixel::FromMemory565(target[i]),
+                                                                          t[0], t[1], t[2], t[3]));
         }
         const QuadBlit::Source source = QuadBlit::MakeSource(src, kW, kH, QuadBlit::PixelLayout::RGB565A8());
         QuadBlit::BlitScaled(source, reinterpret_cast<uint8_t*>(target), kW, kH, Deki::ColorFormat::RGB565, 0, 0, kW,
@@ -1250,8 +1254,7 @@ TEST(QuadBlitTintScaledRows, EveryPixelMatchesThePipelinesArithmetic)
             {
                 const uint16_t v = static_cast<uint16_t>(next());
                 const uint32_t pick = next() % 4;
-                src[i * 3] = static_cast<uint8_t>(v & 0xFF);
-                src[i * 3 + 1] = static_cast<uint8_t>(v >> 8);
+                DekiPixel::Store565(src + i * 3, v);
                 src[i * 3 + 2] = pick == 0 ? 0 : pick == 1 ? 255 : static_cast<uint8_t>(next());
             }
             uint8_t target[kTW * kTH * 3];
@@ -1276,11 +1279,9 @@ TEST(QuadBlitTintScaledRows, EveryPixelMatchesThePipelinesArithmetic)
                     {
                         continue;
                     }
-                    const uint16_t v = static_cast<uint16_t>(sp[0] | (sp[1] << 8));
-                    const uint16_t bg = static_cast<uint16_t>(dp[0] | (dp[1] << 8));
-                    const uint16_t out = RefComposite(v, a, bg, t[0], t[1], t[2], t[3]);
-                    dp[0] = static_cast<uint8_t>(out & 0xFF);
-                    dp[1] = static_cast<uint8_t>(out >> 8);
+                    const uint16_t v = DekiPixel::Load565(sp);
+                    const uint16_t bg = DekiPixel::Load565(dp);
+                    DekiPixel::Store565(dp, RefComposite(v, a, bg, t[0], t[1], t[2], t[3]));
                     dp[2] = effA == 255 ? 255
                             : dp[2] == 0
                                 ? static_cast<uint8_t>(effA)
