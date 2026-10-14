@@ -8,6 +8,15 @@ breaking change bumps the minor across the editor, the engine and every
 package together, so a package with no changes of its own is still released
 alongside one that has them.
 
+## Unreleased
+
+### Changed
+- On the ESP32's Xtensa cores an RGB565 pixel is read and written with one
+  16-bit access, aligned or not (`DekiPixel::LoadU16` and `StoreU16`). The
+  cores handle unaligned loads and stores in hardware; GCC assumes they
+  fault, so the byte-by-byte read it replaced was four instructions. Other
+  targets use `memcpy`.
+
 ## 0.18.2
 
 ### Added

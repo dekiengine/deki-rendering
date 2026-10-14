@@ -76,6 +76,44 @@ inline uint8_t BayerThreshold(int32_t px, int32_t py)
 }
 
 // ---------------------------------------------------------------------------
+// 16-bit loads and stores at any address, little-endian. An RGB565 pixel in an
+// RGB565A8 image (3 bytes each) is at an odd address every other pixel.
+//
+// The ESP32's Xtensa cores load and store unaligned 16- and 32-bit values in
+// hardware (XCHAL_UNALIGNED_LOAD_HW and _STORE_HW in ESP-IDF's core-isa.h).
+// GCC's Xtensa backend still assumes they fault, so a memcpy there becomes
+// byte loads or, in the blitter, a call to memcpy per pixel, and two byte
+// loads, a shift and an or are four instructions for what the core does in
+// one. So on Xtensa the access is direct (may_alias, since the buffer is
+// bytes). Elsewhere memcpy, which compilers make one load wherever the target
+// allows it.
+// ---------------------------------------------------------------------------
+
+#if defined(__XTENSA__)
+typedef uint16_t __attribute__((may_alias)) UnalignedU16;
+#endif
+
+inline uint16_t LoadU16(const uint8_t* p)
+{
+#if defined(__XTENSA__)
+    return *reinterpret_cast<const UnalignedU16*>(p);
+#else
+    uint16_t v;
+    std::memcpy(&v, p, sizeof v);
+    return v;
+#endif
+}
+
+inline void StoreU16(uint8_t* p, uint16_t v)
+{
+#if defined(__XTENSA__)
+    *reinterpret_cast<UnalignedU16*>(p) = v;
+#else
+    std::memcpy(p, &v, sizeof v);
+#endif
+}
+
+// ---------------------------------------------------------------------------
 // Per-format pixel access, shared by the 2D blitter (QuadBlit) and deki-3d's
 // rasteriser so both read and write every format the same way. Templates, so
 // each format compiles to its own tight loop.
@@ -100,12 +138,7 @@ inline void ReadSrcPixel(const uint8_t* p, bool hasAlpha, uint8_t& r, uint8_t& g
 {
     if constexpr (SK == SrcKind::RGB565 || SK == SrcKind::RGB565A8)
     {
-        // Byte by byte, little-endian, rather than memcpy: the pixel is often
-        // unaligned (RGB565A8 is 3 bytes), and on the ESP32's Xtensa, which
-        // has no unaligned loads, GCC makes such a memcpy a function call:
-        // one per pixel, which made blits six times slower.
-        const uint16_t v = static_cast<uint16_t>(p[0] | (p[1] << 8));
-        UnpackRGB565(v, r, g, b);
+        UnpackRGB565(LoadU16(p), r, g, b);
         if constexpr (SK == SrcKind::RGB565A8)
         {
             a = hasAlpha ? p[2] : 255;
@@ -165,8 +198,7 @@ inline void ReadDstPixel(const uint8_t* target, size_t idx, uint8_t& r, uint8_t&
     }
     else  // RGB565A8: [lo, hi, alpha]
     {
-        const uint16_t v = (uint16_t)target[idx * 3] | ((uint16_t)target[idx * 3 + 1] << 8);
-        UnpackRGB565(v, r, g, b);
+        UnpackRGB565(LoadU16(target + idx * 3), r, g, b);
         a = target[idx * 3 + 2];
     }
 }
@@ -194,9 +226,7 @@ inline void WriteDstPixel(uint8_t* target, size_t idx, uint8_t r, uint8_t g, uin
     }
     else
     {
-        const uint16_t v = PackRGB565(r, g, b);
-        target[idx * 3] = (uint8_t)(v & 0xFF);
-        target[idx * 3 + 1] = (uint8_t)(v >> 8);
+        StoreU16(target + idx * 3, PackRGB565(r, g, b));
         target[idx * 3 + 2] = a;
     }
 }

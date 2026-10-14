@@ -38,7 +38,9 @@
 using DekiPixel::AlphaUnion;
 using DekiPixel::BayerThreshold;
 using DekiPixel::Div255;
+using DekiPixel::LoadU16;
 using DekiPixel::PackRGB565;
+using DekiPixel::StoreU16;
 using DekiPixel::UnpackRGB565;
 using DekiPixel::SrcKind;
 using DekiPixel::ReadSrcPixel;
@@ -470,7 +472,7 @@ static DEKI_FAST_ATTR void TintRows_RGB565(const Source& source, uint16_t* targe
                     continue;
                 }
             }
-            const uint32_t v = static_cast<uint32_t>(sp[0]) | (static_cast<uint32_t>(sp[1]) << 8);
+            const uint32_t v = LoadU16(sp);
             const uint32_t r5 = v >> 11;
             const uint32_t g6 = (v >> 5) & 0x3F;
             const uint32_t b5 = v & 0x1F;
@@ -533,7 +535,7 @@ static DEKI_FAST_ATTR void TintScaledRows_RGB565A8(const Source& source, uint8_t
                     continue;
                 }
             }
-            const uint32_t v = static_cast<uint32_t>(sp[0]) | (static_cast<uint32_t>(sp[1]) << 8);
+            const uint32_t v = LoadU16(sp);
             const uint32_t r5 = v >> 11;
             const uint32_t g6 = (v >> 5) & 0x3F;
             const uint32_t b5 = v & 0x1F;
@@ -545,15 +547,14 @@ static DEKI_FAST_ATTR void TintScaledRows_RGB565A8(const Source& source, uint8_t
             }
             else
             {
-                const uint32_t bg = static_cast<uint32_t>(dp[0]) | (static_cast<uint32_t>(dp[1]) << 8);
+                const uint32_t bg = LoadU16(dp);
                 const uint32_t invA = 255u - a;
                 out = PackRGB565(Div255(t.r[r5] * a + ((bg >> 11) << 3) * invA),
                                  Div255(t.g[g6] * a + (((bg >> 5) & 0x3F) << 2) * invA),
                                  Div255(t.b[b5] * a + ((bg & 0x1F) << 3) * invA));
                 dp[2] = AlphaUnion(static_cast<uint8_t>(a), dp[2]);
             }
-            dp[0] = static_cast<uint8_t>(out & 0xFF);
-            dp[1] = static_cast<uint8_t>(out >> 8);
+            StoreU16(dp, static_cast<uint16_t>(out));
         }
     }
 }
@@ -673,8 +674,7 @@ static DEKI_FAST_ATTR bool BlendRows_RGB565A8_to_RGB565(const Source& source, ui
             const uint8_t* srcPtr = rowBase + clampedStart * bpp;
             for (int32_t sx = clampedStart; sx < clampedEnd; sx++, srcPtr += bpp)
             {
-                // Bytes, not memcpy: see ReadSrcPixel.
-                dstRow[destX + sx] = static_cast<uint16_t>(srcPtr[0] | (srcPtr[1] << 8));
+                dstRow[destX + sx] = LoadU16(srcPtr);
             }
 
             // Right alpha region. Starts at the clip start when the opaque span
@@ -723,8 +723,7 @@ static DEKI_FAST_ATTR bool ExpandRows_RGB565_to_RGB565A8(const Source& source, u
         for (int32_t i = 0; i < rowPixels; i++)
         {
             const uint16_t v = srcPtr[i];
-            dstPtr[i * 3] = static_cast<uint8_t>(v & 0xFF);
-            dstPtr[i * 3 + 1] = static_cast<uint8_t>(v >> 8);
+            StoreU16(dstPtr + i * 3, v);
             dstPtr[i * 3 + 2] = 0xFF;
         }
     }
