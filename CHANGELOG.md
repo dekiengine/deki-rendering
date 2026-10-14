@@ -17,6 +17,10 @@ alongside one that has them.
   blitter, its tint tables and chroma keys, clears and `GetPixel` use them.
   Copies of whole pixels are unchanged. The golden tests run in both byte
   orders and give the same hashes.
+- `RenderProfiler` times each of QuadBlit's paths (its fast loops and the
+  generic scaled and rotated pipelines): blits, destination pixels and
+  microseconds per frame (`AddPath`, `TakePaths`). Entries carry the
+  component's short name, which a stripped build's registry cannot give.
 
 ### Changed
 - On the ESP32's Xtensa cores an RGB565 pixel is read and written with one

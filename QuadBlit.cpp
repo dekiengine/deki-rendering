@@ -1,6 +1,7 @@
 #include "QuadBlit.h"
 #include "PixelFormat.h"
 #include "DirtyRegion.h"
+#include "RenderProfiler.h"
 #include <cmath>
 #include <algorithm>
 #include <cstring>
@@ -82,6 +83,59 @@ RowKernelFn GetKernel(KernelOp op)
     }
     return s_Kernels[(int)op];
 }
+
+// ============================================================================
+// Path timing, for the render profiler
+// ============================================================================
+// Which loop drew a blit, and what it cost per destination pixel inside the
+// clip: the fast paths, and the generic pipeline they fall back to. One test
+// per blit when the profiler is off.
+
+enum class BlitPath : uint32_t
+{
+    CopyRows,
+    ChromaSpans,
+    BlendSpans,
+    TintRows,
+    TintScaledRows,
+    ExpandRows,
+    Rows565A8,
+    GenericScaledPlain,
+    GenericScaled,
+    GenericRotated,
+    None
+};
+
+// One word each, so a report line splits on spaces.
+constexpr const char* kBlitPathNames[] = {
+    "CopyRows",   "ChromaSpans", "BlendSpans",         "TintRows",      "TintScaledRows",
+    "ExpandRows", "Rows565A8",   "GenericScaledPlain", "GenericScaled", "GenericRotated",
+};
+
+struct PathScope
+{
+    BlitPath path = BlitPath::None;
+    const uint64_t pixels;
+    const bool on;
+    const uint64_t start;
+
+    explicit PathScope(uint64_t destPixels)
+        : pixels(destPixels),
+          on(DekiRendering::RenderProfiler::IsEnabled()),
+          start(on ? DekiRendering::RenderProfiler::Now() : 0)
+    {
+    }
+
+    ~PathScope()
+    {
+        if (on && path != BlitPath::None)
+        {
+            DekiRendering::RenderProfiler::AddPath(static_cast<uint32_t>(path),
+                                                   kBlitPathNames[static_cast<uint32_t>(path)],
+                                                   DekiRendering::RenderProfiler::Now() - start, pixels);
+        }
+    }
+};
 
 // True when both pointers are 16-byte aligned, as the SIMD (PIE) kernels need.
 static inline bool Aligned16(const void* a, const void* b)
@@ -909,6 +963,7 @@ void BlitScaled(const Source& source, uint8_t* target, int32_t targetWidth, int3
         return;
     }
     NoteBlitRect(target, bounds.startX, bounds.startY, bounds.endX, bounds.endY);
+    PathScope scope(static_cast<uint64_t>(bounds.endX - bounds.startX) * static_cast<uint64_t>(bounds.endY - bounds.startY));
 
     BlitParams p;
     p.hasTint = (tintR != 255 || tintG != 255 || tintB != 255);
@@ -942,6 +997,7 @@ void BlitScaled(const Source& source, uint8_t* target, int32_t targetWidth, int3
         if (!plainCopy && !plainSpans)
         {
             uint16_t* target16 = (uint16_t*)target;
+            scope.path = BlitPath::TintRows;
             if (kind == SrcKind::RGB565A8 && source.hasAlpha)
             {
                 TintRows_RGB565<true>(source, target16, targetWidth, destX, destY, bounds, p);
@@ -960,6 +1016,7 @@ void BlitScaled(const Source& source, uint8_t* target, int32_t targetWidth, int3
     if (!p.hasKey && !p.dither && !p.flips && targetFormat == Deki::ColorFormat::RGB565A8 &&
         (kind == SrcKind::RGB565 || kind == SrcKind::RGB565A8) && !(plain && oneToOne))
     {
+        scope.path = BlitPath::TintScaledRows;
         if (kind == SrcKind::RGB565A8 && source.hasAlpha)
         {
             TintScaledRows_RGB565A8<true>(source, target, targetWidth, destX, destY, destWidth, destHeight, bounds, p);
@@ -979,16 +1036,19 @@ void BlitScaled(const Source& source, uint8_t* target, int32_t targetWidth, int3
             uint16_t* target16 = (uint16_t*)target;
             if (kind == SrcKind::RGB565 && p.hasKey && source.chromaRowSpans)
             {
+                scope.path = BlitPath::ChromaSpans;
                 CopyRows_RGB565_ChromaSpans(source, target16, targetWidth, destX, destY, bounds);
                 return;
             }
             if (plain && kind == SrcKind::RGB565)
             {
+                scope.path = BlitPath::CopyRows;
                 CopyRows_RGB565(source, target16, targetWidth, destX, destY, bounds);
                 return;
             }
             if (plain && kind == SrcKind::RGB565A8 && source.hasAlpha)
             {
+                scope.path = BlitPath::BlendSpans;
                 BlendRows_RGB565A8_to_RGB565(source, target16, targetWidth, destX, destY, bounds);
                 return;
             }
@@ -997,9 +1057,11 @@ void BlitScaled(const Source& source, uint8_t* target, int32_t targetWidth, int3
         {
             if (kind == SrcKind::RGB565)
             {
+                scope.path = BlitPath::ExpandRows;
                 ExpandRows_RGB565_to_RGB565A8(source, target, targetWidth, destX, destY, bounds);
                 return;
             }
+            scope.path = BlitPath::Rows565A8;
             if (kind == SrcKind::RGB565A8 &&
                 Rows_RGB565A8_to_RGB565A8(source, target, targetWidth, destX, destY, bounds))
             {
@@ -1010,11 +1072,13 @@ void BlitScaled(const Source& source, uint8_t* target, int32_t targetWidth, int3
 
     if (plain)
     {
+        scope.path = BlitPath::GenericScaledPlain;
         BlitRowsDispatch<true>(kind, targetFormat, source, target, targetWidth, destX, destY, destWidth, destHeight,
                                bounds, p);
     }
     else
     {
+        scope.path = BlitPath::GenericScaled;
         BlitRowsDispatch<false>(kind, targetFormat, source, target, targetWidth, destX, destY, destWidth, destHeight,
                                 bounds, p);
     }
@@ -1158,6 +1222,8 @@ void Blit(const Source& source, uint8_t* target, int32_t targetWidth, int32_t ta
         return;
     }
     NoteBlitRect(target, startX, startY, endX, endY);
+    PathScope scope(static_cast<uint64_t>(endX - startX) * static_cast<uint64_t>(endY - startY));
+    scope.path = BlitPath::GenericRotated;
 
     BlitParams p;
     p.hasTint = (tintR != 255 || tintG != 255 || tintB != 255);

@@ -28,20 +28,39 @@ constexpr uint32_t kClear = 1;
 
 struct Entry
 {
-    uint32_t typeId = 0;   // the component's type, or kClear
+    uint32_t typeId = 0;          // the component's type, or kClear
+    const char* name = nullptr;   // its short name, when the caller gave one
     uint64_t contentUs = 0;
     uint64_t blitUs = 0;
     uint32_t draws = 0;
     uint64_t pixels = 0;  // source pixels blitted
 };
 
-DEKI_RENDERING_API void AddContent(uint32_t typeId, uint64_t us);
+/// `name` (static storage, such as a ComponentTypeInfo's) labels the type in
+/// the report, where a stripped build's registry cannot.
+DEKI_RENDERING_API void AddContent(uint32_t typeId, uint64_t us, const char* name = nullptr);
 DEKI_RENDERING_API void AddBlit(uint32_t typeId, uint64_t us, uint64_t pixels);
 DEKI_RENDERING_API void CountFrame();
 
 /// What was measured since the last call, most expensive first, and over how
 /// many frames; then starts again.
 DEKI_RENDERING_API std::vector<Entry> Take(uint32_t& frames);
+
+/// Time per blitter path (QuadBlit's fast loops and its generic pipeline):
+/// which paths a game's frames go through, and what each costs a pixel.
+struct PathEntry
+{
+    const char* name = nullptr;  // static storage
+    uint32_t blits = 0;
+    uint64_t pixels = 0;  // destination pixels inside the clip
+    uint64_t us = 0;
+};
+
+DEKI_RENDERING_API void AddPath(uint32_t path, const char* name, uint64_t us, uint64_t pixels);
+
+/// The paths measured since the last call, most expensive first; then starts
+/// again. Call it before Take, which counts the frames for both.
+DEKI_RENDERING_API std::vector<PathEntry> TakePaths();
 
 }  // namespace RenderProfiler
 }  // namespace DekiRendering

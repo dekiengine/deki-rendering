@@ -209,7 +209,9 @@ void Standard2DRenderer::ExecuteBuiltins(const SortItem& item, RenderContext& ct
         const bool hasContent = renderer->RenderContent(obj, source, pivotX, pivotY, tintR, tintG, tintB, tintA);
         if (profiling)
         {
-            RenderProfiler::AddContent(renderer->GetType(), RenderProfiler::Now() - contentStart);
+            const Deki::ComponentTypeInfo* info = renderer->GetTypeInfo();
+            RenderProfiler::AddContent(renderer->GetType(), RenderProfiler::Now() - contentStart,
+                                       info ? info->shortName : nullptr);
         }
         if (hasContent)
         {
