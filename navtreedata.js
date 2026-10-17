@@ -25,19 +25,20 @@
 var NAVTREE =
 [
   [ "deki-rendering", "index.html", [
-    [ "Components", "index.html#autotoc_md0", null ],
-    [ "Component reference", "index.html#autotoc_md1", [
+    [ "Components", "index.html#components", null ],
+    [ "Component reference", "index.html#component-reference", [
       [ "CameraComponent", "index.html#c-cameracomponent", null ]
     ] ],
-    [ "Project settings", "index.html#autotoc_md2", [
+    [ "Project settings", "index.html#project-settings", [
       [ "Rendering settings", "index.html#s-rendering-settings", null ]
     ] ],
-    [ "Changelog", "index.html#autotoc_md3", [
-      [ "Unreleased", "index.html#autotoc_md4", null ],
-      [ "Fixed", "index.html#autotoc_md5", null ],
-      [ "0.16.0", "index.html#autotoc_md6", null ],
-      [ "Fixed", "index.html#autotoc_md7", null ],
-      [ "Changed", "index.html#autotoc_md8", null ]
+    [ "Changelog", "index.html#changelog", [
+      [ "0.19.0", "index.html#autotoc_md0", null ],
+      [ "Changed", "index.html#autotoc_md1", null ],
+      [ "Added", "index.html#autotoc_md2", null ],
+      [ "0.18.2", "index.html#autotoc_md3", null ],
+      [ "Added", "index.html#autotoc_md4", null ],
+      [ "Changed", "index.html#autotoc_md5", null ]
     ] ]
   ] ]
 ];

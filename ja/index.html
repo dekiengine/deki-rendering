@@ -1,0 +1,222 @@
+<!-- HTML header for doxygen 1.18.0 - Deki.
+     Doxygen's own template plus the site's webfonts and the dekiengine.com
+     bar. The $-placeholders and the BEGIN/END comment markers are Doxygen's
+     template language, not commentary. See README.md in this directory. -->
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "https://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" lang="ja">
+<head>
+<meta http-equiv="Content-Type" content="text/xhtml;charset=UTF-8"/>
+<meta http-equiv="X-UA-Compatible" content="IE=11"/>
+<meta name="generator" content="Doxygen 1.18.0"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>deki-rendering: deki-rendering</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&display=swap">
+<link href="tabs.css" rel="stylesheet" type="text/css"/>
+<script type="text/javascript" src="codefolding.js"></script>
+<script type="text/javascript" src="clipboard.js"></script>
+<link href="navtree.css" rel="stylesheet" type="text/css"/>
+<script type="text/javascript" src="navtreedata.js"></script>
+<script type="text/javascript" src="navtree.js"></script>
+<script type="text/javascript" src="cookie.js"></script>
+<link href="doxygen.css" rel="stylesheet" type="text/css" />
+<link href="doxygen-awesome.css" rel="stylesheet" type="text/css"/>
+<link href="doxygen-awesome-sidebar-only.css" rel="stylesheet" type="text/css"/>
+<link href="deki.css" rel="stylesheet" type="text/css"/>
+</head>
+<body>
+<div class="deki-bar">
+  <a class="deki-brand" href="https://dekiengine.com/ja/">
+    <span class="deki-mark"><span class="deki-dot"></span></span>
+    <span class="deki-brand-name">DEKI<span class="deki-slash">/</span>ENGINE</span>
+  </a>
+  <span class="deki-bar-tag">ドキュメント</span>
+  <div class="deki-bar-links">
+    <a href="https://dekiengine.com/ja/"><span class="deki-nav-label">サイト</span></a>
+    <a href="https://dekiengine.com/ja/packages/"><span class="deki-nav-label">パッケージ</span></a>
+    <a href="https://dekiengine.com/ja/blog/"><span class="deki-nav-label">ブログ</span></a>
+    <span class="deki-bar-sep"></span>
+    <a class="deki-chip" href="https://github.com/orgs/dekiengine/repositories" rel="noopener"><svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg><span>github</span></a>
+    <a class="deki-chip deki-chip-accent" href="https://dekiengine.com/ja/discord/" rel="noopener"><svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor" aria-hidden="true"><path d="M20.317 4.3698a19.7913 19.7913 0 00-4.8851-1.5152.0741.0741 0 00-.0785.0371c-.211.3753-.4447.8648-.6083 1.2495-1.8447-.2762-3.68-.2762-5.4868 0-.1636-.3933-.4058-.8742-.6177-1.2495a.077.077 0 00-.0785-.037 19.7363 19.7363 0 00-4.8852 1.515.0699.0699 0 00-.0321.0277C.5334 9.0458-.319 13.5799.0992 18.0578a.0824.0824 0 00.0312.0561c2.0528 1.5076 4.0413 2.4228 5.9929 3.0294a.0777.0777 0 00.0842-.0276c.4616-.6304.8731-1.2952 1.226-1.9942a.076.076 0 00-.0416-.1057c-.6528-.2476-1.2743-.5495-1.8722-.8923a.077.077 0 01-.0076-.1277c.1258-.0943.2517-.1923.3718-.2914a.0743.0743 0 01.0776-.0105c3.9278 1.7933 8.18 1.7933 12.0614 0a.0739.0739 0 01.0785.0095c.1202.099.246.1981.3728.2924a.077.077 0 01-.0066.1276 12.2986 12.2986 0 01-1.873.8914.0766.0766 0 00-.0407.1067c.3604.698.7719 1.3628 1.225 1.9932a.076.076 0 00.0842.0286c1.961-.6067 3.9495-1.5219 6.0023-3.0294a.077.077 0 00.0313-.0552c.5004-5.177-.8382-9.6739-3.5485-13.6604a.061.061 0 00-.0312-.0286zM8.02 15.3312c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9555-2.4189 2.157-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.9555 2.4189-2.1569 2.4189zm7.9748 0c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9554-2.4189 2.1569-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.946 2.4189-2.1568 2.4189Z"/></svg><span>discord</span></a>
+    <a class="deki-chip deki-chip-solid" href="https://dekiengine.com/ja/donate/"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M12 20.5 3.9 12.4a4.8 4.8 0 0 1 0-6.8 4.8 4.8 0 0 1 6.8 0l1.3 1.3 1.3-1.3a4.8 4.8 0 0 1 6.8 0 4.8 4.8 0 0 1 0 6.8Z"/></svg><span>寄付</span></a>
+    <details class="deki-lang"><summary aria-label="言語: 日本語"><span class="deki-nav-label">日本語</span></summary><div class="deki-lang-menu"><a href="../index.html" data-deki-root="../" hreflang="en" lang="en">English</a><a href="../ja/index.html" data-deki-root="../ja/" hreflang="ja" lang="ja" aria-current="true">日本語</a><a href="../zh/index.html" data-deki-root="../zh/" hreflang="zh" lang="zh">简体中文</a><a href="../ko/index.html" data-deki-root="../ko/" hreflang="ko" lang="ko">한국어</a></div></details>
+    <script>(function () {
+      var page = location.pathname.split('/').pop() || 'index.html';
+      if (!/^(index|pages|engine-core|settings|guide-[a-z0-9-]+)\.html$/.test(page)) return;
+      document.querySelectorAll('[data-deki-root]').forEach(function (a) {
+        a.href = a.getAttribute('data-deki-root') + page + location.hash;
+      });
+    })();</script>
+  </div>
+</div>
+<div id="top"><!-- do not remove this div, it is closed by doxygen! -->
+<div id="titlearea">
+<table cellspacing="0" cellpadding="0">
+ <tbody>
+ <tr id="projectrow">
+  <td id="projectalign">
+   <div id="projectname">deki-rendering<span id="projectnumber">&#160;0.19.0</span>
+   </div>
+   <div id="projectbrief">Deki パッケージリファレンス</div>
+  </td>
+ </tr>
+ </tbody>
+</table>
+</div>
+<!-- end header part -->
+<!-- 構築: Doxygen 1.18.0 -->
+<script type="text/javascript">
+document.addEventListener('DOMContentLoaded', codefold.init);
+</script>
+<script type="application/json" id="doxygen-config">
+{
+  "relPath": "",
+  "generateTreeView": true,
+  "searchEngine": false,
+  "serverBasedSearch": false,
+  "disableIndex": false,
+  "dynamicMenus": true,
+  "fullSidebar": false
+}
+</script>
+<script type="text/javascript" src="menudata.js"></script>
+<script type="text/javascript" src="menu.js"></script>
+<div id="main-nav-mobile">
+</div><!-- main-nav-mobile -->
+<div id="main-nav">
+  <ul class="sm sm-dox" id="main-menu">
+    <li id="searchBoxPos2">
+    </li>
+  </ul>
+</div><!-- main-nav -->
+</div><!-- top -->
+<div id="side-nav" class="ui-resizable side-nav-resizable">
+  <div id="nav-tree">
+    <div id="nav-tree-contents">
+      <div id="nav-sync" class="sync"></div>
+    </div>
+  </div>
+  <div id="splitbar" class="ui-resizable-handle">
+  </div>
+</div>
+<script type="text/javascript">
+document.addEventListener('DOMContentLoaded',() => { initNavTree('index.html','',''); });
+</script>
+<div id="container">
+<div id="doc-content">
+<div><div class="header">
+  <div class="headertitle"><div class="title">deki-rendering </div></div>
+</div><!--header-->
+<div class="contents">
+<div class="textblock"><p><a class="anchor" id="mainpage"></a></p>
+<div class="image">
+<img src="deki-rendering.png" alt=""/>
+</div>
+    <p>コアのレンダリングパイプライン。カメラ、レンダーシステム、標準 2D レンダラー、QuadBlit、レンダーパス、ソートを提供します。</p>
+<p>リポジトリ: <a href="https://github.com/dekiengine/deki-rendering">github.com/dekiengine/deki-rendering</a> · 最新リリース: 0.19.0 · エンジン 0.19.0 以降が必要</p>
+<p><span class="tt">DekiEditor --packages-add deki-rendering &lt;project&gt;</span> か、パッケージマネージャーからインストールします。エンジン自身のコンポーネントと C++ API は <a href="https://dekiengine.github.io/docs/ja/">Deki のドキュメント</a>にあります。</p>
+<p>エディターでは <b>Rendering</b> と表示されます。</p>
+<h1 class="doxsection"><a class="anchor" id="components"></a>
+コンポーネント</h1>
+<table class="markdownTable">
+<tr class="markdownTableHead">
+<th class="markdownTableHeadNone">コンポーネント  </th><th class="markdownTableHeadNone">カテゴリ  </th><th class="markdownTableHeadNone">説明  </th></tr>
+<tr class="markdownTableRowOdd">
+<td class="markdownTableBodyNone"><a class="el" href="#c-cameracomponent" title="CameraComponent">CameraComponent</a>  </td><td class="markdownTableBodyNone">コア  </td><td class="markdownTableBodyNone">ビューです。位置、ワールドを映す範囲、クリアカラーを決めます。  </td></tr>
+</table>
+<h1 class="doxsection"><a class="anchor" id="component-reference"></a>
+コンポーネントリファレンス</h1>
+<h2 class="doxsection"><a class="anchor" id="c-cameracomponent"></a>
+CameraComponent</h2>
+<p>ビューです。位置、ワールドを映す範囲、クリアカラーを決めます。</p>
+<p>インスペクターでの名前: カメラコンポーネント · カテゴリ: コア · 型: <span class="tt">DekiRendering::CameraComponent</span></p>
+<table class="markdownTable">
+<tr class="markdownTableHead">
+<th class="markdownTableHeadNone">プロパティ  </th><th class="markdownTableHeadNone">型  </th><th class="markdownTableHeadNone">デフォルト  </th><th class="markdownTableHeadNone">制約  </th><th class="markdownTableHeadNone">説明  </th></tr>
+<tr class="markdownTableRowOdd">
+<td class="markdownTableBodyNone"><span class="tt">clearColor</span>  </td><td class="markdownTableBodyNone">Color  </td><td class="markdownTableBodyNone"><span class="tt">"#314D79FF"</span>  </td><td class="markdownTableBodyNone"></td><td class="markdownTableBodyNone">何かを描く前に画面を塗りつぶす色です。何も覆っていない場所にはこの色が見えます。  </td></tr>
+<tr class="markdownTableRowEven">
+<td class="markdownTableBodyNone"><span class="tt">projection</span>  </td><td class="markdownTableBodyNone">enum  </td><td class="markdownTableBodyNone"><span class="tt">"Orthographic"</span>  </td><td class="markdownTableBodyNone"><span class="tt">Orthographic</span>, <span class="tt">Perspective</span>  </td><td class="markdownTableBodyNone">平行投影はワールドの一定の高さを平面的に映します。透視投影は視野角で奥行きを映す、3D メッシュ向けの方式です。スプライトはどちらでも平面的に描かれます。  </td></tr>
+<tr class="markdownTableRowOdd">
+<td class="markdownTableBodyNone"><span class="tt">orthoHeight</span>  </td><td class="markdownTableBodyNone">float  </td><td class="markdownTableBodyNone"><span class="tt">15</span>  </td><td class="markdownTableBodyNone">0.01 から 100000。単位 m。<span class="tt">projection</span> が許すときに表示  </td><td class="markdownTableBodyNone">カメラが上から下まで映すワールドの量です。どの画面もこれを高さいっぱいに拡大して表示します (横の x が倍率です)。  </td></tr>
+<tr class="markdownTableRowEven">
+<td class="markdownTableBodyNone"><span class="tt">pixelPerfect</span>  </td><td class="markdownTableBodyNone">bool  </td><td class="markdownTableBodyNone"><span class="tt">false</span>  </td><td class="markdownTableBodyNone"><span class="tt">projection</span> が許すときに表示  </td><td class="markdownTableBodyNone">ピクセルアート向けです。整数倍でのみ拡大するので、アートの 1 ピクセルが画面上ですべて同じ大きさになり、カメラもアートのピクセルグリッドに合わせます。倍率は切り捨てるため、カメラは平行投影の高さより少し広く映し、1 倍に満たない小さな画面では端が切れます。  </td></tr>
+<tr class="markdownTableRowOdd">
+<td class="markdownTableBodyNone"><span class="tt">fieldOfView</span>  </td><td class="markdownTableBodyNone">float  </td><td class="markdownTableBodyNone"><span class="tt">60</span>  </td><td class="markdownTableBodyNone">10 から 150。<span class="tt">projection</span> が許すときに表示  </td><td class="markdownTableBodyNone">垂直方向の視野角 (度) です。横長の画面ほど左右が広く見えます。60 が一般的な既定値で、大きくするほど広く、端がゆがんで見えます。  </td></tr>
+<tr class="markdownTableRowEven">
+<td class="markdownTableBodyNone"><span class="tt">nearPlane</span>  </td><td class="markdownTableBodyNone">float  </td><td class="markdownTableBodyNone"><span class="tt">0.1</span>  </td><td class="markdownTableBodyNone"><span class="tt">projection</span> が許すときに表示  </td><td class="markdownTableBodyNone">これより近いものは描かれません。大きくしても負荷は増えず、深度の精度が上がるので、シーンが許す範囲で大きくしてください。  </td></tr>
+<tr class="markdownTableRowOdd">
+<td class="markdownTableBodyNone"><span class="tt">farPlane</span>  </td><td class="markdownTableBodyNone">float  </td><td class="markdownTableBodyNone"><span class="tt">100</span>  </td><td class="markdownTableBodyNone"><span class="tt">projection</span> が許すときに表示  </td><td class="markdownTableBodyNone">これより遠いものは描かれません。  </td></tr>
+<tr class="markdownTableRowEven">
+<td class="markdownTableBodyNone"><span class="tt">clearEveryFrame</span>  </td><td class="markdownTableBodyNone">bool  </td><td class="markdownTableBodyNone"><span class="tt">true</span>  </td><td class="markdownTableBodyNone"></td><td class="markdownTableBodyNone">フレームごとに描く前に画面をクリアします。オフにすると前のフレームが下に残ります。全画面の背景がすべてを覆う場合は速くなり、残像を出したいときにも使えます。  </td></tr>
+</table>
+<h1 class="doxsection"><a class="anchor" id="project-settings"></a>
+プロジェクト設定</h1>
+<h2 class="doxsection"><a class="anchor" id="s-rendering-settings"></a>
+レンダリング 設定</h2>
+<p>プロジェクト設定のセクション <span class="tt">Rendering</span> (RenderingProjectSettings) です。</p>
+<p>カテゴリ: 設定 · 型: <span class="tt">DekiRendering::RenderingProjectSettings</span></p>
+<table class="markdownTable">
+<tr class="markdownTableHead">
+<th class="markdownTableHeadNone">プロパティ  </th><th class="markdownTableHeadNone">型  </th><th class="markdownTableHeadNone">デフォルト  </th><th class="markdownTableHeadNone">制約  </th><th class="markdownTableHeadNone">説明  </th></tr>
+<tr class="markdownTableRowOdd">
+<td class="markdownTableBodyNone"><span class="tt">halfWidthFramebuffer</span>  </td><td class="markdownTableBodyNone">bool  </td><td class="markdownTableBodyNone"><span class="tt">false</span>  </td><td class="markdownTableBodyNone"></td><td class="markdownTableBodyNone">横方向を半分の解像度で描き、表示のときに 2 倍に広げます。転送のコストとフレームバッファのメモリは半分になりますが、ピクセルアートは横に 2:1 で引き伸ばされて見えます。  </td></tr>
+<tr class="markdownTableRowEven">
+<td class="markdownTableBodyNone"><span class="tt">interlaced60hz</span>  </td><td class="markdownTableBodyNone">bool  </td><td class="markdownTableBodyNone"><span class="tt">false</span>  </td><td class="markdownTableBodyNone"></td><td class="markdownTableBodyNone">60Hz で、奇数の走査線と偶数の走査線を 1 フレームおきに描きます。フレームごとの処理は半分になりますが、縦の動きで櫛状の乱れが見えます。  </td></tr>
+<tr class="markdownTableRowOdd">
+<td class="markdownTableBodyNone"><span class="tt">dirtyTileTracking</span>  </td><td class="markdownTableBodyNone">bool  </td><td class="markdownTableBodyNone"><span class="tt">false</span>  </td><td class="markdownTableBodyNone"></td><td class="markdownTableBodyNone">差分矩形の追跡です。各フレームが描いた矩形を記録し、次のフレームではそこだけをクリアして、変わった部分 (今回と前回のフレームの矩形) だけをディスプレイへ送ります。ほとんど静止したシーンで大きく効き、全体が動くシーンでは管理のコストが少しかかります。部分的な表示ができないディスプレイには、これまでどおりフレーム全体を送ります。  </td></tr>
+<tr class="markdownTableRowEven">
+<td class="markdownTableBodyNone"><span class="tt">dirtyTileSize</span>  </td><td class="markdownTableBodyNone">int32  </td><td class="markdownTableBodyNone"><span class="tt">32</span>  </td><td class="markdownTableBodyNone">1 から 256。<span class="tt">dirtyTileTracking</span> が許すときに表示  </td><td class="markdownTableBodyNone">差分矩形の揃え単位 (ピクセル) です。各矩形はこの倍数まで広げられます。大きいほど送る回数が減って 1 回が大きくなり、小さな動きは同じ矩形を使い回します。小さいほど矩形がぴったりになります。  </td></tr>
+</table>
+<h1 class="doxsection"><a class="anchor" id="changelog"></a>
+変更履歴</h1>
+<p>変更履歴は英語です。</p>
+<h2 class="doxsection"><a class="anchor" id="autotoc_md0"></a>
+0.19.0</h2>
+<h2 class="doxsection"><a class="anchor" id="autotoc_md1"></a>
+Changed</h2>
+<ul>
+<li><span class="tt">minEngine</span> 0.19.0: built against engine 0.19.0, whose component metadata records the package each class is in. A build of this package from before does not load and is rebuilt.</li>
+</ul>
+<h2 class="doxsection"><a class="anchor" id="autotoc_md2"></a>
+Added</h2>
+<ul>
+<li>Japanese, Simplified Chinese and Korean: <span class="tt">editor/lang/ja.json</span>, <span class="tt">zh.json</span> and <span class="tt">ko.json</span> translate the names, tooltips and enum values this package's components show in the Inspector.</li>
+<li>The package's editor text goes through the editor's translation (<span class="tt">Tr</span>), so it shows in the editor's language. Needs the editor release that adds <span class="tt">Localization.h</span>; raise <span class="tt">minEngine</span> to it when releasing.</li>
+</ul>
+<h2 class="doxsection"><a class="anchor" id="autotoc_md3"></a>
+0.18.2</h2>
+<h2 class="doxsection"><a class="anchor" id="autotoc_md4"></a>
+Added</h2>
+<ul>
+<li><span class="tt">RenderProfiler</span>: once enabled, the draws, content time, blit time and pixels per frame of each component type, and the frame's clear. The ESP32's <span class="tt">DEKI:PROFILE</span> console request reports it.</li>
+</ul>
+<h2 class="doxsection"><a class="anchor" id="autotoc_md5"></a>
+Changed</h2>
+<ul>
+<li><p class="startli"><b>Blits are several times faster on the ESP32.</b></p><ul>
+<li>A pixel is read from RGB565 sources byte by byte. With <span class="tt">memcpy</span>, which GCC makes a function call on the ESP32's Xtensa when the pixel may be unaligned, every pixel cost a call.</li>
+<li>A 1:1 sprite drawn onto RGB565 with a tint or alpha tint runs in one loop per row, with the tint worked out once for each of RGB565's channel values. It went through the per-pixel pipeline.</li>
+<li>So does a sprite drawn onto RGB565A8 scaled or tinted: each particle into its emitter's composite. The demo's two fountains took 3.6 ms a frame on a LilyGO T-Deck, now 2.4 ms.</li>
+</ul>
+<p class="startli">The pixels are the same as before.</p>
+</li>
+</ul>
+<p>それ以前のリリース: <a href="https://github.com/dekiengine/deki-rendering/blob/master/CHANGELOG.md">CHANGELOG.md</a></p>
+<hr  />
+<p>パッケージのリフレクションデータから生成しています (エンジン 0.19.0)。プロパティ名はシーンファイルで使われるキーです。名前を変えても別名が残ります (<a href="https://github.com/dekiengine/deki-editor/blob/master/COMPATIBILITY.md">互換性</a>)。 </p>
+</div></div><!-- PageDoc -->
+<a href="doxygen_crawl.html"></a>
+</div><!-- contents -->
+</div><!-- doc-content -->
+</div><!-- container -->
+<!-- start footer part -->
+<div id="nav-path" class="navpath"><!-- id is needed for treeview function! -->
+  <ul>
+    <li class="footer">構築: <a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.18.0 </li>
+  </ul>
+</div>
+</body>
+</html>
