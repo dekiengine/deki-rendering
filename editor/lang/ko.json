@@ -46,5 +46,8 @@
     "Pass Type": "패스 유형",
     "No passes registered": "등록된 패스가 없습니다",
     "Settings:": "설정:",
-    "+ Add Pass": "+ 패스 추가"
+    "+ Add Pass": "+ 패스 추가",
+    "Core": "코어",
+    "Settings": "설정",
+    "The view: position, how much world it shows, and clear color.": "뷰입니다. 위치, 보여 줄 월드의 범위, 클리어 색상을 정합니다."
 }

@@ -46,5 +46,8 @@
     "Pass Type": "パスの種類",
     "No passes registered": "登録されたパスがありません",
     "Settings:": "設定:",
-    "+ Add Pass": "+ パスを追加"
+    "+ Add Pass": "+ パスを追加",
+    "Core": "コア",
+    "Settings": "設定",
+    "The view: position, how much world it shows, and clear color.": "ビューです。位置、ワールドを映す範囲、クリアカラーを決めます。"
 }
