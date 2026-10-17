@@ -12,6 +12,7 @@
 #include "../DekiRenderPassRegistry.h"
 #include <nlohmann/json.hpp>
 #include <deki-editor/EditorUI.h>
+#include <deki-editor/Localization.h>
 
 #include <vector>
 #include <string>
@@ -27,7 +28,7 @@ class RenderPipelineEditor : public AssetTypeEditor
 {
 public:
     const char* GetTypeName() const override { return "RenderPipeline"; }
-    const char* GetDisplayName() const override { return "Render Pipeline"; }
+    const char* GetDisplayName() const override { return DekiEditor::TrMark("Render Pipeline"); }
     const char* GetExtension() const override { return ".asset"; }
 
     const char* GetDefaultContent() const override
@@ -78,7 +79,7 @@ public:
             }
 
             int selected = currentRendererIdx >= 0 ? currentRendererIdx : 0;
-            if (ui.Combo("Renderer", &selected, items.data(), static_cast<int>(items.size())))
+            if (ui.Combo(DekiEditor::TrLabel("Renderer"), &selected, items.data(), static_cast<int>(items.size())))
             {
                 data["renderer"] = rendererNames[selected];
                 modified = true;
@@ -86,11 +87,11 @@ public:
         }
         else
         {
-            ui.TextDisabled("No renderers registered");
+            ui.TextDisabled(DekiEditor::Tr("No renderers registered"));
         }
 
         ui.Separator();
-        ui.Text("Render Passes");
+        ui.Text(DekiEditor::Tr("Render Passes"));
         ui.Spacing();
 
         // --- Pass list ---
@@ -118,8 +119,8 @@ public:
 
             // Collapsible header with its own close button.
             bool passOpen = true;
-            bool open =
-                ui.CollapsingHeader(passType.empty() ? "(select pass type)" : passType.c_str(), &passOpen, true);
+            bool open = ui.CollapsingHeader(
+                passType.empty() ? DekiEditor::TrLabel("(select pass type)") : passType.c_str(), &passOpen, true);
 
             if (!passOpen)
             {
@@ -152,7 +153,8 @@ public:
                     }
 
                     int sel = currentPassIdx >= 0 ? currentPassIdx : 0;
-                    if (ui.Combo("Pass Type", &sel, passItems.data(), static_cast<int>(passItems.size())))
+                    if (ui.Combo(DekiEditor::TrLabel("Pass Type"), &sel, passItems.data(),
+                                 static_cast<int>(passItems.size())))
                     {
                         pass["type"] = passNames[sel];
                         modified = true;
@@ -160,7 +162,7 @@ public:
                 }
                 else
                 {
-                    ui.TextDisabled("No passes registered");
+                    ui.TextDisabled(DekiEditor::Tr("No passes registered"));
                 }
 
                 // Settings, read only.
@@ -173,7 +175,7 @@ public:
                 if (!settings.empty())
                 {
                     ui.Spacing();
-                    ui.TextDisabled("Settings:");
+                    ui.TextDisabled(DekiEditor::Tr("Settings:"));
                     for (auto& [key, val] : settings.items())
                     {
                         char line[256];
@@ -195,7 +197,7 @@ public:
         }
 
         // Add pass button
-        if (ui.Button("+ Add Pass"))
+        if (ui.Button(DekiEditor::TrLabel("+ Add Pass")))
         {
             // The first registered pass, if any.
             std::string defaultType = passNames.empty() ? "" : passNames[0];
