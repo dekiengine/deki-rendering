@@ -49,5 +49,6 @@
     "+ Add Pass": "+ 添加通道",
     "Core": "核心",
     "Settings": "设置",
-    "The view: position, how much world it shows, and clear color.": "视图：位置、显示的世界范围大小，以及清除颜色。"
+    "The view: position, how much world it shows, and clear color.": "视图：位置、显示的世界范围大小，以及清除颜色。",
+    "Rendering": "渲染"
 }
