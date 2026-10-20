@@ -48,7 +48,29 @@ a full present.
 Editor and SDL3 displays present partial frames. The LovyanGFX display's
 partial present (row bands through a small DMA staging buffer, which also
 stops the byte swap for big-endian panels from mutating the engine's
-framebuffer) is implemented but has not yet been run on hardware.
+framebuffer) runs on hardware, on the LilyGO T-Deck Plus.
+
+## Strips (`bandRows`)
+
+On a device, the Rendering setting `bandRows` draws each frame in strips of
+that many rows into a small buffer in internal RAM, sending each strip to the
+display before drawing the next. There is no framebuffer, which is the point
+when a whole one only fits in PSRAM. Strips keep every feature whole frames
+have:
+
+- Dirty rectangles: every strip is still drawn, but only the rows this frame
+  or the last drew in are sent, and a strip with none is not sent. The strip
+  buffer is cleared only where the strip drawn before it drew.
+- A camera with `clearEveryFrame` off: the frame is kept in PSRAM, and each
+  strip is read from it before drawing and written back after. The first
+  frame the camera stops clearing starts from the clear colour.
+- Screenshots: `DekiRenderSystem::RequestFrameCapture()` copies the next
+  frame's strips into a PSRAM frame, which `GetFrameBuffer()` returns until
+  the frame after. The device's `DEKI:SCREENSHOT` asks for one.
+- A renderer or pass that cannot draw in strips (`DrawsInStrips()`, false by
+  default for a renderer and for a pass with `BeginFrame` or `EndFrame`; the
+  3D mesh pass while the scene has a mesh) gets whole frames, drawn in PSRAM,
+  for as long as it cannot, and the log says so.
 
 ## Dependencies
 

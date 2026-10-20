@@ -2,8 +2,10 @@
 
 #include "DekiRenderer.h"
 #include "DirtyRegion.h"
+#include "QuadBlit.h"
 #include "RenderPass.h"
 #include <deki/ComponentInterfaceAdapters.h>
+#include <deki/Object.h>
 
 #include <cstdint>
 #include <deque>
@@ -59,6 +61,8 @@ public:
 
     void Render(Deki::Scene* scene, const RenderContext& ctx) override;
     const DirtyRegion* GetLastFrameDirty() const override { return m_FrameDirtyValid ? &m_FrameDirty : nullptr; }
+    /// Yes, unless one of its passes says no (RenderPass::DrawsInStrips).
+    bool DrawsInStrips(Deki::Scene* scene) const override;
 
     /// Adds a custom render pass. Not owned: the caller manages its lifetime.
     void AddPass(RenderPass* pass);
@@ -135,10 +139,61 @@ private:
     static void SortItems(std::vector<SortItem>& items);
 
     void CollectSortableItems(Deki::Object* obj, std::vector<SortItem>& items);
-    void RenderObject(const SortItem& item, const RenderContext& ctx);
 
-    // Built-in components: clip and renderer.
-    void ExecuteBuiltins(const SortItem& item, RenderContext& ctx);
+    // What ExecuteBuiltins works out in the whole view for one object, which
+    // is the same in every strip of a frame.
+    struct BuiltinGeometry
+    {
+        bool valid = false;
+        Deki::WorldTransform wt{};
+        int32_t clipLeft = 0, clipTop = 0, clipWidth = 0, clipHeight = 0;  // IClipProvider, whole view
+        float screenX = 0.0f, screenY = 0.0f;                              // renderer origin, before snapping
+        bool hasExtents = false;
+        float reach = 0.0f;  // cull radius around the origin, when hasExtents
+    };
+
+    // A frame drawn strip by strip (RenderContext::contentFrame) is collected
+    // and sorted once: its first strip records the sorted tree here, with each
+    // object's geometry, and the other strips replay it. The hooks, clips and
+    // draws are the same as walking the scene again; only the walk, the sorts
+    // and the whole-view maths are not repeated.
+    struct PlanEntry
+    {
+        SortItem item;
+        uint32_t firstChild = 0;
+        uint32_t childCount = 0;
+        BuiltinGeometry geo;
+    };
+    enum class PlanMode
+    {
+        Off,
+        Recording,
+        Replaying
+    };
+    std::vector<PlanEntry> m_Plan;
+    uint32_t m_PlanRoots = 0;
+    uint32_t m_PlanFrame = 0;
+    PlanMode m_PlanMode = PlanMode::Off;
+
+    // planIndex: the object's entry in m_Plan while recording or replaying, -1 otherwise.
+    void RenderObject(const SortItem& item, const RenderContext& ctx, int32_t planIndex);
+
+    // A renderer's content for the frame being drawn strip by strip
+    // (RenderContext::contentFrame), so later strips reuse it.
+    struct CachedContent
+    {
+        bool hasContent;
+        QuadBlit::Source source;
+        float pivotX, pivotY;
+        uint8_t tintR, tintG, tintB, tintA;
+    };
+    std::unordered_map<const RendererComponent*, CachedContent> m_ContentCache;
+    uint32_t m_ContentCacheFrame = 0;
+
+    // Built-in components: clip and renderer. geo, when given, holds the
+    // object's whole-view geometry from an earlier strip of the frame, or is
+    // filled in for later ones.
+    void ExecuteBuiltins(const SortItem& item, RenderContext& ctx, BuiltinGeometry* geo);
     void PostExecuteBuiltins(const SortItem& item);
 };
 

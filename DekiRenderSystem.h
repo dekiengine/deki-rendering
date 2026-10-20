@@ -52,6 +52,7 @@ private:
     bool m_HaveLastDrawn = false;
     bool m_ForceFull = true;
     Deki::Color m_LastClearColor;
+    bool m_LastClearEveryFrame = true;
     bool m_HaveClearColor = false;
     DirtyRegion m_DrawnScratch;
     DirtyRegion m_PresentScratch;
@@ -60,6 +61,48 @@ private:
 
     BufferHistory& HistoryFor(const uint8_t* buffer);
     void ResetDirtyHistory();
+
+    // ---- strip rendering (RenderingProjectSettings::bandRows) ----
+    // With bandRows set there is no framebuffer: each frame is drawn a strip
+    // of rows at a time into m_BandBuffer, in internal RAM, and each strip is
+    // sent to the display before the next is drawn.
+    //
+    // Everything whole frames do, strips do too:
+    // - dirty-rect tracking: every strip is drawn, but only the rows of it
+    //   that changed (drawn this frame or the last) are sent, a strip with
+    //   none is not sent at all, and the strip buffer is cleared only where
+    //   the strip drawn into it before drew;
+    // - a camera that does not clear: the frame is kept in m_WholeFrame,
+    //   each strip read from it before drawing and written back after;
+    // - screenshots: RequestFrameCapture() copies the next frame's strips
+    //   into m_WholeFrame, which GetFrameBuffer() then returns;
+    // - a renderer or pass that cannot draw in strips (DrawsInStrips): whole
+    //   frames are drawn into m_WholeFrame while it cannot.
+    int32_t m_BandRows = 0;
+    uint8_t* m_BandBuffer = nullptr;
+    uint32_t m_ContentFrame = 0;
+    bool m_BandWarned = false;
+    // What the strip buffer holds besides the clear colour (in its own rows),
+    // so the next strip clears only that. Invalid: clear all of it.
+    DirtyRegion m_BandHeld;
+    bool m_BandHeldValid = false;
+    DirtyRegion m_BandFrameDrawn;  // what this frame's strips drew, in view rows
+    // A whole frame, in external memory where there is some, allocated only
+    // while something needs it and freed the first frame nothing does.
+    uint8_t* m_WholeFrame = nullptr;
+    bool m_WholeFrameHolds = false;  // holds the frame last drawn
+    bool m_WholeFrames = false;      // drawing whole frames into it (DrawsInStrips said no)
+    bool m_WholeFrameWarned = false;
+    uint32_t m_CaptureSeen = 0;
+    bool AllocateBand();
+    void FreeBand();
+    void RenderBands(Deki::Scene* scene, CameraComponent* camera, bool capture);
+    uint8_t* EnsureWholeFrame(const Deki::Color& clear);
+    void FreeWholeFrame();
+    bool TakeCaptureRequest();
+    // True when the camera's clear colour or clearEveryFrame differs from
+    // the last frame's (what was not drawn is then something else); notes it.
+    bool ClearChanged(const CameraComponent& camera);
 
 public:
     DekiRenderSystem();
@@ -80,13 +123,38 @@ public:
     void SetDirtyTracking(bool enabled, int32_t alignment);
     bool IsDirtyTracking() const { return m_TrackDirty; }
     void MarkAllDirty() override { m_ForceFull = true; }
+
+    // Strip rendering. Setup() reads the project setting on a device (the
+    // editor ignores it); hosts and tests can set it here, after Setup. 0
+    // renders whole frames. Returns false when the strip cannot be allocated.
+    bool SetBandRows(int32_t rows);
+    int32_t GetBandRows() const { return m_BandRows; }
+    /// True while strips are set but the renderer cannot draw in them, so
+    /// whole frames are drawn instead.
+    bool IsDrawingWholeFrames() const { return m_BandRows > 0 && m_WholeFrames; }
     const Deki::Rect* GetPresentRects(int32_t* count) const override;
+
+    /// Asks every render system drawing in strips to also put its next frame
+    /// together whole, for a screenshot: GetFrameBuffer() returns it after
+    /// that frame, until the frame after. Costs one frame's copy into
+    /// external memory, once. Whole frames need nothing: GetFrameBuffer()
+    /// always has one. Safe from any task.
+    static void RequestFrameCapture();
 
     void SetRenderer(DekiRenderer* renderer) override { m_Renderer = renderer; }
     DekiRenderer* GetRenderer() const override { return m_Renderer; }
 
-    // For external systems such as the HAL.
-    const uint8_t* GetFrameBuffer() const override { return m_RenderBuffer; }
+    // For external systems such as the HAL. In strips there is a whole frame
+    // only after RequestFrameCapture(), while the camera does not clear, or
+    // while whole frames are drawn instead; otherwise null.
+    const uint8_t* GetFrameBuffer() const override
+    {
+        if (m_BandRows > 0)
+        {
+            return m_WholeFrameHolds ? m_WholeFrame : nullptr;
+        }
+        return m_RenderBuffer;
+    }
     int32_t GetScreenWidth() const override { return m_ScreenWidth; }
     int32_t GetScreenHeight() const override { return m_ScreenHeight; }
     Deki::ColorFormat GetColorFormat() const override { return m_ColorFormat; }
@@ -94,7 +162,8 @@ public:
     void GetPixel(int32_t x, int32_t y, uint8_t* r, uint8_t* g, uint8_t* b) const;
     Deki::Color GetPixel(int32_t x, int32_t y) const;
 
-    int GetBytesPerPixel(Deki::ColorFormat format);
+    int GetBytesPerPixel(Deki::ColorFormat format) { return GetBytesPerPixelOf(format); }
+    static int GetBytesPerPixelOf(Deki::ColorFormat format);
 
     // Deki::IRenderSystem: calls RenderToBufferStatic.
     void RenderToBuffer(Deki::Scene* scene, Deki::ICamera* camera, uint8_t* buffer, int32_t width, int32_t height,

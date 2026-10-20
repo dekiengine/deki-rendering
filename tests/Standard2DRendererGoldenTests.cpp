@@ -56,16 +56,22 @@ public:
     float pivotX = 0.5f, pivotY = 0.5f;
     float sourcePpm = 16.0f;  // 4 px == 0.25 m at the default camera scale
 
+    mutable int extentCalls = 0;
+
     bool GetContentExtents(float& outW, float& outH) const override
     {
+        ++extentCalls;
         outW = 4.0f / sourcePpm;
         outH = 4.0f / sourcePpm;
         return true;
     }
 
+    int contentCalls = 0;
+
     bool RenderContent(const Deki::Object*, QuadBlit::Source& outSource, float& outPivotX, float& outPivotY,
                        uint8_t& tr, uint8_t& tg, uint8_t& tb, uint8_t& ta) override
     {
+        ++contentCalls;
         for (int i = 0; i < 16; ++i)
         {
             DekiPixel::Store565(&m_Pixels[i * 3], colour);  // as a loaded image is
@@ -572,4 +578,110 @@ TEST(RendererGoldenTest, DirtyTrackingIsPixelIdenticalAndCoversEveryDrawnPixel)
         }
         EXPECT_EQ(uncovered, 0) << c.name << ": drawn pixels outside the dirty region";
     }
+}
+
+namespace
+{
+// Renders a case strip by strip, `rows` rows at a time, into one whole-frame
+// buffer, as DekiRenderSystem does with bandRows set.
+std::vector<uint8_t> RenderInStrips(SceneBuilder& b, Deki::ColorFormat fmt, int rows, uint32_t frame,
+                                    Standard2DRenderer& renderer)
+{
+    const size_t pitch = static_cast<size_t>(kW) * TargetBpp(fmt);
+    std::vector<uint8_t> whole(pitch * kH, 0);
+    for (int top = 0; top < kH; top += rows)
+    {
+        const int n = std::min(rows, kH - top);
+        std::vector<uint8_t> strip(pitch * n, 0);
+        RenderContext ctx{ b.camera, strip.data(), kW, n, fmt };
+        ctx.viewTop = top;
+        ctx.viewHeight = kH;
+        ctx.contentFrame = frame;
+        renderer.Render(&b.scene, ctx);
+        EXPECT_EQ(QuadBlit::GetClipStackDepth(), 0);
+        QuadBlit::ClearClipStack();
+        std::copy(strip.begin(), strip.end(), whole.begin() + static_cast<std::ptrdiff_t>(pitch * top));
+    }
+    return whole;
+}
+}  // namespace
+
+// Drawn strip by strip, every case on every target gives the pixels of the
+// whole frame drawn at once, whatever the strip height: sprites across strip
+// edges, clips, snapping and culling all land on the same pixels.
+TEST(RendererGoldenTest, StripsArePixelIdenticalToWholeFrames)
+{
+    RegisterTestAdapters();
+    for (Deki::ColorFormat fmt : kDstFmts)
+    {
+        for (const Case& c : kCases)
+        {
+            for (int rows : { 1, 2, 5, 16, 47 })
+            {
+                SceneBuilder b;
+                c.build(b);
+                std::vector<uint8_t> plain(static_cast<size_t>(kW) * kH * TargetBpp(fmt), 0);
+                Standard2DRenderer whole;
+                RenderContext ctx{ b.camera, plain.data(), kW, kH, fmt };
+                whole.Render(&b.scene, ctx);
+                QuadBlit::ClearClipStack();
+
+                Standard2DRenderer strips;
+                EXPECT_EQ(RenderInStrips(b, fmt, rows, 1, strips), plain)
+                    << c.name << ", strips of " << rows << " rows, format " << static_cast<int>(fmt);
+            }
+        }
+    }
+}
+
+// An object across several strips produces its content once per frame, and
+// again on the next frame.
+TEST(RendererGoldenTest, StripsProduceContentOncePerFrame)
+{
+    RegisterTestAdapters();
+    SceneBuilder b;
+    TestRenderer* big = b.Sprite("big", 0.0f, 0.0f, 0xF800, 0);
+    big->sourcePpm = 2.0f;  // 2 m square: 32 px, across every 8-row strip but the edges
+    Standard2DRenderer renderer;
+
+    RenderInStrips(b, Deki::ColorFormat::RGB565, 8, 1, renderer);
+    EXPECT_EQ(big->contentCalls, 1);
+    RenderInStrips(b, Deki::ColorFormat::RGB565, 8, 2, renderer);
+    EXPECT_EQ(big->contentCalls, 2);
+
+    // A whole frame (contentFrame 0) never reuses content.
+    std::vector<uint8_t> target(static_cast<size_t>(kW) * kH * 2, 0);
+    RenderContext ctx{ b.camera, target.data(), kW, kH, Deki::ColorFormat::RGB565 };
+    renderer.Render(&b.scene, ctx);
+    renderer.Render(&b.scene, ctx);
+    EXPECT_EQ(big->contentCalls, 4);
+}
+
+// A frame drawn in strips is walked once: the first strip records the order
+// and each object's whole-view geometry, and the other strips replay them. An
+// object's extents are asked for once per frame, not once per strip, and a
+// child added between frames is drawn from the next frame on.
+TEST(RendererGoldenTest, StripsWalkTheSceneOncePerFrame)
+{
+    RegisterTestAdapters();
+    SceneBuilder b;
+    TestRenderer* parentSprite = b.Sprite("parent", 0.0f, 0.0f, 0xF800, 0);
+    Standard2DRenderer renderer;
+
+    RenderInStrips(b, Deki::ColorFormat::RGB565, 8, 1, renderer);  // 6 strips
+    EXPECT_EQ(parentSprite->extentCalls, 1);
+    RenderInStrips(b, Deki::ColorFormat::RGB565, 8, 2, renderer);
+    EXPECT_EQ(parentSprite->extentCalls, 2);
+
+    // The scene changes between frames: the next frame walks it again.
+    TestRenderer* child = b.Sprite("child", 0.4f, 0.3f, 0x001F, 1, parentSprite->GetOwner());
+    const std::vector<uint8_t> strips = RenderInStrips(b, Deki::ColorFormat::RGB565, 8, 3, renderer);
+    EXPECT_EQ(child->extentCalls, 1);
+
+    std::vector<uint8_t> whole(static_cast<size_t>(kW) * kH * 2, 0);
+    Standard2DRenderer reference;
+    RenderContext ctx{ b.camera, whole.data(), kW, kH, Deki::ColorFormat::RGB565 };
+    reference.Render(&b.scene, ctx);
+    QuadBlit::ClearClipStack();
+    EXPECT_EQ(strips, whole);
 }

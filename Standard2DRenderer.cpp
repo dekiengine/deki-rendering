@@ -47,6 +47,18 @@ void Standard2DRenderer::RemovePass(RenderPass* pass)
     }
 }
 
+bool Standard2DRenderer::DrawsInStrips(Deki::Scene* scene) const
+{
+    for (const RenderPass* pass : m_Passes)
+    {
+        if (!pass->DrawsInStrips(scene))
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
 void Standard2DRenderer::AddSortingCallback(SortingCallback cb)
 {
     if (cb && std::find(m_SortingCallbacks.begin(), m_SortingCallbacks.end(), cb) == m_SortingCallbacks.end())
@@ -144,26 +156,56 @@ Standard2DRenderer::Renderables Standard2DRenderer::ResolveRenderables(Deki::Obj
 
 // --- Built-in components ---
 
-void Standard2DRenderer::ExecuteBuiltins(const SortItem& item, RenderContext& ctx)
+void Standard2DRenderer::ExecuteBuiltins(const SortItem& item, RenderContext& ctx, BuiltinGeometry* geo)
 {
     Deki::Object* obj = item.obj;
-    const Deki::WorldTransform wt = obj->GetWorldTransform();  // one dirty check for all five values
+
+    // Positions are worked out in the whole view, exactly as for a whole
+    // frame, and only then moved up to the strip by whole pixels, so a strip
+    // truncates and rounds every edge the way the whole frame does. (ctx.cam
+    // is the strip's: the whole view's moved up by viewTop, which is exact.)
+    FrameCamera cam = ctx.cam;
+    cam.halfH += static_cast<float>(ctx.viewTop);
+    const int32_t viewTop = ctx.viewTop;
+
+    // The whole-view geometry: the same in every strip of a frame, so a later
+    // strip takes it from the first.
+    BuiltinGeometry local;
+    BuiltinGeometry& g = geo ? *geo : local;
+    if (!g.valid)
+    {
+        g.wt = obj->GetWorldTransform();  // one dirty check for all five values
+        cam.WorldToScreen(g.wt.x, g.wt.y, g.screenX, g.screenY);
+        if (item.clip)
+        {
+            const int32_t screenX = static_cast<int32_t>(std::floor(g.screenX));
+            const int32_t screenY = static_cast<int32_t>(std::floor(g.screenY));
+            const float scaledW = item.clip->GetClipWidth() * cam.ppm * g.wt.scaleX;
+            const float scaledH = item.clip->GetClipHeight() * cam.ppm * g.wt.scaleY;
+            g.clipLeft = screenX - static_cast<int32_t>(std::floor(scaledW * 0.5f));
+            g.clipTop = screenY - static_cast<int32_t>(std::floor(scaledH * 0.5f));
+            g.clipWidth = static_cast<int32_t>(scaledW);
+            g.clipHeight = static_cast<int32_t>(scaledH);
+        }
+        // The cull box is conservative, from the component's world extents:
+        // it allows any pivot (the content lies within one full size of the
+        // origin) and any rotation (within width + height). Objects of
+        // unknown size are drawn.
+        float extentW = 0.0f, extentH = 0.0f;
+        g.hasExtents = item.renderer && item.renderer->GetContentExtents(extentW, extentH);
+        if (g.hasExtents)
+        {
+            g.reach = (std::fabs(extentW * g.wt.scaleX) + std::fabs(extentH * g.wt.scaleY)) * cam.ppm + 2.0f;
+        }
+        g.valid = true;
+    }
+    const Deki::WorldTransform& wt = g.wt;
 
     // Clip: push a clip rect if the object has an IClipProvider.
     if (item.clip)
     {
-        float fScreenX, fScreenY;
-        ctx.cam.WorldToScreen(wt.x, wt.y, fScreenX, fScreenY);
-        int32_t screenX = static_cast<int32_t>(std::floor(fScreenX));
-        int32_t screenY = static_cast<int32_t>(std::floor(fScreenY));
-
-        const float effective = ctx.cam.ppm;
-        float scaledW = item.clip->GetClipWidth() * effective * wt.scaleX;
-        float scaledH = item.clip->GetClipHeight() * effective * wt.scaleY;
-        int32_t left = screenX - static_cast<int32_t>(std::floor(scaledW * 0.5f));
-        int32_t top = screenY - static_cast<int32_t>(std::floor(scaledH * 0.5f));
-
-        QuadBlit::PushClipRect(left, top, left + static_cast<int32_t>(scaledW), top + static_cast<int32_t>(scaledH));
+        const int32_t top = g.clipTop - viewTop;
+        QuadBlit::PushClipRect(g.clipLeft, top, g.clipLeft + g.clipWidth, top + g.clipHeight);
     }
 
     // Renderer (a sprite, say): blit its content.
@@ -172,19 +214,14 @@ void Standard2DRenderer::ExecuteBuiltins(const SortItem& item, RenderContext& ct
     {
         const bool useOrderedDither = (renderer->alphaMode == AlphaMode::OrderedDither);
 
-        float fScreenX, fScreenY;
-        ctx.cam.WorldToScreen(wt.x, wt.y, fScreenX, fScreenY);
+        float fScreenX = g.screenX, fScreenY = g.screenY;
 
         // Cull before RenderContent, which may rasterise text, bake a gradient
-        // or copy a frame. The screen box is conservative, from the
-        // component's world extents: it allows any pivot (the content lies
-        // within one full size of the origin) and any rotation (within width +
-        // height). Objects of unknown size are drawn.
-        float extentW = 0.0f, extentH = 0.0f;
-        if (renderer->GetContentExtents(extentW, extentH))
+        // or copy a frame.
+        if (g.hasExtents)
         {
-            const float cx = fScreenX, cy = fScreenY;
-            const float reach = (std::fabs(extentW * wt.scaleX) + std::fabs(extentH * wt.scaleY)) * ctx.cam.ppm + 2.0f;
+            const float cx = fScreenX, cy = fScreenY - static_cast<float>(viewTop);
+            const float reach = g.reach;
             float left = 0.0f, top = 0.0f;
             float right = static_cast<float>(ctx.width), bottom = static_cast<float>(ctx.height);
             if (!renderer->ignoreClip && QuadBlit::IsClipEnabled())
@@ -205,13 +242,46 @@ void Standard2DRenderer::ExecuteBuiltins(const SortItem& item, RenderContext& ct
         float pivotX, pivotY;
         uint8_t tintR, tintG, tintB, tintA;
         const bool profiling = RenderProfiler::IsEnabled();
-        const uint64_t contentStart = profiling ? RenderProfiler::Now() : 0;
-        const bool hasContent = renderer->RenderContent(obj, source, pivotX, pivotY, tintR, tintG, tintB, tintA);
-        if (profiling)
+        bool hasContent = false;
+
+        // Drawn strip by strip, an object across several strips produces its
+        // content once (a particle composite, a text bake) and every strip
+        // blits that. Content handed over with ownsPixels is freed after its
+        // blit, so it is produced again for each strip.
+        CachedContent* cached = nullptr;
+        if (ctx.contentFrame != 0)
         {
-            const Deki::ComponentTypeInfo* info = renderer->GetTypeInfo();
-            RenderProfiler::AddContent(renderer->GetType(), RenderProfiler::Now() - contentStart,
-                                       info ? info->shortName : nullptr);
+            auto it = m_ContentCache.find(renderer);
+            if (it != m_ContentCache.end())
+            {
+                cached = &it->second;
+            }
+        }
+        if (cached)
+        {
+            hasContent = cached->hasContent;
+            source = cached->source;
+            pivotX = cached->pivotX;
+            pivotY = cached->pivotY;
+            tintR = cached->tintR;
+            tintG = cached->tintG;
+            tintB = cached->tintB;
+            tintA = cached->tintA;
+        }
+        else
+        {
+            const uint64_t contentStart = profiling ? RenderProfiler::Now() : 0;
+            hasContent = renderer->RenderContent(obj, source, pivotX, pivotY, tintR, tintG, tintB, tintA);
+            if (profiling)
+            {
+                const Deki::ComponentTypeInfo* info = renderer->GetTypeInfo();
+                RenderProfiler::AddContent(renderer->GetType(), RenderProfiler::Now() - contentStart,
+                                           info ? info->shortName : nullptr);
+            }
+            if (ctx.contentFrame != 0 && !(hasContent && source.ownsPixels))
+            {
+                m_ContentCache[renderer] = CachedContent{ hasContent, source, pivotX, pivotY, tintR, tintG, tintB, tintA };
+            }
         }
         if (hasContent)
         {
@@ -229,7 +299,7 @@ void Standard2DRenderer::ExecuteBuiltins(const SortItem& item, RenderContext& ct
             //
             // World coordinates are always meters. Source art renders 1:1 when
             // the camera's, the sprite's and the project's pixels-per-meter match.
-            const float worldToScreen = ctx.cam.ppm;
+            const float worldToScreen = cam.ppm;
             const float spritePPM = (source.pixelsPerMeter > 0.0f) ? source.pixelsPerMeter : 1.0f;
             const float invSourcePPM = 1.0f / spritePPM;
             const float drawScaleX = wt.scaleX * worldToScreen * invSourcePPM;
@@ -240,17 +310,18 @@ void Standard2DRenderer::ExecuteBuiltins(const SortItem& item, RenderContext& ct
             // pixelSnap true: round to the nearest pixel (sharp sprite art).
             // pixelSnap false: truncate, so sub-pixel motion accumulates and
             // continuous movement looks smoother (there is no bilinear yet).
-            if (ctx.cam.snapStep > 0)
+            if (cam.snapStep > 0)
             {
-                fScreenX = ctx.cam.SnapX(fScreenX);
-                fScreenY = ctx.cam.SnapY(fScreenY);
+                fScreenX = cam.SnapX(fScreenX);
+                fScreenY = cam.SnapY(fScreenY);
             }
-            const int32_t intScreenX = (renderer->pixelSnap || ctx.cam.snapStep > 0)
+            const int32_t intScreenX = (renderer->pixelSnap || cam.snapStep > 0)
                                            ? static_cast<int32_t>(std::lround(fScreenX))
                                            : static_cast<int32_t>(fScreenX);
-            const int32_t intScreenY = (renderer->pixelSnap || ctx.cam.snapStep > 0)
-                                           ? static_cast<int32_t>(std::lround(fScreenY))
-                                           : static_cast<int32_t>(fScreenY);
+            const int32_t intScreenY = ((renderer->pixelSnap || cam.snapStep > 0)
+                                            ? static_cast<int32_t>(std::lround(fScreenY))
+                                            : static_cast<int32_t>(fScreenY)) -
+                                       viewTop;
 
             const uint64_t blitStart = profiling ? RenderProfiler::Now() : 0;
             QuadBlit::Blit(source, ctx.buffer, ctx.width, ctx.height, ctx.format, intScreenX, intScreenY, drawScaleX,
@@ -400,9 +471,22 @@ void Standard2DRenderer::Render(Deki::Scene* scene, const RenderContext& ctx)
     }
 
     // Capture the camera once for the frame, against the target the passes
-    // settled on. Everything below maps world to screen through this.
-    frameCtx.cam = frameCtx.camera->CaptureFrameCamera(frameCtx.width, frameCtx.height);
-    SetCurrentDrawView({ frameCtx.cam.ppm, frameCtx.width, frameCtx.height });
+    // settled on. Everything below maps world to screen through this. A strip
+    // captures it for the whole view, then moves it up to the strip's rows.
+    const int32_t viewHeight = frameCtx.viewHeight > 0 ? frameCtx.viewHeight : frameCtx.height;
+    frameCtx.cam = frameCtx.camera->CaptureFrameCamera(frameCtx.width, viewHeight);
+    if (frameCtx.viewTop != 0)
+    {
+        frameCtx.cam.halfH -= static_cast<float>(frameCtx.viewTop);
+    }
+    SetCurrentDrawView({ frameCtx.cam.ppm, frameCtx.width, viewHeight });
+
+    // Content kept from earlier strips belongs to another frame now.
+    if (ctx.contentFrame == 0 || ctx.contentFrame != m_ContentCacheFrame)
+    {
+        m_ContentCache.clear();
+        m_ContentCacheFrame = ctx.contentFrame;
+    }
 
     // Dirty-rect tracking: QuadBlit records every blit into the caller's
     // buffer. A pass that installed its own frame target composites back into
@@ -419,30 +503,66 @@ void Standard2DRenderer::Render(Deki::Scene* scene, const RenderContext& ctx)
         QuadBlit::SetDirtyTracking(&m_FrameDirty, ctx.buffer);
     }
 
-    // Collect and sort the root objects.
     m_SortDepth = 0;
-    std::vector<SortItem>& sortableItems = SortListForDepth(0);
-
-    for (Deki::Object* obj : scene->GetObjects())
+    if (ctx.contentFrame != 0 && ctx.contentFrame == m_PlanFrame)
     {
-        CollectSortableItems(obj, sortableItems);
+        // A later strip of the frame: the order and geometry are recorded.
+        m_PlanMode = PlanMode::Replaying;
+        for (uint32_t i = 0; i < m_PlanRoots; i++)
+        {
+            RenderObject(m_Plan[i].item, frameCtx, static_cast<int32_t>(i));
+        }
     }
-
-    // And the persistent objects.
-    const auto& persistentObjects = Deki::Engine::GetInstance().GetSceneSystem().GetPersistentObjects();
-    for (Deki::Object* obj : persistentObjects)
+    else
     {
-        CollectSortableItems(obj, sortableItems);
-    }
+        // Collect and sort the root objects.
+        std::vector<SortItem>& sortableItems = SortListForDepth(0);
 
-    SortItems(sortableItems);
+        for (Deki::Object* obj : scene->GetObjects())
+        {
+            CollectSortableItems(obj, sortableItems);
+        }
 
-    // Render in sorted order. An index loop is safe: RenderObject recurses,
-    // but deeper levels use their own scratch lists, so this one stays put.
-    for (size_t i = 0; i < sortableItems.size(); i++)
-    {
-        RenderObject(sortableItems[i], frameCtx);
+        // And the persistent objects.
+        const auto& persistentObjects = Deki::Engine::GetInstance().GetSceneSystem().GetPersistentObjects();
+        for (Deki::Object* obj : persistentObjects)
+        {
+            CollectSortableItems(obj, sortableItems);
+        }
+
+        SortItems(sortableItems);
+
+        // The first strip of a frame records it for the others: the roots
+        // first, each object's children after it as they are reached.
+        m_PlanMode = ctx.contentFrame != 0 ? PlanMode::Recording : PlanMode::Off;
+        m_Plan.clear();
+        m_PlanRoots = 0;
+        m_PlanFrame = 0;
+        if (m_PlanMode == PlanMode::Recording)
+        {
+            for (const SortItem& item : sortableItems)
+            {
+                PlanEntry entry;
+                entry.item = item;
+                m_Plan.push_back(entry);
+            }
+            m_PlanRoots = static_cast<uint32_t>(sortableItems.size());
+        }
+
+        // Render in sorted order. An index loop is safe: RenderObject recurses,
+        // but deeper levels use their own scratch lists, so this one stays put.
+        for (size_t i = 0; i < sortableItems.size(); i++)
+        {
+            RenderObject(sortableItems[i], frameCtx,
+                         m_PlanMode == PlanMode::Recording ? static_cast<int32_t>(i) : -1);
+        }
+
+        if (m_PlanMode == PlanMode::Recording)
+        {
+            m_PlanFrame = ctx.contentFrame;
+        }
     }
+    m_PlanMode = PlanMode::Off;
 
     // Post-frame composites (e.g. screen-space overlays).
     for (auto it = m_EndPasses.rbegin(); it != m_EndPasses.rend(); ++it)
@@ -457,7 +577,7 @@ void Standard2DRenderer::Render(Deki::Scene* scene, const RenderContext& ctx)
     }
 }
 
-void Standard2DRenderer::RenderObject(const SortItem& item, const RenderContext& ctx)
+void Standard2DRenderer::RenderObject(const SortItem& item, const RenderContext& ctx, int32_t planIndex)
 {
     Deki::Object* obj = item.obj;
     RenderContext objCtx = ctx;
@@ -468,8 +588,10 @@ void Standard2DRenderer::RenderObject(const SortItem& item, const RenderContext&
         pass->PreExecute(obj, objCtx);
     }
 
-    // Phase 2: built-ins (sprite blit), into any target PreExecute redirected to.
-    ExecuteBuiltins(item, objCtx);
+    // Phase 2: built-ins (sprite blit), into any target PreExecute redirected
+    // to. Recording, the entry's geometry is filled in; replaying, reused.
+    // (Taken by index here: m_Plan only grows below, after this call.)
+    ExecuteBuiltins(item, objCtx, planIndex >= 0 ? &m_Plan[planIndex].geo : nullptr);
 
     // Phase 3: Execute passes (tilemap draw, etc.).
     for (RenderPass* pass : m_ExecPasses)
@@ -479,20 +601,51 @@ void Standard2DRenderer::RenderObject(const SortItem& item, const RenderContext&
 
     // Phase 4: the sorted children, with objCtx, so they inherit any buffer
     // redirect this object's PreExecute or Execute hooks applied.
-    ++m_SortDepth;
-    std::vector<SortItem>& childItems = SortListForDepth(m_SortDepth);
-    for (auto* child : obj->GetChildren())
+    if (m_PlanMode == PlanMode::Replaying)
     {
-        CollectSortableItems(child, childItems);
+        // m_Plan does not change while replaying, so entries stay put.
+        const uint32_t first = m_Plan[planIndex].firstChild;
+        const uint32_t count = m_Plan[planIndex].childCount;
+        for (uint32_t i = 0; i < count; i++)
+        {
+            RenderObject(m_Plan[first + i].item, objCtx, static_cast<int32_t>(first + i));
+        }
     }
-
-    SortItems(childItems);
-
-    for (size_t i = 0; i < childItems.size(); i++)
+    else
     {
-        RenderObject(childItems[i], objCtx);
+        ++m_SortDepth;
+        std::vector<SortItem>& childItems = SortListForDepth(m_SortDepth);
+        for (auto* child : obj->GetChildren())
+        {
+            CollectSortableItems(child, childItems);
+        }
+
+        SortItems(childItems);
+
+        // Recording: the children's entries go in one block, and each child
+        // records its own children after it. Indices, not references: the
+        // plan grows as the recursion goes.
+        uint32_t first = 0;
+        if (m_PlanMode == PlanMode::Recording)
+        {
+            first = static_cast<uint32_t>(m_Plan.size());
+            for (const SortItem& child : childItems)
+            {
+                PlanEntry entry;
+                entry.item = child;
+                m_Plan.push_back(entry);
+            }
+            m_Plan[planIndex].firstChild = first;
+            m_Plan[planIndex].childCount = static_cast<uint32_t>(childItems.size());
+        }
+
+        for (size_t i = 0; i < childItems.size(); i++)
+        {
+            RenderObject(childItems[i], objCtx,
+                         m_PlanMode == PlanMode::Recording ? static_cast<int32_t>(first + i) : -1);
+        }
+        --m_SortDepth;
     }
-    --m_SortDepth;
 
     // Phase 5: PostExecute passes, in reverse order.
     for (auto it = m_PostPasses.rbegin(); it != m_PostPasses.rend(); ++it)

@@ -33,6 +33,17 @@ struct RenderContext
     // (see DekiRenderer::GetLastFrameDirty). Set by DekiRenderSystem when the
     // project's dirty-rect tracking is on; off for edit-mode renders.
     bool trackDirty = false;
+    // Strip rendering: `buffer` holds rows [viewTop, viewTop + height) of a
+    // view viewHeight rows tall. Standard2DRenderer captures `cam` for the
+    // whole view and moves it up by viewTop, so whatever maps through `cam`
+    // lands in the strip, and QuadBlit clips to it. viewHeight 0 means the
+    // buffer is the whole view.
+    int32_t viewTop = 0;
+    int32_t viewHeight = 0;
+    // Nonzero while one frame is drawn strip by strip: each renderer's
+    // content from an earlier strip of the frame with this id is reused
+    // rather than produced again.
+    uint32_t contentFrame = 0;
 };
 
 /// Base class for renderers. Subclass it for a custom rendering strategy;
@@ -63,6 +74,19 @@ public:
     /// the caller then treats the whole frame as changed. Valid until the next
     /// Render().
     virtual const DirtyRegion* GetLastFrameDirty() const { return nullptr; }
+
+    /// Whether this renderer draws `scene` correctly strip by strip
+    /// (RenderContext::viewTop and viewHeight): each strip's Render() must
+    /// write into its rows exactly what a whole frame writes there. Asked
+    /// every frame before drawing in strips. While it says no,
+    /// DekiRenderSystem draws whole frames instead, in a framebuffer it
+    /// allocates for them. The default is no, so a renderer that knows nothing
+    /// of strips is never drawn wrong.
+    virtual bool DrawsInStrips(Deki::Scene* scene) const
+    {
+        (void)scene;
+        return false;
+    }
 };
 
 }  // namespace DekiRendering

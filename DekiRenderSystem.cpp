@@ -16,6 +16,7 @@
 #include <deki/reflection/SettingsRegistry.h>
 
 #include <algorithm>
+#include <atomic>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -23,11 +24,75 @@
 namespace DekiRendering
 {
 
+namespace
+{
+// Screenshot requests, counted: each render system takes those it has not
+// seen yet (DekiRenderSystem::RequestFrameCapture).
+std::atomic<uint32_t> s_CaptureRequests{ 0 };
+
+// Writes one pixel of `format` at p and returns its size in bytes.
+inline size_t WritePixel(uint8_t* p, Deki::ColorFormat format, uint8_t r, uint8_t g, uint8_t b)
+{
+    switch (format)
+    {
+        case Deki::ColorFormat::RGB565:
+            DekiPixel::Store565(p, DekiPixel::PackRGB565(r, g, b));
+            return 2;
+        case Deki::ColorFormat::RGB888:
+            p[0] = r;
+            p[1] = g;
+            p[2] = b;
+            return 3;
+        case Deki::ColorFormat::ARGB8888:
+        {
+            const uint32_t v = (0xFFu << 24) | (static_cast<uint32_t>(r) << 16) | (static_cast<uint32_t>(g) << 8) | b;
+            memcpy(p, &v, 4);
+            return 4;
+        }
+        case Deki::ColorFormat::RGB565A8:
+            DekiPixel::Store565(p, DekiPixel::PackRGB565(r, g, b));
+            p[2] = 0xFF;  // opaque
+            return 3;
+    }
+    return 0;
+}
+
+// Fills [x, x+w) x [y, y+h) of a buffer of bufW x bufH pixels, clipped.
+void FillRect(uint8_t* buffer, int32_t bufW, int32_t bufH, Deki::ColorFormat format, int32_t x, int32_t y, int32_t w,
+              int32_t h, uint8_t r, uint8_t g, uint8_t b)
+{
+    int32_t x0 = std::max<int32_t>(x, 0), y0 = std::max<int32_t>(y, 0);
+    int32_t x1 = std::min<int32_t>(x + w, bufW), y1 = std::min<int32_t>(y + h, bufH);
+    if (x1 <= x0 || y1 <= y0)
+    {
+        return;
+    }
+
+    const size_t bpp = static_cast<size_t>(DekiRenderSystem::GetBytesPerPixelOf(format));
+    const size_t pitch = static_cast<size_t>(bufW) * bpp;
+    const size_t span = static_cast<size_t>(x1 - x0) * bpp;
+    uint8_t* row0 = buffer + static_cast<size_t>(y0) * pitch + static_cast<size_t>(x0) * bpp;
+
+    // Write one pixel, double it across the first row, then copy the row down:
+    // all memcpy, no per-pixel loop.
+    WritePixel(row0, format, r, g, b);
+    for (size_t written = bpp; written < span; written *= 2)
+    {
+        memcpy(row0 + written, row0, std::min(written, span - written));
+    }
+    for (int32_t yy = y0 + 1; yy < y1; ++yy)
+    {
+        memcpy(row0 + static_cast<size_t>(yy - y0) * pitch, row0, span);
+    }
+}
+}  // namespace
+
 DekiRenderSystem::DekiRenderSystem()
     : m_RenderBuffer(nullptr),
       m_ScreenWidth(0),
       m_ScreenHeight(0),
-      m_ColorFormat(Deki::ColorFormat::RGB565)
+      m_ColorFormat(Deki::ColorFormat::RGB565),
+      m_CaptureSeen(s_CaptureRequests.load())
 {
 }
 
@@ -38,6 +103,7 @@ DekiRenderSystem::~DekiRenderSystem()
         Deki::Memory::FreeInternal(m_RenderBuffer);
     }
     m_RenderBuffer = nullptr;
+    FreeBand();
 }
 
 bool DekiRenderSystem::Setup(int32_t width, int32_t height, Deki::ColorFormat format)
@@ -49,12 +115,14 @@ bool DekiRenderSystem::Setup(int32_t width, int32_t height, Deki::ColorFormat fo
     m_TrackDirty = false;
     m_DirtyAlign = 32;
     bool halfWidth = false, interlaced = false;
+    int32_t bandRows = 0;
     if (auto* rs = Deki::SettingsRegistry::Instance().Get<RenderingProjectSettings>())
     {
         m_TrackDirty = rs->dirtyTileTracking;
         m_DirtyAlign = rs->dirtyTileSize;
         halfWidth = rs->halfWidthFramebuffer;
         interlaced = rs->interlaced60hz;
+        bandRows = rs->bandRows;
     }
     else
     {
@@ -77,7 +145,16 @@ bool DekiRenderSystem::Setup(int32_t width, int32_t height, Deki::ColorFormat fo
         {
             interlaced = b;
         }
+        if (Deki::ProjectSettings::ReadPackageSettingInt32("Rendering", "bandRows", a))
+        {
+            bandRows = a;
+        }
     }
+#ifdef DEKI_EDITOR
+    // The editor reads whole frames back (the Play view, captures, the
+    // pixel gates), so it never renders in strips.
+    bandRows = 0;
+#endif
     if (m_DirtyAlign < 1)
     {
         m_DirtyAlign = 1;
@@ -110,6 +187,25 @@ bool DekiRenderSystem::Setup(int32_t width, int32_t height, Deki::ColorFormat fo
     m_ScreenWidth = width;
     m_ScreenHeight = height;
     m_ColorFormat = format;
+
+    // In strips there is no framebuffer at all, which is the point: the
+    // whole frame may not fit where drawing is fast.
+    FreeBand();
+    if (bandRows > 0)
+    {
+        if (SetBandRows(bandRows))
+        {
+            if (m_BandRows > 0)
+            {
+                DEKI_LOG_INTERNAL("[Rendering] drawing in strips of %d rows", m_BandRows);
+                return true;
+            }
+        }
+        else
+        {
+            DEKI_LOG_ERROR("[Rendering] no internal memory for a %d-row strip; drawing whole frames", bandRows);
+        }
+    }
 
     // Prefer a buffer the display provides; it saves a memcpy in Present.
     if (TryAdoptDisplayBuffer())
@@ -166,28 +262,32 @@ void DekiRenderSystem::Render(Deki::Scene* currentScene)
 
     // A display registered after Setup() may offer a direct buffer: adopt it
     // once. When already using the display's buffer, ask for it each frame,
-    // since double-buffered displays alternate it in Present.
-    if (m_OwnsBuffer)
+    // since double-buffered displays alternate it in Present. Strips draw
+    // into their own buffer.
+    if (m_BandRows == 0)
     {
-        TryAdoptDisplayBuffer();
-    }
-    else
-    {
-        Deki::IDisplay* display = Deki::Engine::GetInstance().GetDisplay();
-        if (display)
+        if (m_OwnsBuffer)
         {
-            int32_t dw = 0, dh = 0;
-            uint8_t* buf = display->GetRenderBuffer(&dw, &dh);
-            if (buf)
+            TryAdoptDisplayBuffer();
+        }
+        else
+        {
+            Deki::IDisplay* display = Deki::Engine::GetInstance().GetDisplay();
+            if (display)
             {
-                m_RenderBuffer = buf;
+                int32_t dw = 0, dh = 0;
+                uint8_t* buf = display->GetRenderBuffer(&dw, &dh);
+                if (buf)
+                {
+                    m_RenderBuffer = buf;
+                }
             }
         }
-    }
 
-    if (!m_RenderBuffer)
-    {
-        return;
+        if (!m_RenderBuffer)
+        {
+            return;
+        }
     }
 
     // Find the scene's camera every frame rather than caching it: a cached
@@ -227,21 +327,57 @@ void DekiRenderSystem::Render(Deki::Scene* currentScene)
     // frame's camera puts the screen.
     Deki::ScreenAnchor::PlaceAll(currentScene, *camera, m_ScreenWidth, m_ScreenHeight);
 
+    const bool capture = TakeCaptureRequest();
+    if (m_BandRows > 0)
+    {
+        if (m_Renderer->DrawsInStrips(currentScene))
+        {
+            if (m_WholeFrames)
+            {
+                DEKI_LOG_INTERNAL("[Rendering] drawing in strips of %d rows again", m_BandRows);
+                m_WholeFrames = false;
+                m_RenderBuffer = nullptr;
+                m_OwnsBuffer = true;
+                ResetDirtyHistory();
+            }
+            RenderBands(currentScene, camera, capture);
+            return;
+        }
+
+        // Something in the frame cannot be drawn strip by strip (a 3D mesh,
+        // say): draw whole frames, as with bandRows 0, into a frame of our own
+        // until it can. It holds what strips kept, so nothing jumps.
+        if (!m_WholeFrames)
+        {
+            uint8_t* whole = EnsureWholeFrame(camera->clearColor);
+            if (!whole)
+            {
+                m_PresentCount = 0;
+                return;
+            }
+            DEKI_LOG_WARNING("[Rendering] the renderer or one of its render passes cannot draw in strips: drawing "
+                             "whole frames in %s memory while it cannot",
+                             Deki::Memory::IsExternalAvailable() ? "external" : "internal");
+            m_WholeFrames = true;
+            m_RenderBuffer = whole;
+            m_OwnsBuffer = false;
+            ResetDirtyHistory();
+        }
+        m_WholeFrameHolds = true;
+    }
+
     // ---- dirty-rect present -------------------------------------------------
     // Whenever the bookkeeping is unsure (first use of a buffer, a size or
-    // format change, a clear-colour change, a frame the renderer could not
-    // describe, MarkAllDirty), the frame is a full clear and a full present,
-    // the same as with tracking off.
+    // format change, a change of the camera's clear colour or clearEveryFrame,
+    // a frame the renderer could not describe, MarkAllDirty), the frame is a
+    // full clear and a full present, the same as with tracking off.
     const bool tracking = m_TrackDirty;
     BufferHistory* hist = tracking ? &HistoryFor(m_RenderBuffer) : nullptr;
     bool full = !tracking || m_ForceFull || !hist->valid;
     const Deki::Color clear = camera->clearColor;
-    if (!m_HaveClearColor || clear.r != m_LastClearColor.r || clear.g != m_LastClearColor.g ||
-        clear.b != m_LastClearColor.b)
+    if (ClearChanged(*camera))
     {
         full = true;
-        m_LastClearColor = clear;
-        m_HaveClearColor = true;
     }
 
     // Clear before rendering, unless the camera says the scene paints every
@@ -325,6 +461,298 @@ void DekiRenderSystem::Render(Deki::Scene* currentScene)
     m_ForceFull = false;
 }
 
+void DekiRenderSystem::RenderBands(Deki::Scene* scene, CameraComponent* camera, bool capture)
+{
+    // Every strip is sent here, so Engine::PresentFrame has nothing left.
+    m_PresentCount = 0;
+
+    Deki::IDisplay* display = Deki::Engine::GetInstance().GetDisplay();
+    if (!display || !display->SupportsPartialPresent())
+    {
+        if (!m_BandWarned)
+        {
+            DEKI_LOG_ERROR("[Rendering] bandRows is set, but %s; nothing is drawn",
+                           display ? "the display cannot be sent part of a frame" : "there is no display");
+            m_BandWarned = true;
+        }
+        return;
+    }
+
+    if (++m_ContentFrame == 0)
+    {
+        m_ContentFrame = 1;  // 0 means "not in strips"
+    }
+    RenderProfiler::CountFrame();
+
+    const Deki::Color clear = camera->clearColor;
+    const bool clearChanged = ClearChanged(*camera);
+
+    // A camera that does not clear keeps the last frame, and a screenshot
+    // needs this one whole: either way the strips also go to a whole frame.
+    const bool keepWanted = !camera->clearEveryFrame;
+    uint8_t* whole = (keepWanted || capture) ? EnsureWholeFrame(clear) : nullptr;
+    const bool keep = keepWanted && whole;
+    if (keepWanted && !whole && !m_WholeFrameWarned)
+    {
+        DEKI_LOG_ERROR("[Rendering] the camera does not clear, but there is no memory for the frame strips must "
+                       "keep for it; every strip is cleared");
+        m_WholeFrameWarned = true;
+    }
+
+    // Dirty rectangles: send only the rows of a strip that this frame or the
+    // last drew in. Whenever that is unknown, the whole strip goes.
+    const bool tracking = m_TrackDirty;
+    const bool sendAll = !tracking || m_ForceFull || clearChanged || !m_HaveLastDrawn || m_LastDrawn.IsFull();
+    if (tracking)
+    {
+        m_BandFrameDrawn.Reset(m_ScreenWidth, m_ScreenHeight);
+    }
+    if (clearChanged || keep)
+    {
+        m_BandHeldValid = false;
+    }
+
+    const size_t pitch = static_cast<size_t>(m_ScreenWidth) * GetBytesPerPixel(m_ColorFormat);
+    for (int32_t top = 0; top < m_ScreenHeight; top += m_BandRows)
+    {
+        const int32_t rows = std::min(m_BandRows, m_ScreenHeight - top);
+        uint8_t* const wholeRows = whole ? whole + static_cast<size_t>(top) * pitch : nullptr;
+
+        // The strip's starting pixels: the kept frame's rows, or the clear
+        // colour. The strip buffer still holds the strip drawn before, so
+        // with tracking only what that one drew is cleared.
+        const uint64_t clearStart = RenderProfiler::IsEnabled() ? RenderProfiler::Now() : 0;
+        if (keep)
+        {
+            memcpy(m_BandBuffer, wholeRows, static_cast<size_t>(rows) * pitch);
+        }
+        else if (m_BandHeldValid && !m_BandHeld.IsFull())
+        {
+            for (const Deki::Rect& r : m_BandHeld.Rects())
+            {
+                FillRect(m_BandBuffer, m_ScreenWidth, m_BandRows, m_ColorFormat, r.left, r.top, r.Width(), r.Height(),
+                         clear.r, clear.g, clear.b);
+            }
+        }
+        else
+        {
+            FillRect(m_BandBuffer, m_ScreenWidth, m_BandRows, m_ColorFormat, 0, 0, m_ScreenWidth, m_BandRows, clear.r,
+                     clear.g, clear.b);
+        }
+        if (RenderProfiler::IsEnabled())
+        {
+            RenderProfiler::AddContent(RenderProfiler::kClear, RenderProfiler::Now() - clearStart);
+        }
+
+        RenderContext ctx{ camera, m_BandBuffer, m_ScreenWidth, rows, m_ColorFormat };
+        ctx.viewTop = top;
+        ctx.viewHeight = m_ScreenHeight;
+        ctx.contentFrame = m_ContentFrame;
+        ctx.trackDirty = tracking;
+        m_Renderer->Render(scene, ctx);
+
+        // What this strip drew, in its own rows. Null: unknown, so all of it.
+        const DirtyRegion* drawn = tracking ? m_Renderer->GetLastFrameDirty() : nullptr;
+        const bool drawnKnown = drawn && !drawn->IsFull();
+        if (drawn && !keep)
+        {
+            m_BandHeld = *drawn;
+            m_BandHeldValid = true;
+        }
+        else
+        {
+            m_BandHeldValid = false;
+        }
+
+        if (whole)
+        {
+            memcpy(wholeRows, m_BandBuffer, static_cast<size_t>(rows) * pitch);
+        }
+
+        const Deki::Rect strip{ 0, top, m_ScreenWidth, top + rows };
+        Deki::Rect send = strip;
+        if (tracking)
+        {
+            if (drawnKnown)
+            {
+                for (const Deki::Rect& r : drawn->Rects())
+                {
+                    m_BandFrameDrawn.Add(r.left, r.top + top, r.right, r.bottom + top);
+                }
+            }
+            else
+            {
+                m_BandFrameDrawn.Add(strip);
+            }
+        }
+        if (!sendAll && drawnKnown)
+        {
+            // The bounds of this frame's draws and last frame's, in the strip.
+            send = Deki::Rect{ m_ScreenWidth, strip.bottom, 0, top };
+            auto grow = [&send, &strip](int32_t l, int32_t t, int32_t r, int32_t b)
+            {
+                t = std::max(t, strip.top);
+                b = std::min(b, strip.bottom);
+                if (r <= l || b <= t)
+                {
+                    return;
+                }
+                send.left = std::min(send.left, l);
+                send.top = std::min(send.top, t);
+                send.right = std::max(send.right, r);
+                send.bottom = std::max(send.bottom, b);
+            };
+            for (const Deki::Rect& r : drawn->Rects())
+            {
+                grow(r.left, r.top + top, r.right, r.bottom + top);
+            }
+            for (const Deki::Rect& r : m_LastDrawn.Rects())
+            {
+                grow(r.left, r.top, r.right, r.bottom);
+            }
+        }
+
+        // PresentRegions reads the rectangle's rows out of a whole frame. The
+        // strip is exactly those rows, so it is handed over as a frame whose
+        // row `top` starts at the strip: the display reads nothing else.
+        if (!send.Empty())
+        {
+            const auto* frameBase = reinterpret_cast<const uint8_t*>(reinterpret_cast<uintptr_t>(m_BandBuffer) -
+                                                                     static_cast<uintptr_t>(top) * pitch);
+            display->PresentRegions(frameBase, m_ScreenWidth, m_ScreenHeight, m_ColorFormat, &send, 1);
+        }
+    }
+
+    if (tracking)
+    {
+        std::swap(m_LastDrawn, m_BandFrameDrawn);
+        m_HaveLastDrawn = true;
+        m_ForceFull = false;
+    }
+    else
+    {
+        m_HaveLastDrawn = false;
+    }
+
+    // Kept for the next frame or read by a screenshot; otherwise nothing
+    // needs it any more.
+    m_WholeFrameHolds = whole != nullptr;
+    if (!whole)
+    {
+        FreeWholeFrame();
+    }
+}
+
+uint8_t* DekiRenderSystem::EnsureWholeFrame(const Deki::Color& clear)
+{
+    if (m_WholeFrame)
+    {
+        return m_WholeFrame;
+    }
+    const size_t bytes = Deki::FrameBufferBytes(m_ColorFormat, m_ScreenWidth, m_ScreenHeight);
+    const bool external = Deki::Memory::IsExternalAvailable();
+    m_WholeFrame = static_cast<uint8_t*>(
+        Deki::Memory::Allocate(bytes, external ? Deki::Memory::External : Deki::Memory::Internal));
+    if (!m_WholeFrame)
+    {
+        if (!m_WholeFrameWarned)
+        {
+            DEKI_LOG_ERROR("[Rendering] no %s memory for a whole %dx%d frame (%u bytes)",
+                           external ? "external" : "internal", static_cast<int>(m_ScreenWidth),
+                           static_cast<int>(m_ScreenHeight), static_cast<unsigned>(bytes));
+            m_WholeFrameWarned = true;
+        }
+        return nullptr;
+    }
+    // Nothing was kept before it: it starts as a cleared frame.
+    FillRect(m_WholeFrame, m_ScreenWidth, m_ScreenHeight, m_ColorFormat, 0, 0, m_ScreenWidth, m_ScreenHeight, clear.r,
+             clear.g, clear.b);
+    m_WholeFrameHolds = false;
+    return m_WholeFrame;
+}
+
+void DekiRenderSystem::FreeWholeFrame()
+{
+    if (m_WholeFrame)
+    {
+        if (m_RenderBuffer == m_WholeFrame)
+        {
+            m_RenderBuffer = nullptr;
+            m_OwnsBuffer = true;
+        }
+        Deki::Memory::Free(m_WholeFrame);
+        m_WholeFrame = nullptr;
+    }
+    m_WholeFrameHolds = false;
+    m_WholeFrames = false;
+}
+
+void DekiRenderSystem::RequestFrameCapture()
+{
+    s_CaptureRequests.fetch_add(1);
+}
+
+bool DekiRenderSystem::TakeCaptureRequest()
+{
+    const uint32_t requests = s_CaptureRequests.load();
+    const bool wanted = requests != m_CaptureSeen;
+    m_CaptureSeen = requests;
+    return wanted;
+}
+
+bool DekiRenderSystem::ClearChanged(const CameraComponent& camera)
+{
+    const Deki::Color& clear = camera.clearColor;
+    if (m_HaveClearColor && clear.r == m_LastClearColor.r && clear.g == m_LastClearColor.g &&
+        clear.b == m_LastClearColor.b && camera.clearEveryFrame == m_LastClearEveryFrame)
+    {
+        return false;
+    }
+    m_LastClearColor = clear;
+    m_LastClearEveryFrame = camera.clearEveryFrame;
+    m_HaveClearColor = true;
+    return true;
+}
+
+bool DekiRenderSystem::SetBandRows(int32_t rows)
+{
+    FreeBand();
+    m_BandWarned = false;
+    if (rows <= 0 || m_ScreenHeight <= 0 || rows >= m_ScreenHeight)
+    {
+        return true;  // whole frames
+    }
+    // Whole pairs of rows: some panels take writes only in pairs of rows
+    // (the RM67162 AMOLED), and a strip widened to one would be read past.
+    m_BandRows = (rows + 1) & ~1;
+    if (!AllocateBand())
+    {
+        m_BandRows = 0;
+        return false;
+    }
+    return true;
+}
+
+bool DekiRenderSystem::AllocateBand()
+{
+    const size_t bytes = static_cast<size_t>(m_ScreenWidth) * static_cast<size_t>(m_BandRows) *
+                         static_cast<size_t>(GetBytesPerPixel(m_ColorFormat));
+    m_BandBuffer = static_cast<uint8_t*>(Deki::Memory::AllocateInternal(bytes));
+    return m_BandBuffer != nullptr;
+}
+
+void DekiRenderSystem::FreeBand()
+{
+    if (m_BandBuffer)
+    {
+        Deki::Memory::FreeInternal(m_BandBuffer);
+        m_BandBuffer = nullptr;
+    }
+    m_BandRows = 0;
+    m_BandHeldValid = false;
+    FreeWholeFrame();
+}
+
 DekiRenderSystem::BufferHistory& DekiRenderSystem::HistoryFor(const uint8_t* buffer)
 {
     for (BufferHistory& h : m_History)
@@ -388,65 +816,13 @@ void DekiRenderSystem::RenderToBufferStatic(Deki::Scene* scene, Deki::ICamera* c
     renderer->Render(scene, ctx);
 }
 
-namespace
-{
-// Writes one pixel of `format` at p and returns its size in bytes.
-inline size_t WritePixel(uint8_t* p, Deki::ColorFormat format, uint8_t r, uint8_t g, uint8_t b)
-{
-    switch (format)
-    {
-        case Deki::ColorFormat::RGB565:
-            DekiPixel::Store565(p, DekiPixel::PackRGB565(r, g, b));
-            return 2;
-        case Deki::ColorFormat::RGB888:
-            p[0] = r;
-            p[1] = g;
-            p[2] = b;
-            return 3;
-        case Deki::ColorFormat::ARGB8888:
-        {
-            const uint32_t v = (0xFFu << 24) | (static_cast<uint32_t>(r) << 16) | (static_cast<uint32_t>(g) << 8) | b;
-            memcpy(p, &v, 4);
-            return 4;
-        }
-        case Deki::ColorFormat::RGB565A8:
-            DekiPixel::Store565(p, DekiPixel::PackRGB565(r, g, b));
-            p[2] = 0xFF;  // opaque
-            return 3;
-    }
-    return 0;
-}
-}  // namespace
-
 void DekiRenderSystem::ClearRect(int32_t x, int32_t y, int32_t w, int32_t h, uint8_t r, uint8_t g, uint8_t b)
 {
     if (!m_RenderBuffer)
     {
         return;
     }
-    int32_t x0 = std::max<int32_t>(x, 0), y0 = std::max<int32_t>(y, 0);
-    int32_t x1 = std::min<int32_t>(x + w, m_ScreenWidth), y1 = std::min<int32_t>(y + h, m_ScreenHeight);
-    if (x1 <= x0 || y1 <= y0)
-    {
-        return;
-    }
-
-    const size_t bpp = static_cast<size_t>(GetBytesPerPixel(m_ColorFormat));
-    const size_t pitch = static_cast<size_t>(m_ScreenWidth) * bpp;
-    const size_t span = static_cast<size_t>(x1 - x0) * bpp;
-    uint8_t* row0 = m_RenderBuffer + static_cast<size_t>(y0) * pitch + static_cast<size_t>(x0) * bpp;
-
-    // Write one pixel, double it across the first row, then copy the row down:
-    // all memcpy, no per-pixel loop.
-    WritePixel(row0, m_ColorFormat, r, g, b);
-    for (size_t written = bpp; written < span; written *= 2)
-    {
-        memcpy(row0 + written, row0, std::min(written, span - written));
-    }
-    for (int32_t yy = y0 + 1; yy < y1; ++yy)
-    {
-        memcpy(row0 + static_cast<size_t>(yy - y0) * pitch, row0, span);
-    }
+    FillRect(m_RenderBuffer, m_ScreenWidth, m_ScreenHeight, m_ColorFormat, x, y, w, h, r, g, b);
 }
 
 void DekiRenderSystem::ClearBuffer(uint8_t r, uint8_t g, uint8_t b)
@@ -461,7 +837,8 @@ void DekiRenderSystem::ClearBuffer(const Deki::Color& color)
 
 DEKI_FAST_ATTR void DekiRenderSystem::GetPixel(int32_t x, int32_t y, uint8_t* r, uint8_t* g, uint8_t* b) const
 {
-    if (!m_RenderBuffer || !r || !g || !b)
+    const uint8_t* frame = GetFrameBuffer();
+    if (!frame || !r || !g || !b)
     {
         if (r)
         {
@@ -489,21 +866,21 @@ DEKI_FAST_ATTR void DekiRenderSystem::GetPixel(int32_t x, int32_t y, uint8_t* r,
         case Deki::ColorFormat::RGB565:
         {
             size_t pixel_index = (y * m_ScreenWidth + x) * 2;
-            DekiPixel::UnpackRGB565(DekiPixel::Load565(m_RenderBuffer + pixel_index), *r, *g, *b);
+            DekiPixel::UnpackRGB565(DekiPixel::Load565(frame + pixel_index), *r, *g, *b);
             break;
         }
         case Deki::ColorFormat::RGB888:
         {
             size_t pixel_index = (y * m_ScreenWidth + x) * 3;
-            *r = m_RenderBuffer[pixel_index];
-            *g = m_RenderBuffer[pixel_index + 1];
-            *b = m_RenderBuffer[pixel_index + 2];
+            *r = frame[pixel_index];
+            *g = frame[pixel_index + 1];
+            *b = frame[pixel_index + 2];
             break;
         }
         case Deki::ColorFormat::ARGB8888:
         {
             size_t pixel_index = (y * m_ScreenWidth + x) * 4;
-            uint32_t pixel = *((uint32_t*)(m_RenderBuffer + pixel_index));
+            uint32_t pixel = *((uint32_t*)(frame + pixel_index));
             *r = (pixel >> 16) & 0xFF;
             *g = (pixel >> 8) & 0xFF;
             *b = pixel & 0xFF;
@@ -512,7 +889,7 @@ DEKI_FAST_ATTR void DekiRenderSystem::GetPixel(int32_t x, int32_t y, uint8_t* r,
         case Deki::ColorFormat::RGB565A8:
         {
             size_t pixel_index = (y * m_ScreenWidth + x) * 3;
-            DekiPixel::UnpackRGB565(DekiPixel::Load565(m_RenderBuffer + pixel_index), *r, *g, *b);
+            DekiPixel::UnpackRGB565(DekiPixel::Load565(frame + pixel_index), *r, *g, *b);
             break;
         }
     }
@@ -525,7 +902,7 @@ DEKI_FAST_ATTR Deki::Color DekiRenderSystem::GetPixel(int32_t x, int32_t y) cons
     return Deki::Color(r, g, b);
 }
 
-int DekiRenderSystem::GetBytesPerPixel(Deki::ColorFormat format)
+int DekiRenderSystem::GetBytesPerPixelOf(Deki::ColorFormat format)
 {
     switch (format)
     {

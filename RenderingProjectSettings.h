@@ -43,6 +43,19 @@ public:
     DEKI_VISIBLE_WHEN(dirtyTileTracking, 1)
     DEKI_EXPORT
     int32_t dirtyTileSize = 32;
+
+    DEKI_TOOLTIP("Render the frame in strips of this many rows, each sent to the display before the next is drawn, "
+                 "instead of into a whole framebuffer. For screens whose framebuffer does not fit in internal RAM: "
+                 "a strip does, and drawing there is much faster than in PSRAM. 0 renders whole frames. Strips keep "
+                 "every feature, some at a cost: with dirty-rect tracking every strip is still drawn, but only the "
+                 "rows that changed are sent; a camera that does not clear keeps the frame in PSRAM, read and "
+                 "written back for every strip (its first such frame starts from the clear colour); a screenshot "
+                 "copies one frame into PSRAM; a scene with something that cannot be drawn in strips (a 3D mesh) "
+                 "is drawn in whole frames in PSRAM while it has one, and the log says so. Devices only; the editor "
+                 "always renders whole frames.")
+    DEKI_RANGE(0, 256)
+    DEKI_EXPORT
+    int32_t bandRows = 0;
 };
 
 }  // namespace DekiRendering

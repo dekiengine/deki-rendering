@@ -4,6 +4,7 @@
 namespace Deki
 {
 class Object;
+class Scene;
 }
 
 namespace DekiRendering
@@ -82,6 +83,22 @@ public:
     /// composite here: read the scratch buffers it filled during the frame and
     /// write into the original framebuffer it saved in BeginFrame.
     virtual void EndFrame(RenderContext& ctx) {}
+
+    /// Whether this pass draws `scene` correctly when the frame is drawn strip
+    /// by strip (RenderingProjectSettings::bandRows). Each strip is a Render()
+    /// of its own: BeginFrame and EndFrame run once per strip, ctx.buffer
+    /// holds rows [ctx.viewTop, ctx.viewTop + ctx.height) of a view
+    /// ctx.viewHeight rows tall, and ctx.cam is moved up to the strip. The
+    /// default is yes for a pass with only per-object hooks, which maps
+    /// through ctx.cam as the contract above asks, and no for one with
+    /// BeginFrame or EndFrame, which usually works on the whole frame.
+    /// Override it to say otherwise. While any pass says no, whole frames are
+    /// drawn instead. Asked every frame before drawing in strips.
+    virtual bool DrawsInStrips(Deki::Scene* scene) const
+    {
+        (void)scene;
+        return (HookMask() & (RenderPassHooks::BeginFrame | RenderPassHooks::EndFrame)) == 0;
+    }
 };
 
 /// Custom sorting: returns true if the object is a sortable render item, and
