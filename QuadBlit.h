@@ -169,6 +169,16 @@ struct Source
     bool flipH = false;
     bool flipV = false;
     bool flipD = false;
+
+    // Optional promises about the pixels, for a cheaper 1:1 copy. A source
+    // in slow memory (a big bake in PSRAM) is then mostly not read at all.
+    // uniformRows: every row is one colour (a vertical gradient, a flat
+    // panel), so each destination row is filled from its source row's first
+    // pixel. uniformColumns: every row equals the first (a horizontal
+    // gradient), so only the first row is read. Set one only when it holds
+    // for every pixel: the copy trusts it.
+    bool uniformRows = false;
+    bool uniformColumns = false;
 };
 
 /// Describes a source buffer of the given layout. `ownsPixels` hands the

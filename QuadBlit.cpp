@@ -492,16 +492,56 @@ static void MakeTintTables(TintTables& t, uint8_t tintR, uint8_t tintG, uint8_t 
     }
 }
 
+// The tables for the last tint asked for, kept between blits: the same tint is
+// usually drawn many times a frame (a row of cards, a particle emitter's
+// colour while only its alpha fades), and building the tables costs about as
+// much as tinting a hundred pixels. QuadBlit runs on one thread (its clip
+// stack is shared too), so one static entry is enough.
+static const TintTables& TintTablesFor(uint8_t tintR, uint8_t tintG, uint8_t tintB)
+{
+    static TintTables s_Tables;
+    static uint32_t s_Key = 0xFFFFFFFFu;  // no RGB tint packs to this
+    const uint32_t key = (static_cast<uint32_t>(tintR) << 16) | (static_cast<uint32_t>(tintG) << 8) | tintB;
+    if (key != s_Key)
+    {
+        MakeTintTables(s_Tables, tintR, tintG, tintB);
+        s_Key = key;
+    }
+    return s_Tables;
+}
+
+// One tinted source pixel of alpha `a` (already multiplied by any alpha tint,
+// not 0) onto an RGB565 destination pixel, as the pipeline composites it.
+// Always inlined: it runs per pixel, and a call (into flash, from the IRAM
+// loops that use it) cost more than the work.
+[[gnu::always_inline]] static inline void TintPixel565(const TintTables& t, uint32_t v, uint32_t a, uint16_t* dp)
+{
+    const uint32_t r5 = v >> 11;
+    const uint32_t g6 = (v >> 5) & 0x3F;
+    const uint32_t b5 = v & 0x1F;
+    if (a == 255)
+    {
+        *dp = static_cast<uint16_t>(t.pr[r5] | t.pg[g6] | t.pb[b5]);
+        return;
+    }
+    const uint32_t bg = FromMemory565(*dp);
+    const uint32_t invA = 255u - a;
+    *dp = ToMemory565(PackRGB565(Div255(t.r[r5] * a + ((bg >> 11) << 3) * invA),
+                                 Div255(t.g[g6] * a + (((bg >> 5) & 0x3F) << 2) * invA),
+                                 Div255(t.b[b5] * a + ((bg & 0x1F) << 3) * invA)));
+}
+
 // RGB565 or RGB565A8 -> RGB565, 1:1, any tint and alpha tint; no key, dither or
 // flips. The pipeline's arithmetic in one tight loop per row: CompositePixel
 // per pixel cost several times as much, most of it for opaque pixels that
-// need no blending at all.
+// need no blending at all. (Splitting rows at their opaque run, as
+// BlendRows_RGB565A8_to_RGB565 does, was measured slower here on an
+// ESP32-S3: 100 ns a pixel against 80.)
 template <bool SourceAlpha>
 static DEKI_FAST_ATTR void TintRows_RGB565(const Source& source, uint16_t* target16, int32_t targetWidth, int32_t destX,
                                            int32_t destY, const BlitBounds& b, const BlitParams& p)
 {
-    TintTables t;
-    MakeTintTables(t, p.tintR, p.tintG, p.tintB);
+    const TintTables& t = TintTablesFor(p.tintR, p.tintG, p.tintB);
     const int32_t stride = SourceStride(source);
     const int32_t bpp = source.bytesPerPixel;
     const bool alphaTint = p.hasAlphaTint;
@@ -530,20 +570,7 @@ static DEKI_FAST_ATTR void TintRows_RGB565(const Source& source, uint16_t* targe
                     continue;
                 }
             }
-            const uint32_t v = Load565(sp);
-            const uint32_t r5 = v >> 11;
-            const uint32_t g6 = (v >> 5) & 0x3F;
-            const uint32_t b5 = v & 0x1F;
-            if (a == 255)
-            {
-                *dp = static_cast<uint16_t>(t.pr[r5] | t.pg[g6] | t.pb[b5]);
-                continue;
-            }
-            const uint32_t bg = FromMemory565(*dp);
-            const uint32_t invA = 255u - a;
-            *dp = ToMemory565(PackRGB565(Div255(t.r[r5] * a + ((bg >> 11) << 3) * invA),
-                                         Div255(t.g[g6] * a + (((bg >> 5) & 0x3F) << 2) * invA),
-                                         Div255(t.b[b5] * a + ((bg & 0x1F) << 3) * invA)));
+            TintPixel565(t, Load565(sp), a, dp);
         }
     }
 }
@@ -557,8 +584,7 @@ static DEKI_FAST_ATTR void TintScaledRows_RGB565A8(const Source& source, uint8_t
                                                    int32_t destX, int32_t destY, int32_t destWidth, int32_t destHeight,
                                                    const BlitBounds& b, const BlitParams& p)
 {
-    TintTables t;
-    MakeTintTables(t, p.tintR, p.tintG, p.tintB);
+    const TintTables& t = TintTablesFor(p.tintR, p.tintG, p.tintB);
     const int32_t stride = SourceStride(source);
     const int32_t bpp = source.bytesPerPixel;
     const bool alphaTint = p.hasAlphaTint;
@@ -617,16 +643,101 @@ static DEKI_FAST_ATTR void TintScaledRows_RGB565A8(const Source& source, uint8_t
     }
 }
 
+// Fills n RGB565 pixels with one stored value, two at a time.
+static DEKI_FAST_ATTR void FillRow565(uint16_t* dst, int32_t n, uint16_t value)
+{
+    if (n <= 0)
+    {
+        return;
+    }
+    if (reinterpret_cast<uintptr_t>(dst) & 2)
+    {
+        *dst++ = value;
+        --n;
+    }
+    const uint32_t pair = static_cast<uint32_t>(value) | (static_cast<uint32_t>(value) << 16);
+    uint32_t* dst32 = reinterpret_cast<uint32_t*>(dst);
+    for (int32_t i = 0; i < n / 2; ++i)
+    {
+        dst32[i] = pair;
+    }
+    if (n & 1)
+    {
+        dst[n - 1] = value;
+    }
+}
+
+// RGB565 or RGB565A8 -> RGB565, at any scale, any tint and alpha tint; no key,
+// dither or flips. The scaled pipeline's stepping and TintRows' arithmetic in
+// one tight loop per row: particles drawn straight into the frame take it,
+// dozens a frame, where the per-pixel pipeline cost half again as much.
+template <bool SourceAlpha>
+static DEKI_FAST_ATTR void TintScaledRows_RGB565(const Source& source, uint16_t* target16, int32_t targetWidth,
+                                                 int32_t destX, int32_t destY, int32_t destWidth, int32_t destHeight,
+                                                 const BlitBounds& b, const BlitParams& p)
+{
+    const TintTables& t = TintTablesFor(p.tintR, p.tintG, p.tintB);
+    const int32_t stride = SourceStride(source);
+    const int32_t bpp = source.bytesPerPixel;
+    const bool alphaTint = p.hasAlphaTint;
+    const uint32_t tintA = p.tintA;
+    const uint32_t xStep = ((uint32_t)source.width << 16) / (uint32_t)destWidth;
+    const uint32_t yStep = ((uint32_t)source.height << 16) / (uint32_t)destHeight;
+
+    for (int32_t py = b.startY; py < b.endY; py++)
+    {
+        const int32_t srcY = (int32_t)(((uint32_t)(py - destY) * yStep) >> 16);
+        const uint8_t* srcRow = source.pixels + srcY * stride;
+        uint16_t* dp = target16 + py * targetWidth + b.startX;
+        uint32_t acc = (uint32_t)(b.startX - destX) * xStep;
+        for (int32_t px = b.startX; px < b.endX; px++, dp++)
+        {
+            const uint8_t* sp = srcRow + (int32_t)(acc >> 16) * bpp;
+            acc += xStep;
+            uint32_t a = 255;
+            if constexpr (SourceAlpha)
+            {
+                a = sp[2];
+                if (a == 0)
+                {
+                    continue;
+                }
+            }
+            if (alphaTint)
+            {
+                a = Div255(a * tintA);
+                if (a == 0)
+                {
+                    continue;
+                }
+            }
+            TintPixel565(t, Load565(sp), a, dp);
+        }
+    }
+}
+
 // RGB565 -> RGB565, no tint or key: row copy (the SIMD kernel when aligned).
+// A source whose rows are each one colour is filled instead, reading one
+// pixel a row; one whose rows all equal the first copies that row each time.
 static DEKI_FAST_ATTR bool CopyRows_RGB565(const Source& source, uint16_t* target16, int32_t targetWidth, int32_t destX,
                                            int32_t destY, const BlitBounds& b)
 {
     const int32_t stride = SourceStride(source);
     const int32_t rowPixels = b.endX - b.startX;
+    if (source.uniformRows)
+    {
+        for (int32_t py = b.startY; py < b.endY; py++)
+        {
+            const uint16_t value = LoadU16(source.pixels + (py - destY) * stride);
+            FillRow565(target16 + py * targetWidth + b.startX, rowPixels, value);
+        }
+        return true;
+    }
     RowKernelFn copyKernel = s_Kernels[(int)KernelOp::RGB565CopyRow];
     for (int32_t py = b.startY; py < b.endY; py++)
     {
-        const uint16_t* srcPtr = (const uint16_t*)(source.pixels + (py - destY) * stride) + (b.startX - destX);
+        const int32_t srcY = source.uniformColumns ? 0 : py - destY;
+        const uint16_t* srcPtr = (const uint16_t*)(source.pixels + srcY * stride) + (b.startX - destX);
         uint16_t* dstPtr = target16 + py * targetWidth + b.startX;
         if (copyKernel && Aligned16(srcPtr, dstPtr))
         {
@@ -1024,6 +1135,26 @@ void BlitScaled(const Source& source, uint8_t* target, int32_t targetWidth, int3
         else
         {
             TintScaledRows_RGB565A8<false>(source, target, targetWidth, destX, destY, destWidth, destHeight, bounds, p);
+        }
+        return;
+    }
+
+    // Onto RGB565 from an RGB565 or RGB565A8 source, scaled, tinted or not (a
+    // particle drawn straight into the frame): TintScaledRows_RGB565. 1:1
+    // blits took the row paths above.
+    if (!oneToOne && !p.hasKey && !p.dither && !p.flips && targetFormat == Deki::ColorFormat::RGB565 &&
+        (kind == SrcKind::RGB565 || kind == SrcKind::RGB565A8))
+    {
+        scope.path = BlitPath::TintScaledRows;
+        uint16_t* target16 = (uint16_t*)target;
+        if (kind == SrcKind::RGB565A8 && source.hasAlpha)
+        {
+            TintScaledRows_RGB565<true>(source, target16, targetWidth, destX, destY, destWidth, destHeight, bounds, p);
+        }
+        else
+        {
+            TintScaledRows_RGB565<false>(source, target16, targetWidth, destX, destY, destWidth, destHeight, bounds,
+                                         p);
         }
         return;
     }
