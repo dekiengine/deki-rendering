@@ -179,6 +179,12 @@ struct Source
     // for every pixel: the copy trusts it.
     bool uniformRows = false;
     bool uniformColumns = false;
+
+    // Optional per-row runs of fully transparent pixels (alpha 0), laid out
+    // like alphaRowSpans ([start, end) per row; start >= end for none). A 1:1
+    // blit skips them without reading: an outline or frame baked at a panel's
+    // size is mostly the empty run inside it. Set it only when it holds.
+    const int16_t* clearRowSpans = nullptr;
 };
 
 /// Describes a source buffer of the given layout. `ownsPixels` hands the

@@ -531,6 +531,38 @@ static const TintTables& TintTablesFor(uint8_t tintR, uint8_t tintG, uint8_t tin
                                  Div255(t.b[b5] * a + ((bg & 0x1F) << 3) * invA)));
 }
 
+// Destination columns [x0, x1) of one row of a 1:1 tinted blit, each pixel
+// with its own alpha. Inlined: its loop is the blit's inner loop.
+template <bool SourceAlpha>
+[[gnu::always_inline]] static inline void TintRun(const TintTables& t, const uint8_t* srcRow, uint16_t* dstRow,
+                                                  int32_t destX, int32_t bpp, int32_t x0, int32_t x1, bool alphaTint,
+                                                  uint32_t tintA)
+{
+    const uint8_t* sp = srcRow + (x0 - destX) * bpp;
+    uint16_t* dp = dstRow + x0;
+    for (int32_t px = x0; px < x1; px++, sp += bpp, dp++)
+    {
+        uint32_t a = 255;
+        if constexpr (SourceAlpha)
+        {
+            a = sp[2];
+            if (a == 0)
+            {
+                continue;
+            }
+        }
+        if (alphaTint)
+        {
+            a = Div255(a * tintA);
+            if (a == 0)
+            {
+                continue;
+            }
+        }
+        TintPixel565(t, Load565(sp), a, dp);
+    }
+}
+
 // RGB565 or RGB565A8 -> RGB565, 1:1, any tint and alpha tint; no key, dither or
 // flips. The pipeline's arithmetic in one tight loop per row: CompositePixel
 // per pixel cost several times as much, most of it for opaque pixels that
@@ -547,30 +579,25 @@ static DEKI_FAST_ATTR void TintRows_RGB565(const Source& source, uint16_t* targe
     const bool alphaTint = p.hasAlphaTint;
     const uint32_t tintA = p.tintA;
 
+    const int16_t* clear = SourceAlpha ? source.clearRowSpans : nullptr;
+
     for (int32_t py = b.startY; py < b.endY; py++)
     {
-        const uint8_t* sp = source.pixels + (py - destY) * stride + (b.startX - destX) * bpp;
-        uint16_t* dp = target16 + py * targetWidth + b.startX;
-        for (int32_t px = b.startX; px < b.endX; px++, sp += bpp, dp++)
+        const int32_t srcY = py - destY;
+        const uint8_t* srcRow = source.pixels + srcY * stride;
+        uint16_t* dstRow = target16 + py * targetWidth;
+        if (clear)
         {
-            uint32_t a = 255;
-            if constexpr (SourceAlpha)
-            {
-                a = sp[2];
-                if (a == 0)
-                {
-                    continue;
-                }
-            }
-            if (alphaTint)
-            {
-                a = Div255(a * tintA);
-                if (a == 0)
-                {
-                    continue;
-                }
-            }
-            TintPixel565(t, Load565(sp), a, dp);
+            // The row's transparent run (alpha 0 everywhere in it) is not
+            // read: only the columns either side of it, inside the clip.
+            const int32_t cs = std::clamp<int32_t>(destX + clear[srcY * 2], b.startX, b.endX);
+            const int32_t ce = std::clamp<int32_t>(destX + clear[srcY * 2 + 1], cs, b.endX);
+            TintRun<SourceAlpha>(t, srcRow, dstRow, destX, bpp, b.startX, cs, alphaTint, tintA);
+            TintRun<SourceAlpha>(t, srcRow, dstRow, destX, bpp, ce, b.endX, alphaTint, tintA);
+        }
+        else
+        {
+            TintRun<SourceAlpha>(t, srcRow, dstRow, destX, bpp, b.startX, b.endX, alphaTint, tintA);
         }
     }
 }
