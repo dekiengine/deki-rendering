@@ -7,6 +7,14 @@
 namespace DekiRendering
 {
 
+/// How each frame reaches the screen; see RenderingProjectSettings::frameMode.
+enum class FrameMode : uint8_t
+{
+    Auto = 0,
+    WholeFrames = 1,
+    Strips = 2,
+};
+
 /// Project-wide rendering trade-offs, in the "Rendering" section of the
 /// editor's Project Settings panel.
 ///
@@ -14,7 +22,8 @@ namespace DekiRendering
 /// present. The feature tracks rectangles, not tiles, but the field names are
 /// part of the saved format and must stay. halfWidthFramebuffer and
 /// interlaced60hz are not implemented yet; DekiRenderSystem::Setup logs when
-/// they are set.
+/// they are set. frameMode and bandRows choose between whole frames and
+/// strips (DekiRenderSystem::Setup).
 DEKI_CATEGORY("Settings")
 DEKI_SETTINGS_SECTION("Rendering")
 class RenderingProjectSettings : public Deki::Component
@@ -44,18 +53,23 @@ public:
     DEKI_EXPORT
     int32_t dirtyTileSize = 32;
 
-    DEKI_TOOLTIP("Render the frame in strips of this many rows, each sent to the display before the next is drawn, "
-                 "instead of into a whole framebuffer. For screens whose framebuffer does not fit in internal RAM: "
-                 "a strip does, and drawing there is much faster than in PSRAM. 0 renders whole frames. Strips keep "
-                 "every feature, some at a cost: with dirty-rect tracking every strip is still drawn, but only the "
-                 "rows that changed are sent; a camera that does not clear keeps the frame in PSRAM, read and "
-                 "written back for every strip (its first such frame starts from the clear colour); a screenshot "
-                 "copies one frame into PSRAM; a scene with something that cannot be drawn in strips (a 3D mesh) "
-                 "is drawn in whole frames in PSRAM while it has one, and the log says so. Devices only; the editor "
-                 "always renders whole frames.")
-    DEKI_RANGE(0, 256)
+    DEKI_TOOLTIP("How each frame reaches the screen. Auto (the default) chooses on the device when the game starts: "
+                 "whole frames when the framebuffer fits in internal RAM with room to spare, strips when it does not "
+                 "(a 536x240 screen at 2 bytes a pixel is 257 KB, more than the free internal RAM of an ESP32-S3). "
+                 "Whole frames draws each frame once, in one buffer, and is the faster choice whenever that buffer "
+                 "is in internal RAM. Strips draws the frame a strip of rows at a time into a small buffer in "
+                 "internal RAM and sends each strip while the next is drawn, which is much faster than drawing a "
+                 "whole frame in PSRAM. Both give the same pixels and keep every feature. The boot log and "
+                 "DEKI:STATS say which one a board uses and why. The editor always draws whole frames.")
     DEKI_EXPORT
-    int32_t bandRows = 0;
+    FrameMode frameMode = FrameMode::Auto;
+
+    DEKI_TOOLTIP("Rows in each strip, when frames are drawn in strips. 40 suits most screens. Taller strips walk the "
+                 "scene fewer times a frame but need more internal RAM: a strip, and two copies of it for sending, "
+                 "of the screen's width times this many rows at 2 bytes a pixel.")
+    DEKI_RANGE(2, 256)
+    DEKI_EXPORT
+    int32_t bandRows = 40;
 };
 
 }  // namespace DekiRendering

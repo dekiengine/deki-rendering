@@ -5,6 +5,7 @@
 #include <deki/Engine.h>
 #include <deki/Color.h>
 #include "DirtyRegion.h"
+#include "RenderingProjectSettings.h"
 #include <deki/providers/IRenderSystem.h>
 
 namespace Deki
@@ -129,6 +130,36 @@ public:
     // renders whole frames. Returns false when the strip cannot be allocated.
     bool SetBandRows(int32_t rows);
     int32_t GetBandRows() const { return m_BandRows; }
+
+    /// Whole frames or strips, as Setup decides it from frameMode. Auto
+    /// chooses whole frames when a framebuffer of `frameBytes` fits in
+    /// `freeInternal` with kInternalHeadroom to spare for the game, and strips
+    /// otherwise; a display that cannot take part of a frame always gets
+    /// whole frames. `rows` 0: whole frames.
+    struct FrameChoice
+    {
+        int32_t rows;
+        enum class Why : uint8_t
+        {
+            Chosen,          // WholeFrames or Strips in the project settings
+            Fits,            // Auto: the framebuffer fits in internal RAM
+            DoesNotFit,      // Auto: it does not
+            WholeDisplay,    // Auto: the display takes only whole frames
+            Editor,          // the editor always draws whole frames
+        } why;
+    };
+    static constexpr size_t kInternalHeadroom = 64 * 1024;
+    static FrameChoice ChooseFrameMode(FrameMode mode, int32_t rows, size_t frameBytes, size_t freeInternal,
+                                       bool displayTakesPartialFrames);
+    /// The last Setup's choice and its reason, as one line for the log; and
+    /// the strip height it chose (0: whole frames), for DEKI:STATS.
+    static const char* LastFrameModeNote();
+    static int32_t LastFrameModeRows();
+
+private:
+    static void NoteFrameChoice(const FrameChoice& choice, size_t frameBytes, size_t freeInternal);
+
+public:
     /// True while strips are set but the renderer cannot draw in them, so
     /// whole frames are drawn instead.
     bool IsDrawingWholeFrames() const { return m_BandRows > 0 && m_WholeFrames; }

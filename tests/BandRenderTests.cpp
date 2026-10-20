@@ -201,3 +201,45 @@ TEST(BandRender, RendererThatKnowsNothingOfStripsGetsWholeFrames)
     ASSERT_NE(f.system.GetFrameBuffer(), nullptr);
     EXPECT_EQ(reinterpret_cast<const uint16_t*>(f.system.GetFrameBuffer())[(kH - 1) * kW], kH - 1);
 }
+
+// frameMode Auto: whole frames when the framebuffer fits in internal RAM with
+// the headroom kept for the game, strips otherwise, whole frames for a
+// display that cannot take part of a frame; WholeFrames and Strips as set.
+TEST(BandRender, AutoChoosesByFreeInternalRam)
+{
+    using Why = DekiRenderSystem::FrameChoice::Why;
+    constexpr size_t kTDeck = 320 * 240 * 2;   // 150 KB
+    constexpr size_t kAmoled = 536 * 240 * 2;  // 251 KB
+    constexpr size_t kFree = 270 * 1024;       // what an ESP32-S3 board has left at that point
+
+    auto c = DekiRenderSystem::ChooseFrameMode(FrameMode::Auto, 40, kTDeck, kFree, true);
+    EXPECT_EQ(c.rows, 0);
+    EXPECT_EQ(c.why, Why::Fits);
+
+    c = DekiRenderSystem::ChooseFrameMode(FrameMode::Auto, 40, kAmoled, kFree, true);
+    EXPECT_EQ(c.rows, 40);
+    EXPECT_EQ(c.why, Why::DoesNotFit);
+
+    // Exactly the headroom to spare still fits; a byte less does not.
+    c = DekiRenderSystem::ChooseFrameMode(FrameMode::Auto, 40, kFree - DekiRenderSystem::kInternalHeadroom, kFree,
+                                          true);
+    EXPECT_EQ(c.rows, 0);
+    c = DekiRenderSystem::ChooseFrameMode(FrameMode::Auto, 40, kFree - DekiRenderSystem::kInternalHeadroom + 1, kFree,
+                                          true);
+    EXPECT_EQ(c.rows, 40);
+
+    c = DekiRenderSystem::ChooseFrameMode(FrameMode::Auto, 40, kAmoled, kFree, false);
+    EXPECT_EQ(c.rows, 0);
+    EXPECT_EQ(c.why, Why::WholeDisplay);
+
+    c = DekiRenderSystem::ChooseFrameMode(FrameMode::WholeFrames, 40, kAmoled, kFree, true);
+    EXPECT_EQ(c.rows, 0);
+    EXPECT_EQ(c.why, Why::Chosen);
+    c = DekiRenderSystem::ChooseFrameMode(FrameMode::Strips, 24, kTDeck, kFree, true);
+    EXPECT_EQ(c.rows, 24);
+    EXPECT_EQ(c.why, Why::Chosen);
+
+    // No strip height set: 40.
+    c = DekiRenderSystem::ChooseFrameMode(FrameMode::Strips, 0, kTDeck, kFree, true);
+    EXPECT_EQ(c.rows, 40);
+}

@@ -16,6 +16,7 @@
 #include <deki/reflection/SettingsRegistry.h>
 
 #include <algorithm>
+#include <cstdio>
 #include <atomic>
 #include <cstdint>
 #include <cstdlib>
@@ -106,6 +107,85 @@ DekiRenderSystem::~DekiRenderSystem()
     FreeBand();
 }
 
+namespace
+{
+char s_FrameModeNote[160] = "whole frames";
+int32_t s_FrameModeRows = 0;
+}  // namespace
+
+DekiRenderSystem::FrameChoice DekiRenderSystem::ChooseFrameMode(FrameMode mode, int32_t rows, size_t frameBytes,
+                                                                size_t freeInternal, bool displayTakesPartialFrames)
+{
+    rows = rows > 0 ? rows : 40;
+    switch (mode)
+    {
+        case FrameMode::WholeFrames: return { 0, FrameChoice::Why::Chosen };
+        case FrameMode::Strips: return { rows, FrameChoice::Why::Chosen };
+        case FrameMode::Auto: break;
+    }
+    if (!displayTakesPartialFrames)
+    {
+        return { 0, FrameChoice::Why::WholeDisplay };
+    }
+    if (frameBytes + kInternalHeadroom <= freeInternal)
+    {
+        return { 0, FrameChoice::Why::Fits };
+    }
+    return { rows, FrameChoice::Why::DoesNotFit };
+}
+
+void DekiRenderSystem::NoteFrameChoice(const FrameChoice& choice, size_t frameBytes, size_t freeInternal)
+{
+    const unsigned frameKb = static_cast<unsigned>((frameBytes + 1023) / 1024);
+    const unsigned freeKb = static_cast<unsigned>(freeInternal / 1024);
+    char mode[32];
+    if (choice.rows > 0)
+    {
+        std::snprintf(mode, sizeof(mode), "strips of %d rows", static_cast<int>(choice.rows));
+    }
+    else
+    {
+        std::snprintf(mode, sizeof(mode), "whole frames");
+    }
+    switch (choice.why)
+    {
+        case FrameChoice::Why::Chosen:
+            std::snprintf(s_FrameModeNote, sizeof(s_FrameModeNote), "%s: chosen in the project's Rendering settings",
+                          mode);
+            break;
+        case FrameChoice::Why::Fits:
+            std::snprintf(s_FrameModeNote, sizeof(s_FrameModeNote),
+                          "%s: the %u KB framebuffer fits in internal RAM (%u KB free)", mode, frameKb, freeKb);
+            break;
+        case FrameChoice::Why::DoesNotFit:
+            std::snprintf(s_FrameModeNote, sizeof(s_FrameModeNote),
+                          "%s: the %u KB framebuffer does not fit in internal RAM (%u KB free, %u KB kept for the game)",
+                          mode, frameKb, freeKb, static_cast<unsigned>(kInternalHeadroom / 1024));
+            break;
+        case FrameChoice::Why::WholeDisplay:
+            std::snprintf(s_FrameModeNote, sizeof(s_FrameModeNote), "%s: the display takes only whole frames", mode);
+            break;
+        case FrameChoice::Why::Editor:
+            std::snprintf(s_FrameModeNote, sizeof(s_FrameModeNote), "%s: the editor always draws whole frames", mode);
+            break;
+    }
+    s_FrameModeRows = choice.rows;
+    if (choice.why != FrameChoice::Why::Editor)
+    {
+        DEKI_LOG_INFO("[Rendering] %s", s_FrameModeNote);
+    }
+}
+
+const char* DekiRenderSystem::LastFrameModeNote()
+{
+    return s_FrameModeNote;
+}
+
+int32_t DekiRenderSystem::LastFrameModeRows()
+{
+    return s_FrameModeRows;
+}
+
 bool DekiRenderSystem::Setup(int32_t width, int32_t height, Deki::ColorFormat format)
 {
     // Project-wide rendering settings. In the editor the registry holds the
@@ -115,7 +195,8 @@ bool DekiRenderSystem::Setup(int32_t width, int32_t height, Deki::ColorFormat fo
     m_TrackDirty = false;
     m_DirtyAlign = 32;
     bool halfWidth = false, interlaced = false;
-    int32_t bandRows = 0;
+    int32_t bandRows = 40;
+    FrameMode frameMode = FrameMode::Auto;
     if (auto* rs = Deki::SettingsRegistry::Instance().Get<RenderingProjectSettings>())
     {
         m_TrackDirty = rs->dirtyTileTracking;
@@ -123,6 +204,7 @@ bool DekiRenderSystem::Setup(int32_t width, int32_t height, Deki::ColorFormat fo
         halfWidth = rs->halfWidthFramebuffer;
         interlaced = rs->interlaced60hz;
         bandRows = rs->bandRows;
+        frameMode = rs->frameMode;
     }
     else
     {
@@ -149,12 +231,11 @@ bool DekiRenderSystem::Setup(int32_t width, int32_t height, Deki::ColorFormat fo
         {
             bandRows = a;
         }
+        if (Deki::ProjectSettings::ReadPackageSettingEnum("Rendering", "frameMode", sizeof(FrameMode), a))
+        {
+            frameMode = static_cast<FrameMode>(a);
+        }
     }
-#ifdef DEKI_EDITOR
-    // The editor reads whole frames back (the Play view, captures, the
-    // pixel gates), so it never renders in strips.
-    bandRows = 0;
-#endif
     if (m_DirtyAlign < 1)
     {
         m_DirtyAlign = 1;
@@ -188,22 +269,40 @@ bool DekiRenderSystem::Setup(int32_t width, int32_t height, Deki::ColorFormat fo
     m_ScreenHeight = height;
     m_ColorFormat = format;
 
+    // Whole frames or strips (RenderingProjectSettings::frameMode), said in
+    // the log with the reason, and kept for DEKI:STATS.
+    const size_t frameBytes = static_cast<size_t>(width) * static_cast<size_t>(height) *
+                              static_cast<size_t>(GetBytesPerPixel(format));
+#ifdef DEKI_EDITOR
+    // The editor reads whole frames back (the Play view, captures, the
+    // pixel gates), so it never renders in strips.
+    const size_t freeInternal = 0;
+    const FrameChoice choice{ 0, FrameChoice::Why::Editor };
+#else
+    const size_t freeInternal = Deki::Memory::GetAvailableInternal();
+    Deki::IDisplay* display = Deki::Engine::GetInstance().GetDisplay();
+    const FrameChoice choice =
+        ChooseFrameMode(frameMode, bandRows, frameBytes, freeInternal, !display || display->SupportsPartialPresent());
+#endif
+    NoteFrameChoice(choice, frameBytes, freeInternal);
+
     // In strips there is no framebuffer at all, which is the point: the
     // whole frame may not fit where drawing is fast.
     FreeBand();
-    if (bandRows > 0)
+    if (choice.rows > 0)
     {
-        if (SetBandRows(bandRows))
+        if (SetBandRows(choice.rows))
         {
             if (m_BandRows > 0)
             {
-                DEKI_LOG_INTERNAL("[Rendering] drawing in strips of %d rows", m_BandRows);
+                s_FrameModeRows = m_BandRows;  // whole pairs of rows
                 return true;
             }
         }
         else
         {
-            DEKI_LOG_ERROR("[Rendering] no internal memory for a %d-row strip; drawing whole frames", bandRows);
+            DEKI_LOG_ERROR("[Rendering] no internal memory for a %d-row strip; drawing whole frames", choice.rows);
+            NoteFrameChoice(FrameChoice{ 0, FrameChoice::Why::DoesNotFit }, frameBytes, freeInternal);
         }
     }
 

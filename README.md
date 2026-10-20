@@ -50,13 +50,31 @@ partial present (row bands through a small DMA staging buffer, which also
 stops the byte swap for big-endian panels from mutating the engine's
 framebuffer) runs on hardware, on the LilyGO T-Deck Plus.
 
-## Strips (`bandRows`)
+## Whole frames or strips (`frameMode`)
 
-On a device, the Rendering setting `bandRows` draws each frame in strips of
-that many rows into a small buffer in internal RAM, sending each strip to the
-display before drawing the next. There is no framebuffer, which is the point
-when a whole one only fits in PSRAM. Strips keep every feature whole frames
-have:
+The Rendering setting `frameMode` says how each frame reaches the screen on a
+device. Leave it at **Auto**: when the game starts, it picks whole frames if
+the framebuffer fits in internal RAM with 64 KB to spare for the game, and
+strips if not. A display that cannot take part of a frame always gets whole
+frames. The editor always draws whole frames.
+
+| | Whole frames | Strips |
+|---|---|---|
+| How | Each frame drawn once into one framebuffer, then sent while the next is drawn | Each frame drawn a strip of `bandRows` rows at a time into a small buffer in internal RAM, each strip sent while the next is drawn |
+| Faster when | The framebuffer fits in internal RAM | It does not, so it would live in PSRAM, where every blend is several times slower |
+| Measured (ESP32-S3) | T-Deck Plus, 320x240, 150 KB: 61 fps in the demo's effects scene against 59 in strips | T-Display S3 AMOLED, 536x240, 251 KB: 61 fps against 22 drawing whole frames in PSRAM |
+| Internal RAM | The framebuffer | A strip and two copies of it for sending: 126 KB at 536x240 and 40 rows |
+
+Both give the same pixels. The boot log says which a board uses and why, for
+example `[Rendering] whole frames: the 150 KB framebuffer fits in internal
+RAM (259 KB free)`, and `DEKI:STATS` (the editor's `device_stats`) reports it
+as `frameMode=whole` or `frameMode=strips bandRows=40`. Choose
+**WholeFrames** or **Strips** only to override that, to measure both, say.
+
+### Strips
+
+There is no framebuffer in strips, which is the point when a whole one only
+fits in PSRAM. Strips keep every feature whole frames have:
 
 - Dirty rectangles: every strip is still drawn, but only the rows this frame
   or the last drew in are sent, and a strip with none is not sent. The strip
