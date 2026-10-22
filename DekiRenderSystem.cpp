@@ -109,40 +109,6 @@ DekiRenderSystem::~DekiRenderSystem()
 
 namespace
 {
-bool IsColumns(ScanOrder order)
-{
-    return order == ScanOrder::ColumnsRight || order == ScanOrder::ColumnsLeft;
-}
-
-bool IsReversed(ScanOrder order)
-{
-    return order == ScanOrder::RowsUp || order == ScanOrder::ColumnsLeft;
-}
-
-// The scan order strips are cut along now: the current display's, or rows
-// from the top when it offers none.
-IScanOrderedDisplay* CurrentScanDisplay()
-{
-    return FindScanOrderedDisplay(Deki::Engine::GetInstance().GetDisplay());
-}
-
-// Copies a w x h rectangle of pixels between buffers of different pitches.
-void CopyPixels(uint8_t* dst, size_t dstPitch, const uint8_t* src, size_t srcPitch, size_t rowBytes, int32_t rows)
-{
-    if (dstPitch == rowBytes && srcPitch == rowBytes)
-    {
-        memcpy(dst, src, rowBytes * static_cast<size_t>(rows));
-        return;
-    }
-    for (int32_t y = 0; y < rows; ++y)
-    {
-        memcpy(dst + static_cast<size_t>(y) * dstPitch, src + static_cast<size_t>(y) * srcPitch, rowBytes);
-    }
-}
-}  // namespace
-
-namespace
-{
 char s_FrameModeNote[160] = "whole frames";
 int32_t s_FrameModeRows = 0;
 }  // namespace
@@ -600,24 +566,7 @@ void DekiRenderSystem::RenderBands(Deki::Scene* scene, CameraComponent* camera, 
     m_PresentCount = 0;
 
     Deki::IDisplay* display = Deki::Engine::GetInstance().GetDisplay();
-    // The display's scan order, asked every frame: strips allocated for
-    // another one (the display offered it, or stopped) are cut again.
-    IScanOrderedDisplay* scan = FindScanOrderedDisplay(display);
-    {
-        const ScanOrder order = scan ? scan->GetScanOrder() : ScanOrder::RowsDown;
-        if (IsColumns(order) != m_BandColumns || IsReversed(order) != m_BandReverse)
-        {
-            const int32_t asked = m_BandAsked;
-            if (!SetBandRows(asked) || m_BandRows == 0)
-            {
-                DEKI_LOG_ERROR("[Rendering] the display's scan order changed and %d-pixel strips along it could not be "
-                               "made; nothing is drawn",
-                               static_cast<int>(asked));
-                return;
-            }
-        }
-    }
-    if (!display || (!scan && !display->SupportsPartialPresent()))
+    if (!display || !display->SupportsPartialPresent())
     {
         if (!m_BandWarned)
         {
@@ -662,63 +611,41 @@ void DekiRenderSystem::RenderBands(Deki::Scene* scene, CameraComponent* camera, 
         m_BandHeldValid = false;
     }
 
-    // Strips run along the scan order, in the order the panel refreshes
-    // them. A strip's buffer is its own width: the screen's for rows, the
-    // strip's for columns.
-    const size_t bpp = static_cast<size_t>(GetBytesPerPixel(m_ColorFormat));
-    const size_t pitch = static_cast<size_t>(m_ScreenWidth) * bpp;
-    const int32_t across = m_BandColumns ? m_ScreenWidth : m_ScreenHeight;
-    const int32_t strips = (across + m_BandRows - 1) / m_BandRows;
-    bool firstSent = true;  // no strip of this frame sent yet
-    for (int32_t s = 0; s < strips; ++s)
+    const size_t pitch = static_cast<size_t>(m_ScreenWidth) * GetBytesPerPixel(m_ColorFormat);
+    for (int32_t top = 0; top < m_ScreenHeight; top += m_BandRows)
     {
-        const int32_t start = (m_BandReverse ? strips - 1 - s : s) * m_BandRows;
-        const int32_t size = std::min(m_BandRows, across - start);
-        const Deki::Rect strip = m_BandColumns ? Deki::Rect{ start, 0, start + size, m_ScreenHeight }
-                                               : Deki::Rect{ 0, start, m_ScreenWidth, start + size };
-        const int32_t sw = strip.Width();
-        const int32_t sh = strip.Height();
-        const size_t stripPitch = static_cast<size_t>(sw) * bpp;
-        uint8_t* const wholeAt =
-            whole ? whole + static_cast<size_t>(strip.top) * pitch + static_cast<size_t>(strip.left) * bpp : nullptr;
-        // What the strip before drew (this frame's, or the last frame's last)
-        // is in its own buffer's coordinates: a strip of another width cannot
-        // clear by it.
-        if (m_BandHeldWidth != sw)
-        {
-            m_BandHeldValid = false;
-        }
+        const int32_t rows = std::min(m_BandRows, m_ScreenHeight - top);
+        uint8_t* const wholeRows = whole ? whole + static_cast<size_t>(top) * pitch : nullptr;
 
-        // The strip's starting pixels: the kept frame's, or the clear colour.
-        // The strip buffer still holds the strip drawn before, so with
-        // tracking only what that one drew is cleared.
+        // The strip's starting pixels: the kept frame's rows, or the clear
+        // colour. The strip buffer still holds the strip drawn before, so
+        // with tracking only what that one drew is cleared.
         const uint64_t clearStart = RenderProfiler::IsEnabled() ? RenderProfiler::Now() : 0;
         if (keep)
         {
-            CopyPixels(m_BandBuffer, stripPitch, wholeAt, pitch, stripPitch, sh);
+            memcpy(m_BandBuffer, wholeRows, static_cast<size_t>(rows) * pitch);
         }
         else if (m_BandHeldValid && !m_BandHeld.IsFull())
         {
             for (const Deki::Rect& r : m_BandHeld.Rects())
             {
-                FillRect(m_BandBuffer, sw, sh, m_ColorFormat, r.left, r.top, r.Width(), r.Height(), clear.r, clear.g,
-                         clear.b);
+                FillRect(m_BandBuffer, m_ScreenWidth, m_BandRows, m_ColorFormat, r.left, r.top, r.Width(), r.Height(),
+                         clear.r, clear.g, clear.b);
             }
         }
         else
         {
-            FillRect(m_BandBuffer, sw, sh, m_ColorFormat, 0, 0, sw, sh, clear.r, clear.g, clear.b);
+            FillRect(m_BandBuffer, m_ScreenWidth, m_BandRows, m_ColorFormat, 0, 0, m_ScreenWidth, m_BandRows, clear.r,
+                     clear.g, clear.b);
         }
         if (RenderProfiler::IsEnabled())
         {
             RenderProfiler::AddContent(RenderProfiler::kClear, RenderProfiler::Now() - clearStart);
         }
 
-        RenderContext ctx{ camera, m_BandBuffer, sw, sh, m_ColorFormat };
-        ctx.viewTop = strip.top;
+        RenderContext ctx{ camera, m_BandBuffer, m_ScreenWidth, rows, m_ColorFormat };
+        ctx.viewTop = top;
         ctx.viewHeight = m_ScreenHeight;
-        ctx.viewLeft = strip.left;
-        ctx.viewWidth = m_ScreenWidth;
         ctx.contentFrame = m_ContentFrame;
         ctx.trackDirty = tracking;
         m_Renderer->Render(scene, ctx);
@@ -735,13 +662,13 @@ void DekiRenderSystem::RenderBands(Deki::Scene* scene, CameraComponent* camera, 
         {
             m_BandHeldValid = false;
         }
-        m_BandHeldWidth = sw;
 
         if (whole)
         {
-            CopyPixels(wholeAt, pitch, m_BandBuffer, stripPitch, stripPitch, sh);
+            memcpy(wholeRows, m_BandBuffer, static_cast<size_t>(rows) * pitch);
         }
 
+        const Deki::Rect strip{ 0, top, m_ScreenWidth, top + rows };
         Deki::Rect send = strip;
         if (tracking)
         {
@@ -749,8 +676,7 @@ void DekiRenderSystem::RenderBands(Deki::Scene* scene, CameraComponent* camera, 
             {
                 for (const Deki::Rect& r : drawn->Rects())
                 {
-                    m_BandFrameDrawn.Add(r.left + strip.left, r.top + strip.top, r.right + strip.left,
-                                         r.bottom + strip.top);
+                    m_BandFrameDrawn.Add(r.left, r.top + top, r.right, r.bottom + top);
                 }
             }
             else
@@ -761,11 +687,9 @@ void DekiRenderSystem::RenderBands(Deki::Scene* scene, CameraComponent* camera, 
         if (!sendAll && drawnKnown)
         {
             // The bounds of this frame's draws and last frame's, in the strip.
-            send = Deki::Rect{ strip.right, strip.bottom, strip.left, strip.top };
+            send = Deki::Rect{ m_ScreenWidth, strip.bottom, 0, top };
             auto grow = [&send, &strip](int32_t l, int32_t t, int32_t r, int32_t b)
             {
-                l = std::max(l, strip.left);
-                r = std::min(r, strip.right);
                 t = std::max(t, strip.top);
                 b = std::min(b, strip.bottom);
                 if (r <= l || b <= t)
@@ -779,7 +703,7 @@ void DekiRenderSystem::RenderBands(Deki::Scene* scene, CameraComponent* camera, 
             };
             for (const Deki::Rect& r : drawn->Rects())
             {
-                grow(r.left + strip.left, r.top + strip.top, r.right + strip.left, r.bottom + strip.top);
+                grow(r.left, r.top + top, r.right, r.bottom + top);
             }
             for (const Deki::Rect& r : m_LastDrawn.Rects())
             {
@@ -787,30 +711,13 @@ void DekiRenderSystem::RenderBands(Deki::Scene* scene, CameraComponent* camera, 
             }
         }
 
-        if (send.Empty())
+        // PresentRegions reads the rectangle's rows out of a whole frame. The
+        // strip is exactly those rows, so it is handed over as a frame whose
+        // row `top` starts at the strip: the display reads nothing else.
+        if (!send.Empty())
         {
-            continue;
-        }
-        if (scan)
-        {
-            ScanStrip out;
-            out.pixels = m_BandBuffer;
-            out.stride = sw;
-            out.strip = strip;
-            out.changed = send;
-            out.format = m_ColorFormat;
-            out.firstOfFrame = firstSent;
-            firstSent = false;
-            scan->PresentStrip(out);
-        }
-        else
-        {
-            // PresentRegions reads the rectangle's rows out of a whole frame.
-            // The strip is exactly those rows, so it is handed over as a frame
-            // whose row `top` starts at the strip: the display reads nothing
-            // else.
             const auto* frameBase = reinterpret_cast<const uint8_t*>(reinterpret_cast<uintptr_t>(m_BandBuffer) -
-                                                                     static_cast<uintptr_t>(strip.top) * pitch);
+                                                                     static_cast<uintptr_t>(top) * pitch);
             display->PresentRegions(frameBase, m_ScreenWidth, m_ScreenHeight, m_ColorFormat, &send, 1);
         }
     }
@@ -910,57 +817,25 @@ bool DekiRenderSystem::SetBandRows(int32_t rows)
 {
     FreeBand();
     m_BandWarned = false;
-    m_BandAsked = rows;
-    const IScanOrderedDisplay* scan = CurrentScanDisplay();
-    const ScanOrder order = scan ? scan->GetScanOrder() : ScanOrder::RowsDown;
-    m_BandColumns = IsColumns(order);
-    m_BandReverse = IsReversed(order);
-    const int32_t across = m_BandColumns ? m_ScreenWidth : m_ScreenHeight;
-    if (rows <= 0 || across <= 0 || m_ScreenWidth <= 0 || m_ScreenHeight <= 0)
+    if (rows <= 0 || m_ScreenHeight <= 0 || rows >= m_ScreenHeight)
     {
         return true;  // whole frames
     }
-    // Rows in whole pairs: some panels take writes only in pairs of rows (the
-    // RM67162 AMOLED), and a strip widened to one would be read past. Columns
-    // as many pixels as that many rows would be (so as much memory, and as
-    // many strips: each strip costs a walk of the scene), in whole eights: a
-    // column strip starts the ordered dither's 8x8 tile where the whole frame
-    // does only at a multiple of 8. (A panel that is sent columns is sent
-    // whole panel rows of them; its pairs are its own.)
-    if (m_BandColumns)
-    {
-        const int64_t cols = (static_cast<int64_t>(rows) * m_ScreenWidth + m_ScreenHeight - 1) / m_ScreenHeight;
-        m_BandRows = static_cast<int32_t>(std::min<int64_t>((cols + 7) & ~int64_t{ 7 }, across));
-    }
-    else
-    {
-        m_BandRows = (rows + 1) & ~1;
-    }
-    if (m_BandRows >= across)
-    {
-        m_BandRows = 0;
-        return true;
-    }
+    // Whole pairs of rows: some panels take writes only in pairs of rows
+    // (the RM67162 AMOLED), and a strip widened to one would be read past.
+    m_BandRows = (rows + 1) & ~1;
     if (!AllocateBand())
     {
         m_BandRows = 0;
         return false;
-    }
-    if (m_BandColumns || m_BandReverse)
-    {
-        DEKI_LOG_INFO("[Rendering] strips of %d %s, %s, along the display's refresh", static_cast<int>(m_BandRows),
-                      m_BandColumns ? "columns" : "rows",
-                      m_BandColumns ? (m_BandReverse ? "right to left" : "left to right") : "bottom to top");
     }
     return true;
 }
 
 bool DekiRenderSystem::AllocateBand()
 {
-    // A strip of rows is the screen's width; a strip of columns its height.
-    const size_t pixels = m_BandColumns ? static_cast<size_t>(m_ScreenHeight) * static_cast<size_t>(m_BandRows)
-                                        : static_cast<size_t>(m_ScreenWidth) * static_cast<size_t>(m_BandRows);
-    const size_t bytes = pixels * static_cast<size_t>(GetBytesPerPixel(m_ColorFormat));
+    const size_t bytes = static_cast<size_t>(m_ScreenWidth) * static_cast<size_t>(m_BandRows) *
+                         static_cast<size_t>(GetBytesPerPixel(m_ColorFormat));
     m_BandBuffer = static_cast<uint8_t*>(Deki::Memory::AllocateInternal(bytes));
     return m_BandBuffer != nullptr;
 }

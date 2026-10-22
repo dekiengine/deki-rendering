@@ -75,13 +75,11 @@ const Deki::ComponentTypeInfo StripSprite::kTypeInfo =
     Deki::MakeHandWrittenTypeInfo<StripSprite, RendererComponent>(/*declaresUpdate=*/false);
 
 // Keeps the frame it is sent, rectangle by rectangle and pixel by pixel, and
-// counts what it was sent. Offered as an IScanOrderedDisplay, it is sent
-// strips along `order` through PresentStrip.
-class FrameDisplay : public Deki::IDisplay, public IScanOrderedDisplay
+// counts what it was sent.
+class FrameDisplay : public Deki::IDisplay
 {
 public:
     Deki::ColorFormat format = Deki::ColorFormat::RGB565;
-    ScanOrder order = ScanOrder::RowsDown;
     std::vector<uint8_t> frame;
     int regionCalls = 0;
     int64_t pixelsSent = 0;
@@ -124,20 +122,6 @@ public:
                 const size_t at = (static_cast<size_t>(y) * width + r.left) * bpp;
                 std::memcpy(&frame[at], fb + at, static_cast<size_t>(r.Width()) * bpp);
             }
-        }
-    }
-    ScanOrder GetScanOrder() const override { return order; }
-    void PresentStrip(const ScanStrip& s) override
-    {
-        const size_t bpp = Deki::FrameBufferBytes(format, 1, 1);
-        const Deki::Rect& r = s.changed;
-        ++regionCalls;
-        pixelsSent += static_cast<int64_t>(r.Width()) * r.Height();
-        for (int32_t y = r.top; y < r.bottom; ++y)
-        {
-            std::memcpy(&frame[(static_cast<size_t>(y) * kW + r.left) * bpp],
-                        s.pixels + (static_cast<size_t>(y - s.strip.top) * s.stride + (r.left - s.strip.left)) * bpp,
-                        static_cast<size_t>(r.Width()) * bpp);
         }
     }
     void GetDisplaySize(int32_t* w, int32_t* h) const override
@@ -198,20 +182,13 @@ struct Fixture
     DekiRenderSystem strips;
     Deki::ColorFormat format;
 
-    // `scan` true: the display offers `order`, and strips run along it.
-    explicit Fixture(Deki::ColorFormat f = Deki::ColorFormat::RGB565, int rows = 8, bool tracking = false,
-                     bool scan = false, ScanOrder order = ScanOrder::RowsDown)
+    explicit Fixture(Deki::ColorFormat f = Deki::ColorFormat::RGB565, int rows = 8, bool tracking = false)
         : format(f)
     {
         display.Reset(f);
-        display.order = order;
         Deki::Engine& engine = Deki::Engine::GetInstance();
         previous = engine.GetDisplay();
         engine.SetDisplay(&display, "strip features");
-        if (scan)
-        {
-            RegisterScanOrderedDisplay(&display, &display);
-        }
 
         auto* camObj = new Deki::Object("Camera");
         camera = camObj->AddComponent<CameraComponent>();
@@ -229,11 +206,7 @@ struct Fixture
         EXPECT_TRUE(strips.SetBandRows(rows));
         strips.SetDirtyTracking(tracking, 8);
     }
-    ~Fixture()
-    {
-        RegisterScanOrderedDisplay(&display, nullptr);
-        Deki::Engine::GetInstance().SetDisplay(previous, previous ? "restored" : "");
-    }
+    ~Fixture() { Deki::Engine::GetInstance().SetDisplay(previous, previous ? "restored" : ""); }
 
     Deki::Object* Sprite(const char* name, float x, float y, uint16_t colour)
     {
@@ -471,111 +444,4 @@ TEST(StripFeatures, DefaultPassAnswers)
     EXPECT_TRUE(objectPass.DrawsInStrips(nullptr));
     EXPECT_FALSE(framePass.DrawsInStrips(nullptr));
     EXPECT_FALSE(everything.DrawsInStrips(nullptr));
-}
-
-// ---- Along a display's scan order: the same features in strips of columns,
-// and in either direction ----
-
-namespace
-{
-const ScanOrder kScanOrders[] = { ScanOrder::ColumnsRight, ScanOrder::ColumnsLeft, ScanOrder::RowsUp };
-const char* Name(ScanOrder o)
-{
-    switch (o)
-    {
-    case ScanOrder::RowsDown: return "rows down";
-    case ScanOrder::RowsUp: return "rows up";
-    case ScanOrder::ColumnsRight: return "columns right";
-    case ScanOrder::ColumnsLeft: return "columns left";
-    }
-    return "?";
-}
-}  // namespace
-
-TEST(StripFeatures, DirtyTrackingAlongTheScanOrderMatchesWholeFrames)
-{
-    for (ScanOrder order : kScanOrders)
-    {
-        for (Deki::ColorFormat fmt : kFormats)
-        {
-            for (int size : { 8, 16 })
-            {
-                Fixture f(fmt, size, /*tracking=*/true, /*scan=*/true, order);
-                EXPECT_EQ(f.strips.IsBandColumns(), order != ScanOrder::RowsUp);
-                f.Frame();
-                EXPECT_EQ(f.display.pixelsSent, kW * kH) << Name(order) << ": the first frame is sent whole";
-                EXPECT_EQ(f.display.frame, f.WholeFrame()) << Name(order);
-
-                for (int i = 0; i < 12; ++i)
-                {
-                    f.mover->SetX(-1.5f + 0.23f * i);
-                    f.mover->SetY(0.6f - 0.09f * i);
-                    f.Frame();
-                    EXPECT_EQ(f.display.frame, f.WholeFrame()) << Name(order) << ", frame " << i << ", strips of "
-                                                               << size;
-                    EXPECT_LT(f.display.pixelsSent, kW * kH / 2) << Name(order) << ", frame " << i;
-                    EXPECT_GT(f.display.pixelsSent, 0);
-                }
-
-                f.mover->SetActive(false);
-                f.still->SetActive(false);
-                f.Frame();
-                EXPECT_EQ(f.display.frame, f.WholeFrame()) << Name(order);
-                f.Frame();
-                EXPECT_EQ(f.display.regionCalls, 0) << Name(order) << ": nothing drawn, nothing sent";
-
-                f.camera->clearColor = Deki::Color(40, 0, 0);
-                f.Frame();
-                EXPECT_EQ(f.display.pixelsSent, kW * kH) << Name(order);
-                EXPECT_EQ(f.display.frame, f.WholeFrame()) << Name(order);
-            }
-        }
-    }
-}
-
-TEST(StripFeatures, ScreenshotAlongTheScanOrderGetsTheNextFrameWhole)
-{
-    for (ScanOrder order : kScanOrders)
-    {
-        for (bool tracking : { false, true })
-        {
-            Fixture f(Deki::ColorFormat::RGB565, 8, tracking, /*scan=*/true, order);
-            f.Frame();
-            DekiRenderSystem::RequestFrameCapture();
-            f.mover->SetX(0.3f);
-            f.Frame();
-            ASSERT_NE(f.strips.GetFrameBuffer(), nullptr) << Name(order);
-            const uint8_t* shot = f.strips.GetFrameBuffer();
-            EXPECT_EQ(std::vector<uint8_t>(shot, shot + Deki::FrameBufferBytes(f.format, kW, kH)), f.WholeFrame())
-                << Name(order);
-            EXPECT_EQ(f.display.frame, f.WholeFrame()) << Name(order);
-            f.Frame();
-            EXPECT_EQ(f.strips.GetFrameBuffer(), nullptr) << Name(order);
-        }
-    }
-}
-
-TEST(StripFeatures, CameraThatDoesNotClearKeepsTheLastFrameAlongTheScanOrder)
-{
-    for (ScanOrder order : kScanOrders)
-    {
-        for (Deki::ColorFormat fmt : kFormats)
-        {
-            for (bool tracking : { false, true })
-            {
-                Fixture f(fmt, 8, tracking, /*scan=*/true, order);
-                f.camera->clearEveryFrame = false;
-                f.whole.ClearBuffer(f.camera->clearColor);
-                for (int i = 0; i < 10; ++i)
-                {
-                    f.mover->SetX(-1.5f + 0.31f * i);
-                    f.Frame();
-                    EXPECT_EQ(f.display.frame, f.WholeFrame()) << Name(order) << ", frame " << i;
-                }
-                f.camera->clearEveryFrame = true;
-                f.Frame();
-                EXPECT_EQ(f.display.frame, f.WholeFrame()) << Name(order);
-            }
-        }
-    }
 }

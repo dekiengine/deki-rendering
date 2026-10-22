@@ -604,73 +604,7 @@ std::vector<uint8_t> RenderInStrips(SceneBuilder& b, Deki::ColorFormat fmt, int 
     }
     return whole;
 }
-
-// Renders a case in strips of `cols` columns, the last first when `reverse`,
-// into one whole-frame buffer, as DekiRenderSystem does for a panel shown
-// turned.
-std::vector<uint8_t> RenderInColumnStrips(SceneBuilder& b, Deki::ColorFormat fmt, int cols, bool reverse,
-                                          uint32_t frame, Standard2DRenderer& renderer)
-{
-    const size_t bpp = TargetBpp(fmt);
-    const size_t pitch = static_cast<size_t>(kW) * bpp;
-    std::vector<uint8_t> whole(pitch * kH, 0);
-    const int strips = (kW + cols - 1) / cols;
-    for (int i = 0; i < strips; ++i)
-    {
-        const int left = (reverse ? strips - 1 - i : i) * cols;
-        const int n = std::min(cols, kW - left);
-        std::vector<uint8_t> strip(static_cast<size_t>(n) * kH * bpp, 0);
-        RenderContext ctx{ b.camera, strip.data(), n, kH, fmt };
-        ctx.viewLeft = left;
-        ctx.viewWidth = kW;
-        ctx.viewHeight = kH;
-        ctx.contentFrame = frame;
-        renderer.Render(&b.scene, ctx);
-        EXPECT_EQ(QuadBlit::GetClipStackDepth(), 0);
-        QuadBlit::ClearClipStack();
-        for (int y = 0; y < kH; ++y)
-        {
-            std::copy(strip.begin() + static_cast<std::ptrdiff_t>(static_cast<size_t>(y) * n * bpp),
-                      strip.begin() + static_cast<std::ptrdiff_t>(static_cast<size_t>(y + 1) * n * bpp),
-                      whole.begin() + static_cast<std::ptrdiff_t>(y * pitch + left * bpp));
-        }
-    }
-    return whole;
-}
 }  // namespace
-
-// Drawn in strips of columns (a panel shown turned), every case on every
-// target gives the whole frame's pixels too, in either order. Widths are
-// whole eights, as DekiRenderSystem makes them, so the ordered dither's tile
-// starts where the whole frame's does.
-TEST(RendererGoldenTest, ColumnStripsArePixelIdenticalToWholeFrames)
-{
-    RegisterTestAdapters();
-    for (Deki::ColorFormat fmt : kDstFmts)
-    {
-        for (const Case& c : kCases)
-        {
-            for (int cols : { 8, 16, 24, 40 })
-            {
-                for (bool reverse : { false, true })
-                {
-                    SceneBuilder b;
-                    c.build(b);
-                    std::vector<uint8_t> plain(static_cast<size_t>(kW) * kH * TargetBpp(fmt), 0);
-                    Standard2DRenderer whole;
-                    RenderContext ctx{ b.camera, plain.data(), kW, kH, fmt };
-                    whole.Render(&b.scene, ctx);
-                    QuadBlit::ClearClipStack();
-
-                    Standard2DRenderer strips;
-                    EXPECT_EQ(RenderInColumnStrips(b, fmt, cols, reverse, 1, strips), plain)
-                        << c.name << ", strips of " << cols << " columns" << (reverse ? ", right to left" : "")
-                        << ", format " << static_cast<int>(fmt);
-                }
-            }
-        }
-    }
-}
 
 // Drawn strip by strip, every case on every target gives the pixels of the
 // whole frame drawn at once, whatever the strip height: sprites across strip
