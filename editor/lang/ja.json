@@ -50,5 +50,12 @@
     "Core": "コア",
     "Settings": "設定",
     "The view: position, how much world it shows, and clear color.": "ビューです。位置、ワールドを映す範囲、クリアカラーを決めます。",
-    "Rendering": "レンダリング"
+    "Rendering": "レンダリング",
+    "Auto": "自動",
+    "Band Rows": "ストリップの行数",
+    "Frame Mode": "フレームモード",
+    "How each frame reaches the screen. Auto (the default) chooses on the device when the game starts: whole frames when the framebuffer fits in internal RAM with room to spare, strips when it does not (a 536x240 screen at 2 bytes a pixel is 257 KB, more than the free internal RAM of an ESP32-S3). Whole frames draws each frame once, in one buffer, and is the faster choice whenever that buffer is in internal RAM. Strips draws the frame a strip of rows at a time into a small buffer in internal RAM and sends each strip while the next is drawn, which is much faster than drawing a whole frame in PSRAM. Both give the same pixels and keep every feature. The boot log and DEKI:STATS say which one a board uses and why. The editor always draws whole frames.": "各フレームを画面に届ける方法です。Auto (既定) はゲームの開始時にデバイス上で選びます。フレームバッファーが内部 RAM に余裕をもって収まればフレーム全体、収まらなければストリップです (2 バイト/ピクセルで 536x240 の画面は 257 KB で、ESP32-S3 の内部 RAM の空きより大きくなります)。フレーム全体は各フレームを 1 つのバッファーに 1 回で描き、そのバッファーが内部 RAM にあるときはこちらが速くなります。ストリップは内部 RAM の小さなバッファーに数行ずつ描き、次を描いている間に各ストリップを送ります。PSRAM にフレーム全体を描くよりずっと速くなります。どちらも同じピクセルになり、すべての機能が使えます。どちらを使ったかとその理由は、起動ログと DEKI:STATS に表示されます。エディターでは常にフレーム全体で描きます。",
+    "Rows in each strip, when frames are drawn in strips. 40 suits most screens. Taller strips walk the scene fewer times a frame but need more internal RAM: a strip, and two copies of it for sending, of the screen's width times this many rows at 2 bytes a pixel.": "フレームをストリップで描くときの、各ストリップの行数です。ほとんどの画面には 40 が合います。ストリップを高くすると 1 フレームでシーンをたどる回数が減りますが、内部 RAM を多く使います (ストリップ 1 つと送信用のコピー 2 つ、それぞれ画面の幅 × この行数 × 2 バイト)。",
+    "Strips": "ストリップ",
+    "WholeFrames": "フレーム全体"
 }

@@ -50,5 +50,12 @@
     "Core": "核心",
     "Settings": "设置",
     "The view: position, how much world it shows, and clear color.": "视图：位置、显示的世界范围大小，以及清除颜色。",
-    "Rendering": "渲染"
+    "Rendering": "渲染",
+    "Auto": "自动",
+    "Band Rows": "条带行数",
+    "Frame Mode": "帧模式",
+    "How each frame reaches the screen. Auto (the default) chooses on the device when the game starts: whole frames when the framebuffer fits in internal RAM with room to spare, strips when it does not (a 536x240 screen at 2 bytes a pixel is 257 KB, more than the free internal RAM of an ESP32-S3). Whole frames draws each frame once, in one buffer, and is the faster choice whenever that buffer is in internal RAM. Strips draws the frame a strip of rows at a time into a small buffer in internal RAM and sends each strip while the next is drawn, which is much faster than drawing a whole frame in PSRAM. Both give the same pixels and keep every feature. The boot log and DEKI:STATS say which one a board uses and why. The editor always draws whole frames.": "每帧如何到达屏幕。Auto（默认）在游戏启动时于设备上选择：帧缓冲区能宽裕地放进内部 RAM 时用整帧，放不下时用条带（每像素 2 字节的 536x240 屏幕为 257 KB，超过 ESP32-S3 的内部 RAM 空余）。整帧在一个缓冲区中一次绘制每一帧，只要该缓冲区在内部 RAM 中就更快。条带每次在内部 RAM 的小缓冲区中绘制几行，并在绘制下一条的同时发送每一条，比在 PSRAM 中绘制整帧快得多。两者得到的像素相同，并保留所有功能。启动日志和 DEKI:STATS 会说明开发板使用哪一种以及原因。编辑器始终绘制整帧。",
+    "Rows in each strip, when frames are drawn in strips. 40 suits most screens. Taller strips walk the scene fewer times a frame but need more internal RAM: a strip, and two copies of it for sending, of the screen's width times this many rows at 2 bytes a pixel.": "以条带绘制帧时，每个条带的行数。40 适合大多数屏幕。条带越高，每帧遍历场景的次数越少，但需要更多内部 RAM：一个条带及其两个发送用副本，每个为屏幕宽度 × 此行数 × 每像素 2 字节。",
+    "Strips": "条带",
+    "WholeFrames": "整帧"
 }

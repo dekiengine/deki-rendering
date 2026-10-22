@@ -50,5 +50,12 @@
     "Core": "코어",
     "Settings": "설정",
     "The view: position, how much world it shows, and clear color.": "뷰입니다. 위치, 보여 줄 월드의 범위, 클리어 색상을 정합니다.",
-    "Rendering": "렌더링"
+    "Rendering": "렌더링",
+    "Auto": "자동",
+    "Band Rows": "스트립 행 수",
+    "Frame Mode": "프레임 모드",
+    "How each frame reaches the screen. Auto (the default) chooses on the device when the game starts: whole frames when the framebuffer fits in internal RAM with room to spare, strips when it does not (a 536x240 screen at 2 bytes a pixel is 257 KB, more than the free internal RAM of an ESP32-S3). Whole frames draws each frame once, in one buffer, and is the faster choice whenever that buffer is in internal RAM. Strips draws the frame a strip of rows at a time into a small buffer in internal RAM and sends each strip while the next is drawn, which is much faster than drawing a whole frame in PSRAM. Both give the same pixels and keep every feature. The boot log and DEKI:STATS say which one a board uses and why. The editor always draws whole frames.": "각 프레임을 화면에 보내는 방식입니다. Auto(기본값)는 게임이 시작될 때 장치에서 고릅니다. 프레임 버퍼가 내부 RAM에 여유 있게 들어가면 전체 프레임, 들어가지 않으면 스트립입니다(픽셀당 2바이트인 536x240 화면은 257 KB로, ESP32-S3의 내부 RAM 여유 공간보다 큽니다). 전체 프레임은 각 프레임을 버퍼 하나에 한 번 그리며, 그 버퍼가 내부 RAM에 있으면 더 빠릅니다. 스트립은 내부 RAM의 작은 버퍼에 몇 행씩 그리고, 다음 스트립을 그리는 동안 각 스트립을 보냅니다. PSRAM에 전체 프레임을 그리는 것보다 훨씬 빠릅니다. 둘 다 같은 픽셀을 만들고 모든 기능을 유지합니다. 어느 쪽을 쓰는지와 그 이유는 부팅 로그와 DEKI:STATS에 표시됩니다. 에디터는 항상 전체 프레임을 그립니다.",
+    "Rows in each strip, when frames are drawn in strips. 40 suits most screens. Taller strips walk the scene fewer times a frame but need more internal RAM: a strip, and two copies of it for sending, of the screen's width times this many rows at 2 bytes a pixel.": "프레임을 스트립으로 그릴 때 각 스트립의 행 수입니다. 대부분의 화면에는 40이 맞습니다. 스트립이 높을수록 한 프레임에 장면을 도는 횟수가 줄지만 내부 RAM을 더 씁니다: 스트립 하나와 전송용 복사본 두 개, 각각 화면 너비 × 이 행 수 × 픽셀당 2바이트입니다.",
+    "Strips": "스트립",
+    "WholeFrames": "전체 프레임"
 }
