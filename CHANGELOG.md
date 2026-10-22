@@ -11,6 +11,19 @@ alongside one that has them.
 ## Unreleased
 
 ### Added
+- Strips along a display's refresh. A display that wants it offers
+  `IScanOrderedDisplay` (`RegisterScanOrderedDisplay`): the order its panel
+  refreshes the screen in, rows down or up, or columns left to right or
+  right to left. `DekiRenderSystem` then cuts strips along it, in that order,
+  and sends each with `PresentStrip`: the whole strip, what changed in it,
+  and whether it is the frame's first. A strip of columns is as many pixels
+  as `bandRows` rows would be, in whole eights of columns so the ordered
+  dither's tile stays where the whole frame has it. `RenderContext` gains
+  `viewLeft` and `viewWidth`, the x twins of `viewTop` and `viewHeight`, and
+  `DrawsInStrips` means strips of rows or of columns. Every whole-frame
+  feature works in either: dirty rectangles, a camera that does not clear,
+  screenshots. `Deki::IDisplay` does not change, so no package is rebuilt for
+  it.
 - Big-endian RGB565 (`DEKI_RGB565_BIG_ENDIAN`, see `Deki::kRGB565BigEndian`):
   `DekiPixel::Load565`, `Store565`, `ToMemory565`, `FromMemory565` and
   `FileToMemory565` read and write 565 values in memory's byte order. The

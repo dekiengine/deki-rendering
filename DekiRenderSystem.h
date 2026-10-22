@@ -6,6 +6,7 @@
 #include <deki/Color.h>
 #include "DirtyRegion.h"
 #include "RenderingProjectSettings.h"
+#include "ScanOrderedDisplay.h"
 #include <deki/providers/IRenderSystem.h>
 
 namespace Deki
@@ -68,6 +69,11 @@ private:
     // of rows at a time into m_BandBuffer, in internal RAM, and each strip is
     // sent to the display before the next is drawn.
     //
+    // A display that offers IScanOrderedDisplay has its strips cut along its
+    // panel's refresh instead: strips of columns where the panel is shown
+    // turned, in the order the panel refreshes them, each sent with
+    // PresentStrip. bandRows is then the strip's width.
+    //
     // Everything whole frames do, strips do too:
     // - dirty-rect tracking: every strip is drawn, but only the rows of it
     //   that changed (drawn this frame or the last) are sent, a strip with
@@ -79,7 +85,10 @@ private:
     //   into m_WholeFrame, which GetFrameBuffer() then returns;
     // - a renderer or pass that cannot draw in strips (DrawsInStrips): whole
     //   frames are drawn into m_WholeFrame while it cannot.
-    int32_t m_BandRows = 0;
+    int32_t m_BandRows = 0;      // a strip's rows, or its columns
+    bool m_BandColumns = false;  // strips of columns
+    bool m_BandReverse = false;  // the last strip first (the panel refreshes from there)
+    int32_t m_BandAsked = 0;     // what SetBandRows was asked for, before rounding
     uint8_t* m_BandBuffer = nullptr;
     uint32_t m_ContentFrame = 0;
     bool m_BandWarned = false;
@@ -87,6 +96,7 @@ private:
     // so the next strip clears only that. Invalid: clear all of it.
     DirtyRegion m_BandHeld;
     bool m_BandHeldValid = false;
+    int32_t m_BandHeldWidth = 0;  // the strip buffer's width when m_BandHeld was recorded
     DirtyRegion m_BandFrameDrawn;  // what this frame's strips drew, in view rows
     // A whole frame, in external memory where there is some, allocated only
     // while something needs it and freed the first frame nothing does.
@@ -128,8 +138,13 @@ public:
     // Strip rendering. Setup() reads the project setting on a device (the
     // editor ignores it); hosts and tests can set it here, after Setup. 0
     // renders whole frames. Returns false when the strip cannot be allocated.
+    // Strips run along the scan order the display offers
+    // (FindScanOrderedDisplay), read here: rows, a whole number of pairs of
+    // them, or columns, a whole number of eights of them (the ordered
+    // dither's tile), so a strip never moves the dither pattern.
     bool SetBandRows(int32_t rows);
     int32_t GetBandRows() const { return m_BandRows; }
+    bool IsBandColumns() const { return m_BandColumns; }
 
     /// Whole frames or strips, as Setup decides it from frameMode. Auto
     /// chooses whole frames when a framebuffer of `frameBytes` fits in

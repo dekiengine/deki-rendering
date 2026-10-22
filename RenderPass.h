@@ -85,10 +85,12 @@ public:
     virtual void EndFrame(RenderContext& ctx) {}
 
     /// Whether this pass draws `scene` correctly when the frame is drawn strip
-    /// by strip (RenderingProjectSettings::bandRows). Each strip is a Render()
-    /// of its own: BeginFrame and EndFrame run once per strip, ctx.buffer
-    /// holds rows [ctx.viewTop, ctx.viewTop + ctx.height) of a view
-    /// ctx.viewHeight rows tall, and ctx.cam is moved up to the strip. The
+    /// by strip (RenderingProjectSettings::bandRows), of rows or of columns.
+    /// Each strip is a Render() of its own: BeginFrame and EndFrame run once
+    /// per strip, ctx.buffer holds rows [ctx.viewTop, ctx.viewTop +
+    /// ctx.height) and columns [ctx.viewLeft, ctx.viewLeft + ctx.width) of a
+    /// view ctx.viewWidth by ctx.viewHeight, and ctx.cam is moved to the
+    /// strip. The
     /// default is yes for a pass with only per-object hooks, which maps
     /// through ctx.cam as the contract above asks, and no for one with
     /// BeginFrame or EndFrame, which usually works on the whole frame.

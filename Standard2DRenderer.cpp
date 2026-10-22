@@ -161,12 +161,15 @@ void Standard2DRenderer::ExecuteBuiltins(const SortItem& item, RenderContext& ct
     Deki::Object* obj = item.obj;
 
     // Positions are worked out in the whole view, exactly as for a whole
-    // frame, and only then moved up to the strip by whole pixels, so a strip
+    // frame, and only then moved to the strip by whole pixels, so a strip
     // truncates and rounds every edge the way the whole frame does. (ctx.cam
-    // is the strip's: the whole view's moved up by viewTop, which is exact.)
+    // is the strip's: the whole view's moved up by viewTop and left by
+    // viewLeft, which is exact.)
     FrameCamera cam = ctx.cam;
     cam.halfH += static_cast<float>(ctx.viewTop);
+    cam.halfW += static_cast<float>(ctx.viewLeft);
     const int32_t viewTop = ctx.viewTop;
+    const int32_t viewLeft = ctx.viewLeft;
 
     // The whole-view geometry: the same in every strip of a frame, so a later
     // strip takes it from the first.
@@ -204,8 +207,9 @@ void Standard2DRenderer::ExecuteBuiltins(const SortItem& item, RenderContext& ct
     // Clip: push a clip rect if the object has an IClipProvider.
     if (item.clip)
     {
+        const int32_t left = g.clipLeft - viewLeft;
         const int32_t top = g.clipTop - viewTop;
-        QuadBlit::PushClipRect(g.clipLeft, top, g.clipLeft + g.clipWidth, top + g.clipHeight);
+        QuadBlit::PushClipRect(left, top, left + g.clipWidth, top + g.clipHeight);
     }
 
     // Renderer (a sprite, say): blit its content.
@@ -220,7 +224,7 @@ void Standard2DRenderer::ExecuteBuiltins(const SortItem& item, RenderContext& ct
         // or copy a frame.
         if (g.hasExtents)
         {
-            const float cx = fScreenX, cy = fScreenY - static_cast<float>(viewTop);
+            const float cx = fScreenX - static_cast<float>(viewLeft), cy = fScreenY - static_cast<float>(viewTop);
             const float reach = g.reach;
             float left = 0.0f, top = 0.0f;
             float right = static_cast<float>(ctx.width), bottom = static_cast<float>(ctx.height);
@@ -315,9 +319,10 @@ void Standard2DRenderer::ExecuteBuiltins(const SortItem& item, RenderContext& ct
                 fScreenX = cam.SnapX(fScreenX);
                 fScreenY = cam.SnapY(fScreenY);
             }
-            const int32_t intScreenX = (renderer->pixelSnap || cam.snapStep > 0)
-                                           ? static_cast<int32_t>(std::lround(fScreenX))
-                                           : static_cast<int32_t>(fScreenX);
+            const int32_t intScreenX = ((renderer->pixelSnap || cam.snapStep > 0)
+                                            ? static_cast<int32_t>(std::lround(fScreenX))
+                                            : static_cast<int32_t>(fScreenX)) -
+                                       viewLeft;
             const int32_t intScreenY = ((renderer->pixelSnap || cam.snapStep > 0)
                                             ? static_cast<int32_t>(std::lround(fScreenY))
                                             : static_cast<int32_t>(fScreenY)) -
@@ -472,14 +477,13 @@ void Standard2DRenderer::Render(Deki::Scene* scene, const RenderContext& ctx)
 
     // Capture the camera once for the frame, against the target the passes
     // settled on. Everything below maps world to screen through this. A strip
-    // captures it for the whole view, then moves it up to the strip's rows.
+    // captures it for the whole view, then moves it to the strip's pixels.
+    const int32_t viewWidth = frameCtx.viewWidth > 0 ? frameCtx.viewWidth : frameCtx.width;
     const int32_t viewHeight = frameCtx.viewHeight > 0 ? frameCtx.viewHeight : frameCtx.height;
-    frameCtx.cam = frameCtx.camera->CaptureFrameCamera(frameCtx.width, viewHeight);
-    if (frameCtx.viewTop != 0)
-    {
-        frameCtx.cam.halfH -= static_cast<float>(frameCtx.viewTop);
-    }
-    SetCurrentDrawView({ frameCtx.cam.ppm, frameCtx.width, viewHeight });
+    frameCtx.cam = frameCtx.camera->CaptureFrameCamera(viewWidth, viewHeight);
+    frameCtx.cam.halfW -= static_cast<float>(frameCtx.viewLeft);
+    frameCtx.cam.halfH -= static_cast<float>(frameCtx.viewTop);
+    SetCurrentDrawView({ frameCtx.cam.ppm, viewWidth, viewHeight });
 
     // Content kept from earlier strips belongs to another frame now.
     if (ctx.contentFrame == 0 || ctx.contentFrame != m_ContentCacheFrame)
