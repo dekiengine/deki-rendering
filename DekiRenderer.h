@@ -33,13 +33,18 @@ struct RenderContext
     // (see DekiRenderer::GetLastFrameDirty). Set by DekiRenderSystem when the
     // project's dirty-rect tracking is on; off for edit-mode renders.
     bool trackDirty = false;
-    // Strip rendering: `buffer` holds rows [viewTop, viewTop + height) of a
-    // view viewHeight rows tall. Standard2DRenderer captures `cam` for the
-    // whole view and moves it up by viewTop, so whatever maps through `cam`
-    // lands in the strip, and QuadBlit clips to it. viewHeight 0 means the
+    // Strip rendering: `buffer` holds rows [viewTop, viewTop + height) and
+    // columns [viewLeft, viewLeft + width) of a view viewWidth by viewHeight.
+    // A strip of rows is the view's full width, a strip of columns its full
+    // height (DekiRenderSystem cuts strips along the panel's refresh).
+    // Standard2DRenderer captures `cam` for the whole view and moves it up by
+    // viewTop and left by viewLeft, so whatever maps through `cam` lands in
+    // the strip, and QuadBlit clips to it. viewWidth and viewHeight 0 mean the
     // buffer is the whole view.
     int32_t viewTop = 0;
     int32_t viewHeight = 0;
+    int32_t viewLeft = 0;
+    int32_t viewWidth = 0;
     // Nonzero while one frame is drawn strip by strip: each renderer's
     // content from an earlier strip of the frame with this id is reused
     // rather than produced again.
@@ -76,8 +81,9 @@ public:
     virtual const DirtyRegion* GetLastFrameDirty() const { return nullptr; }
 
     /// Whether this renderer draws `scene` correctly strip by strip
-    /// (RenderContext::viewTop and viewHeight): each strip's Render() must
-    /// write into its rows exactly what a whole frame writes there. Asked
+    /// (RenderContext::viewTop, viewHeight, viewLeft and viewWidth), in strips
+    /// of rows or of columns: each strip's Render() must write into its pixels
+    /// exactly what a whole frame writes there. Asked
     /// every frame before drawing in strips. While it says no,
     /// DekiRenderSystem draws whole frames instead, in a framebuffer it
     /// allocates for them. The default is no, so a renderer that knows nothing

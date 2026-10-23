@@ -153,11 +153,11 @@ private:
         float screenX = 0.0f, screenY = 0.0f;                              // renderer origin, before snapping
         bool hasExtents = false;
         float reach = 0.0f;  // cull radius around the origin, when hasExtents
-        // The rows [rowsTop, rowsBottom) of the whole view that the renderer's
-        // blit can write, once a strip has worked them out (QuadBlit::BlitRows):
-        // the frame's other strips outside them skip the object's blit.
-        bool rowsKnown = false;
-        int32_t rowsTop = 0, rowsBottom = 0;
+        // The pixels of the whole view that the renderer's blit can write,
+        // once a strip has worked them out (QuadBlit::BlitArea): the frame's
+        // other strips outside them skip the object's blit.
+        bool areaKnown = false;
+        int32_t areaLeft = 0, areaTop = 0, areaRight = 0, areaBottom = 0;
     };
 
     // A frame drawn strip by strip (RenderContext::contentFrame) is collected
@@ -171,6 +171,9 @@ private:
         uint32_t firstChild = 0;
         uint32_t childCount = 0;
         BuiltinGeometry geo;
+        // Which Execute passes want the object (RenderPass::WantsObject), a
+        // bit per pass in m_ExecPasses' order; past 32 passes, all do.
+        uint32_t execPasses = 0xFFFFFFFFu;
     };
     enum class PlanMode
     {

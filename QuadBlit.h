@@ -189,6 +189,10 @@ struct Source
     // for every pixel: the copy trusts it.
     bool uniformRows = false;
     bool uniformColumns = false;
+    // With uniformRows, each row's colour (as stored), one per row, where it
+    // is quick to read: a fill then reads nothing from the pixels. Drawn in
+    // strips of columns, every strip reads every row's colour again.
+    const uint16_t* rowColors = nullptr;
 
     // Optional per-row runs of fully transparent pixels (alpha 0), laid out
     // like alphaRowSpans ([start, end) per row; start >= end for none). A 1:1
@@ -262,11 +266,12 @@ void Blit(const Source& source, uint8_t* target, int32_t targetWidth, int32_t ta
 bool CoversRect(const Source& source, int32_t screenX, int32_t screenY, float scaleX, float scaleY, float rotation,
                 float pivotX, float pivotY, uint8_t tintA, int32_t left, int32_t top, int32_t right, int32_t bottom);
 
-/// The target rows [top, bottom) that Blit() with these arguments can write,
-/// whatever the clip and the target's size: a renderer drawing in strips
-/// skips the blit in a strip outside them. False when it writes nothing.
-bool BlitRows(const Source& source, int32_t screenY, float scaleX, float scaleY, float rotation, float pivotX,
-              float pivotY, int32_t& top, int32_t& bottom);
+/// The target pixels [left, right) x [top, bottom) that Blit() with these
+/// arguments can write, whatever the clip and the target's size: a renderer
+/// drawing in strips skips the blit in a strip outside them. False when it
+/// writes nothing.
+bool BlitArea(const Source& source, int32_t screenX, int32_t screenY, float scaleX, float scaleY, float rotation,
+              float pivotX, float pivotY, int32_t& left, int32_t& top, int32_t& right, int32_t& bottom);
 
 /// A faster blit without rotation, into the rect destX, destY, destWidth,
 /// destHeight.

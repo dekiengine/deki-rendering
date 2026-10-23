@@ -5,7 +5,7 @@ namespace Deki
 {
 class Object;
 class Scene;
-}
+}  // namespace Deki
 
 namespace DekiRendering
 {
@@ -76,6 +76,17 @@ public:
     /// Called per object after the built-in render, before its children.
     virtual void Execute(Deki::Object* obj, RenderContext& ctx) {}
 
+    /// Whether Execute has anything to do for `obj` this frame. Drawn in
+    /// strips, the renderer asks once, in the frame's first strip, and calls
+    /// Execute in the others only where the answer was yes: a pass that draws
+    /// a few kinds of object (particles, a tilemap) then does not look at
+    /// every object in every strip. The default is yes.
+    virtual bool WantsObject(Deki::Object* obj) const
+    {
+        (void)obj;
+        return true;
+    }
+
     /// Called per object after its children are rendered.
     virtual void PostExecute(Deki::Object* obj, RenderContext& ctx) {}
 
@@ -85,10 +96,12 @@ public:
     virtual void EndFrame(RenderContext& ctx) {}
 
     /// Whether this pass draws `scene` correctly when the frame is drawn strip
-    /// by strip (RenderingProjectSettings::bandRows). Each strip is a Render()
-    /// of its own: BeginFrame and EndFrame run once per strip, ctx.buffer
-    /// holds rows [ctx.viewTop, ctx.viewTop + ctx.height) of a view
-    /// ctx.viewHeight rows tall, and ctx.cam is moved up to the strip. The
+    /// by strip (RenderingProjectSettings::bandRows), of rows or of columns.
+    /// Each strip is a Render() of its own: BeginFrame and EndFrame run once
+    /// per strip, ctx.buffer holds rows [ctx.viewTop, ctx.viewTop +
+    /// ctx.height) and columns [ctx.viewLeft, ctx.viewLeft + ctx.width) of a
+    /// view ctx.viewWidth by ctx.viewHeight, and ctx.cam is moved to the
+    /// strip. The
     /// default is yes for a pass with only per-object hooks, which maps
     /// through ctx.cam as the contract above asks, and no for one with
     /// BeginFrame or EndFrame, which usually works on the whole frame.

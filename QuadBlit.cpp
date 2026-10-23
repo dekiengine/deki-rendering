@@ -104,13 +104,14 @@ enum class BlitPath : uint32_t
     GenericScaledPlain,
     GenericScaled,
     GenericRotated,
+    AlphaRows,
     None
 };
 
 // One word each, so a report line splits on spaces.
 constexpr const char* kBlitPathNames[] = {
-    "CopyRows",   "ChromaSpans", "BlendSpans",         "TintRows",      "TintScaledRows",
-    "ExpandRows", "Rows565A8",   "GenericScaledPlain", "GenericScaled", "GenericRotated",
+    "CopyRows",  "ChromaSpans",        "BlendSpans",    "TintRows",       "TintScaledRows", "ExpandRows",
+    "Rows565A8", "GenericScaledPlain", "GenericScaled", "GenericRotated", "AlphaRows",
 };
 
 struct PathScope
@@ -750,6 +751,54 @@ static DEKI_FAST_ATTR void TintRows_RGB565(const Source& source, uint16_t* targe
     }
 }
 
+// An alpha-only source (ALPHA8: text in one colour) onto RGB565, 1:1, any tint
+// and alpha tint; no key, dither or flips. The source is white, so the colour
+// is the tint itself (Div255(255 * t) is t): one colour, each pixel at its own
+// alpha. A byte a pixel read where an RGB565A8 source reads three. Not
+// inlined: its one caller runs from flash, and the loop must stay in IRAM.
+template <bool AlphaTint>
+[[gnu::noinline]] static DEKI_FAST_ATTR void AlphaRows_RGB565(const Source& source, uint16_t* target16,
+                                                              int32_t targetWidth, int32_t destX, int32_t destY,
+                                                              const BlitBounds& b, const BlitParams& p)
+{
+    const uint32_t r = p.tintR, g = p.tintG, bl = p.tintB;
+    const uint16_t opaque =
+        ToMemory565(PackRGB565(static_cast<uint8_t>(r), static_cast<uint8_t>(g), static_cast<uint8_t>(bl)));
+    const uint32_t tintA = p.tintA;
+    const int32_t stride = SourceStride(source);
+    for (int32_t py = b.startY; py < b.endY; py++)
+    {
+        const uint8_t* sp = source.pixels + (py - destY) * stride + (b.startX - destX);
+        uint16_t* dp = target16 + py * targetWidth + b.startX;
+        for (int32_t px = b.startX; px < b.endX; px++, sp++, dp++)
+        {
+            uint32_t a = *sp;
+            if (a == 0)
+            {
+                continue;
+            }
+            if constexpr (AlphaTint)
+            {
+                a = Div255(a * tintA);
+                if (a == 0)
+                {
+                    continue;
+                }
+            }
+            if (a == 255)
+            {
+                *dp = opaque;
+                continue;
+            }
+            const uint32_t bg = FromMemory565(*dp);
+            const uint32_t invA = 255u - a;
+            *dp = ToMemory565(PackRGB565(Div255(r * a + ((bg >> 11) << 3) * invA),
+                                         Div255(g * a + (((bg >> 5) & 0x3F) << 2) * invA),
+                                         Div255(bl * a + ((bg & 0x1F) << 3) * invA)));
+        }
+    }
+}
+
 // TintRows_RGB565 for a source of Bpp bytes a pixel, with or without an alpha tint.
 template <bool SourceAlpha, int32_t Bpp>
 static inline void TintRowsFor(const Source& source, uint16_t* target16, int32_t targetWidth, int32_t destX,
@@ -894,7 +943,8 @@ static DEKI_FAST_ATTR bool CopyRows_RGB565(const Source& source, uint16_t* targe
     {
         for (int32_t py = b.startY; py < b.endY; py++)
         {
-            const uint16_t value = LoadU16(source.pixels + (py - destY) * stride);
+            const uint16_t value =
+                source.rowColors ? source.rowColors[py - destY] : LoadU16(source.pixels + (py - destY) * stride);
             FillRow565(target16 + py * targetWidth + b.startX, rowPixels, value);
         }
         return true;
@@ -1045,9 +1095,11 @@ static DEKI_FAST_ATTR bool BlendRows_RGB565A8_to_RGB565(const Source& source, ui
     return true;
 }
 
-// RGB565 -> RGB565A8, no tint or key: opaque expand.
-static DEKI_FAST_ATTR bool ExpandRows_RGB565_to_RGB565A8(const Source& source, uint8_t* target, int32_t targetWidth,
-                                                         int32_t destX, int32_t destY, const BlitBounds& b)
+// RGB565 -> RGB565A8, no tint or key: opaque expand. Not inlined into its one
+// caller, which runs from flash.
+[[gnu::noinline]] static DEKI_FAST_ATTR bool ExpandRows_RGB565_to_RGB565A8(const Source& source, uint8_t* target,
+                                                                           int32_t targetWidth, int32_t destX,
+                                                                           int32_t destY, const BlitBounds& b)
 {
     const int32_t stride = SourceStride(source);
     const int32_t rowPixels = b.endX - b.startX;
@@ -1448,6 +1500,9 @@ bool ScaledCopyFor(const Source& s, int32_t w, int32_t h, Source& out)
     out.alphaRowSpans = found->spans;
     out.clearRowSpans = found->clear;
     out.uniformRuns = found->runs;
+    // Uniform rows or columns stay so, scaled; the source's row colours are
+    // its own rows', not the copy's.
+    out.rowColors = nullptr;
     out.chromaRowSpans = nullptr;
     out.ownsPixels = false;
     out.cacheScaled = false;
@@ -1587,6 +1642,23 @@ void BlitScaled(const Source& source, uint8_t* target, int32_t targetWidth, int3
             }
             return;
         }
+    }
+
+    // 1:1 onto RGB565 from an alpha-only source (text in one colour).
+    if (oneToOne && kind == SrcKind::ALPHA8 && !p.hasKey && !p.dither && !p.flips &&
+        targetFormat == Deki::ColorFormat::RGB565)
+    {
+        scope.path = BlitPath::AlphaRows;
+        uint16_t* target16 = (uint16_t*)target;
+        if (p.hasAlphaTint)
+        {
+            AlphaRows_RGB565<true>(source, target16, targetWidth, destX, destY, bounds, p);
+        }
+        else
+        {
+            AlphaRows_RGB565<false>(source, target16, targetWidth, destX, destY, bounds, p);
+        }
+        return;
     }
 
     // Onto RGB565A8 from an RGB565 or RGB565A8 source, scaled or tinted (a
@@ -1729,10 +1801,34 @@ static DEKI_FAST_ATTR void RotatedBlitT(const Source& source, uint8_t* target, i
     }
 }
 
+// A rotated sprite onto the frame, kept out of line in IRAM: inlined into the
+// dispatch below it would run from flash. Only these two, the common ones:
+// each instance is internal memory.
+template <SrcKind SK>
+[[gnu::noinline]] static DEKI_FAST_ATTR void RotatedBlitIntoRGB565(const Source& source, uint8_t* target,
+                                                                   int32_t targetWidth, const RotatedBlitArgs& a,
+                                                                   const BlitParams& p)
+{
+    RotatedBlitT<SK, Deki::ColorFormat::RGB565>(source, target, targetWidth, a, p);
+}
+
 template <Deki::ColorFormat F>
 static void RotatedBlitForTarget(SrcKind kind, const Source& source, uint8_t* target, int32_t targetWidth,
                                  const RotatedBlitArgs& a, const BlitParams& p)
 {
+    if constexpr (F == Deki::ColorFormat::RGB565)
+    {
+        if (kind == SrcKind::RGB565)
+        {
+            RotatedBlitIntoRGB565<SrcKind::RGB565>(source, target, targetWidth, a, p);
+            return;
+        }
+        if (kind == SrcKind::RGB565A8)
+        {
+            RotatedBlitIntoRGB565<SrcKind::RGB565A8>(source, target, targetWidth, a, p);
+            return;
+        }
+    }
     switch (kind)
     {
         case SrcKind::RGB565: RotatedBlitT<SrcKind::RGB565, F>(source, target, targetWidth, a, p); break;
@@ -1774,8 +1870,8 @@ bool CoversRect(const Source& source, int32_t screenX, int32_t screenY, float sc
     return !clip.IsSet() || (clip.left <= left && clip.top <= top && clip.right >= right && clip.bottom >= bottom);
 }
 
-bool BlitRows(const Source& source, int32_t screenY, float scaleX, float scaleY, float rotation, float pivotX,
-              float pivotY, int32_t& top, int32_t& bottom)
+bool BlitArea(const Source& source, int32_t screenX, int32_t screenY, float scaleX, float scaleY, float rotation,
+              float pivotX, float pivotY, int32_t& left, int32_t& top, int32_t& right, int32_t& bottom)
 {
     // Placed as Blit places it, unrotated or rotated.
     const float destWidth = source.width * scaleX;
@@ -1786,9 +1882,11 @@ bool BlitRows(const Source& source, int32_t screenY, float scaleX, float scaleY,
     }
     if (rotation == 0.0f)
     {
+        left = screenX - static_cast<int32_t>(std::floor(destWidth * pivotX));
         top = screenY - static_cast<int32_t>(std::floor(destHeight * pivotY));
+        right = left + static_cast<int32_t>(destWidth);
         bottom = top + static_cast<int32_t>(destHeight);
-        return bottom > top;
+        return right > left && bottom > top;
     }
     const float cosR = std::cos(rotation);
     const float sinR = std::sin(rotation);
@@ -1796,16 +1894,21 @@ bool BlitRows(const Source& source, int32_t screenY, float scaleX, float scaleY,
     const float pivotSY = destHeight * pivotY;
     const float xs[2] = { -pivotSX, destWidth - pivotSX };
     const float ys[2] = { -pivotSY, destHeight - pivotSY };
-    float minY = 0, maxY = 0;
+    float minX = 0, maxX = 0, minY = 0, maxY = 0;
     for (int i = 0; i < 4; i++)
     {
+        const float rx = xs[i & 1] * cosR - ys[i >> 1] * sinR;
         const float ry = xs[i & 1] * sinR + ys[i >> 1] * cosR;
+        minX = i == 0 ? rx : std::min(minX, rx);
+        maxX = i == 0 ? rx : std::max(maxX, rx);
         minY = i == 0 ? ry : std::min(minY, ry);
         maxY = i == 0 ? ry : std::max(maxY, ry);
     }
+    left = screenX + static_cast<int32_t>(std::floor(minX));
+    right = screenX + static_cast<int32_t>(std::floor(maxX + 1));
     top = screenY + static_cast<int32_t>(std::floor(minY));
     bottom = screenY + static_cast<int32_t>(std::floor(maxY + 1));
-    return bottom > top;
+    return right > left && bottom > top;
 }
 
 void Blit(const Source& source, uint8_t* target, int32_t targetWidth, int32_t targetHeight,

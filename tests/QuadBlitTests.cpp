@@ -1048,6 +1048,70 @@ TEST(QuadBlitTintRows, EveryPixelMatchesThePipelinesArithmetic)
     }
 }
 
+// An alpha-only source (text in one colour) 1:1 onto RGB565: white tinted, so
+// the tint's colour at each pixel's alpha, as the pipeline composites it.
+TEST(QuadBlitAlphaRows, EveryPixelMatchesThePipelinesArithmetic)
+{
+    constexpr int kW = 23, kH = 6, kTW = 30;
+    uint32_t seed = 4242;
+    auto next = [&seed]()
+    {
+        seed = seed * 1664525u + 1013904223u;
+        return seed >> 8;
+    };
+    const uint8_t tints[][4] = { { 255, 255, 255, 255 }, { 232, 240, 240, 255 }, { 88, 144, 160, 255 },
+                                 { 200, 30, 255, 77 },   { 0, 0, 0, 255 },       { 255, 128, 64, 200 } };
+    for (const auto& t : tints)
+    {
+        uint8_t src[kW * kH];
+        uint16_t target[kTW * kH];
+        uint16_t expected[kTW * kH];
+        for (int i = 0; i < kW * kH; ++i)
+        {
+            const uint32_t pick = next() % 4;
+            src[i] = pick == 0 ? 0 : pick == 1 ? 255 : static_cast<uint8_t>(next());
+        }
+        for (int i = 0; i < kTW * kH; ++i)
+        {
+            target[i] = expected[i] = static_cast<uint16_t>(next());  // as stored
+        }
+        constexpr int kX = 4, kClipRight = 25;  // drawn at x 4, clipped at 25
+        for (int y = 0; y < kH; ++y)
+        {
+            for (int x = kX; x < kClipRight; ++x)
+            {
+                const uint32_t a = src[y * kW + (x - kX)];
+                const uint32_t effA = t[3] != 255 ? RefDiv255(a * t[3]) : a;
+                if (a == 0 || effA == 0)
+                {
+                    continue;
+                }
+                const uint16_t bg = DekiPixel::FromMemory565(expected[y * kTW + x]);
+                uint32_t r = t[0], g = t[1], b = t[2];
+                if (effA != 255)
+                {
+                    const uint32_t inv = 255 - effA;
+                    r = RefDiv255(r * effA + ((bg >> 11) << 3) * inv);
+                    g = RefDiv255(g * effA + (((bg >> 5) & 0x3F) << 2) * inv);
+                    b = RefDiv255(b * effA + ((bg & 0x1F) << 3) * inv);
+                }
+                expected[y * kTW + x] =
+                    DekiPixel::ToMemory565(static_cast<uint16_t>(((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3)));
+            }
+        }
+        const QuadBlit::Source source = QuadBlit::MakeSource(src, kW, kH, QuadBlit::PixelLayout::Alpha8());
+        QuadBlit::PushClipRect(0, 0, kClipRight, kH);
+        QuadBlit::BlitScaled(source, reinterpret_cast<uint8_t*>(target), kTW, kH, Deki::ColorFormat::RGB565, kX, 0, kW,
+                             kH, t[0], t[1], t[2], t[3]);
+        QuadBlit::PopClipRect();
+        for (int i = 0; i < kTW * kH; ++i)
+        {
+            ASSERT_EQ(target[i], expected[i])
+                << "pixel " << i << " tint " << int(t[0]) << "," << int(t[1]) << "," << int(t[2]) << "," << int(t[3]);
+        }
+    }
+}
+
 // TintRows remembers its last blend. Runs of one source pixel over one
 // destination pixel, broken by a change in either, must still come out pixel
 // for pixel as the pipeline's arithmetic.
@@ -1207,8 +1271,12 @@ TEST(QuadBlitTintScaledRows, EveryPixelMatchesThePipelinesArithmetic)
     const uint8_t tints[][4] = {
         { 255, 255, 255, 255 }, { 58, 91, 160, 255 }, { 255, 255, 255, 128 }, { 200, 30, 255, 77 }
     };
-    // Destination rectangles: shrunk, grown, 1:1, and partly off the target.
-    const int rects[][4] = { { 2, 1, 23, 9 }, { 0, 0, 5, 4 }, { 3, 2, kSW, kSH }, { 25, -3, 17, 10 } };
+    // Destination rectangles: shrunk, grown, 1:1, partly off the target, and
+    // the whole target (big enough for the tint's tables; the rest are tinted
+    // pixel by pixel).
+    const int rects[][4] = {
+        { 2, 1, 23, 9 }, { 0, 0, 5, 4 }, { 3, 2, kSW, kSH }, { 25, -3, 17, 10 }, { 0, 0, kTW, kTH }
+    };
     for (const auto& t : tints)
     {
         for (const auto& r : rects)

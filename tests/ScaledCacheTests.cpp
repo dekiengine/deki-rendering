@@ -56,8 +56,8 @@ std::vector<uint8_t> Background()
     return target;
 }
 
-std::vector<uint8_t> Draw(const QuadBlit::Source& s, int destX, int destY, int destW, int destH, uint8_t tr,
-                          uint8_t tg, uint8_t tb, uint8_t ta)
+std::vector<uint8_t> Draw(const QuadBlit::Source& s, int destX, int destY, int destW, int destH, uint8_t tr, uint8_t tg,
+                          uint8_t tb, uint8_t ta)
 {
     std::vector<uint8_t> target = Background();
     QuadBlit::ClearClipStack();
@@ -83,7 +83,9 @@ TEST_F(ScaledCache, CopyGivesTheScaledBlitsPixels)
     {
         uint8_t r, g, b, a;
     };
-    const Tint tints[] = { { 255, 255, 255, 255 }, { 255, 255, 255, 90 }, { 240, 120, 30, 255 }, { 60, 200, 255, 150 } };
+    const Tint tints[] = {
+        { 255, 255, 255, 255 }, { 255, 255, 255, 90 }, { 240, 120, 30, 255 }, { 60, 200, 255, 150 }
+    };
     const int rects[][4] = {
         { 4, 3, 18, 14 },    // twice the size
         { 10, 8, 5, 4 },     // shrunk
@@ -112,6 +114,33 @@ TEST_F(ScaledCache, CopyGivesTheScaledBlitsPixels)
             }
         }
     }
+}
+
+// A source whose rows are each one colour, with those colours to hand
+// (rowColors, as a magnified gradient's), drawn from its copy: the copy's rows
+// are not the source's, so its fill must not take the source's row colours.
+TEST_F(ScaledCache, CopyOfUniformRowsGivesTheScaledBlitsPixels)
+{
+    std::vector<uint8_t> pixels(static_cast<size_t>(kSrcW) * kSrcH * 2);
+    std::vector<uint16_t> rowColors(kSrcH);
+    for (int y = 0; y < kSrcH; ++y)
+    {
+        rowColors[y] = static_cast<uint16_t>(0x1234u + 0x0841u * y);
+        for (int x = 0; x < kSrcW; ++x)
+        {
+            DekiPixel::StoreU16(&pixels[(static_cast<size_t>(y) * kSrcW + x) * 2], rowColors[y]);
+        }
+    }
+    QuadBlit::Source s = SourceOf(pixels, false, false);
+    s.uniformRows = true;
+    s.rowColors = rowColors.data();
+    const std::vector<uint8_t> want = Draw(s, 4, 3, 18, 28, 255, 255, 255, 255);
+    s.cacheScaled = true;
+    Draw(s, 4, 3, 18, 28, 255, 255, 255, 255);
+    QuadBlit::NextFrame();
+    const std::vector<uint8_t> got = Draw(s, 4, 3, 18, 28, 255, 255, 255, 255);
+    ASSERT_GT(QuadBlit::ScaledCacheBytes(), 0u) << "no copy made";
+    EXPECT_EQ(got, want);
 }
 
 // A size is only copied once it has been drawn in an earlier frame too: the
