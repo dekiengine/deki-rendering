@@ -59,6 +59,13 @@ bool Standard2DRenderer::DrawsInStrips(Deki::Scene* scene) const
     return true;
 }
 
+bool Standard2DRenderer::CoversView(const RenderContext& ctx) const
+{
+    // A later strip replays what the first recorded, cover included. The
+    // first strip is not known until it is drawn, so it is cleared.
+    return m_PlanCovers && ctx.contentFrame != 0 && ctx.contentFrame == m_PlanFrame;
+}
+
 void Standard2DRenderer::AddSortingCallback(SortingCallback cb)
 {
     if (cb && std::find(m_SortingCallbacks.begin(), m_SortingCallbacks.end(), cb) == m_SortingCallbacks.end())
@@ -323,6 +330,17 @@ void Standard2DRenderer::ExecuteBuiltins(const SortItem& item, RenderContext& ct
                                             : static_cast<int32_t>(fScreenY)) -
                                        viewTop;
 
+            // Recording a frame's first strip: does this draw cover the whole
+            // view? (Content handed over with ownsPixels is produced again in
+            // each strip, so it may not be the same there.)
+            if (m_PlanMode == PlanMode::Recording && !m_PlanCovers && ctx.buffer == m_FrameBuffer &&
+                !source.ownsPixels)
+            {
+                const int32_t viewHeight = ctx.viewHeight > 0 ? ctx.viewHeight : ctx.height;
+                m_PlanCovers = QuadBlit::CoversRect(source, intScreenX, intScreenY, drawScaleX, drawScaleY, wt.rotation,
+                                                    pivotX, pivotY, tintA, 0, -viewTop, ctx.width, viewHeight - viewTop);
+            }
+
             const uint64_t blitStart = profiling ? RenderProfiler::Now() : 0;
             QuadBlit::Blit(source, ctx.buffer, ctx.width, ctx.height, ctx.format, intScreenX, intScreenY, drawScaleX,
                            drawScaleY, wt.rotation, pivotX, pivotY, tintR, tintG, tintB, tintA, useOrderedDither);
@@ -450,6 +468,7 @@ void Standard2DRenderer::Render(Deki::Scene* scene, const RenderContext& ctx)
     }
 
     QuadBlit::ClearClipStack();
+    m_FrameBuffer = ctx.buffer;
 
     // A package that loaded (or reloaded) since the last frame may have
     // registered adapters for types already classified: start over.
@@ -538,6 +557,7 @@ void Standard2DRenderer::Render(Deki::Scene* scene, const RenderContext& ctx)
         m_Plan.clear();
         m_PlanRoots = 0;
         m_PlanFrame = 0;
+        m_PlanCovers = false;
         if (m_PlanMode == PlanMode::Recording)
         {
             for (const SortItem& item : sortableItems)

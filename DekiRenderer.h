@@ -87,6 +87,16 @@ public:
         (void)scene;
         return false;
     }
+
+    /// Whether Render(ctx) is known, before it runs, to write every pixel of
+    /// ctx.buffer with opaque content, so whatever the buffer held first never
+    /// shows. DekiRenderSystem then skips clearing it. Asked for each strip
+    /// of a frame drawn in strips. The default is no.
+    virtual bool CoversView(const RenderContext& ctx) const
+    {
+        (void)ctx;
+        return false;
+    }
 };
 
 }  // namespace DekiRendering

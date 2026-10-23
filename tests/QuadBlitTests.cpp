@@ -554,9 +554,10 @@ TEST_F(QuadBlitKernelDispatchTest, RGB565A8BlendRow_UsesKernel_WhenAligned_AndUn
     }
 }
 
-TEST_F(QuadBlitKernelDispatchTest, RGB565A8BlendRow_SkipsKernel_WhenTinted)
+TEST_F(QuadBlitKernelDispatchTest, RGB565A8BlendRow_UsesKernel_WhenTinted)
 {
-    // A tinted blend takes the scalar path even when aligned.
+    // The kernel takes the tint (KernelOp::RGB565A8BlendRow), so a tinted
+    // blend goes to it too, whole rows at a time.
     const int w = 16, h = 1;
     AlignedBuf srcBuf(w * h * 3 + 16);
     AlignedBuf dstBuf(w * h * 2);
@@ -571,10 +572,10 @@ TEST_F(QuadBlitKernelDispatchTest, RGB565A8BlendRow_SkipsKernel_WhenTinted)
     QuadBlit::RegisterKernel(QuadBlit::KernelOp::RGB565A8BlendRow, &KernelProbe::BlendRowMarker);
 
     QuadBlit::Source src = QuadBlit::MakeSource(srcBuf.aligned, w, h, QuadBlit::PixelLayout::RGB565A8(), false);
-    // A real tint fails the precondition, so the kernel must not run.
     QuadBlit::BlitScaled(src, dstBuf.aligned, w, h, Deki::ColorFormat::RGB565, 0, 0, w, h, 128, 128, 128, 255);
 
-    EXPECT_EQ(KernelProbe::s_CallCount, 0);
+    EXPECT_EQ(KernelProbe::s_CallCount, 1);
+    EXPECT_EQ(KernelProbe::s_LastPixelCount, w);
 }
 
 // ============================================================================
@@ -1299,4 +1300,56 @@ TEST(QuadBlitTintScaledRows, EveryPixelMatchesThePipelinesArithmetic)
             }
         }
     }
+}
+
+// ============================================================================
+// CoversRect
+// ============================================================================
+
+// Yes only when the blit writes every pixel of the rect with the source's own
+// colours: placed over all of it, opaque, untinted in alpha, unturned, and not
+// clipped short of it.
+TEST_F(QuadBlitClipTest, CoversRect_OnlyOpaqueBlitsOverAllOfTheRect)
+{
+    uint8_t px[4 * 4 * 3] = {};
+    const QuadBlit::Source opaque = QuadBlit::MakeSource(px, 4, 4, QuadBlit::PixelLayout::RGB565());
+
+    // 4 px at scale 3 from (10, 20), pivot top-left: 12 x 12.
+    EXPECT_TRUE(QuadBlit::CoversRect(opaque, 10, 20, 3.0f, 3.0f, 0.0f, 0.0f, 0.0f, 255, 10, 20, 22, 32));
+    EXPECT_TRUE(QuadBlit::CoversRect(opaque, 16, 26, 3.0f, 3.0f, 0.0f, 0.5f, 0.5f, 255, 10, 20, 22, 32))
+        << "centre pivot";
+    EXPECT_FALSE(QuadBlit::CoversRect(opaque, 10, 20, 3.0f, 3.0f, 0.0f, 0.0f, 0.0f, 255, 9, 20, 22, 32));
+    EXPECT_FALSE(QuadBlit::CoversRect(opaque, 10, 20, 3.0f, 3.0f, 0.0f, 0.0f, 0.0f, 255, 10, 19, 22, 32));
+    EXPECT_FALSE(QuadBlit::CoversRect(opaque, 10, 20, 3.0f, 3.0f, 0.0f, 0.0f, 0.0f, 255, 10, 20, 23, 32));
+    EXPECT_FALSE(QuadBlit::CoversRect(opaque, 10, 20, 3.0f, 3.0f, 0.0f, 0.0f, 0.0f, 255, 10, 20, 22, 33));
+
+    // A colour tint still writes every pixel; an alpha tint or a turn may not.
+    EXPECT_FALSE(QuadBlit::CoversRect(opaque, 10, 20, 3.0f, 3.0f, 0.0f, 0.0f, 0.0f, 254, 10, 20, 22, 32));
+    EXPECT_FALSE(QuadBlit::CoversRect(opaque, 10, 20, 3.0f, 3.0f, 0.1f, 0.0f, 0.0f, 255, 10, 20, 22, 32));
+
+    // Sources that can leave holes.
+    EXPECT_FALSE(QuadBlit::CoversRect(QuadBlit::MakeSource(px, 4, 4, QuadBlit::PixelLayout::RGB565A8()), 10, 20, 3.0f,
+                                      3.0f, 0.0f, 0.0f, 0.0f, 255, 10, 20, 22, 32));
+    EXPECT_TRUE(QuadBlit::CoversRect(QuadBlit::MakeSource(px, 4, 4, QuadBlit::PixelLayout::RGB565A8NoAlpha()), 10, 20,
+                                     3.0f, 3.0f, 0.0f, 0.0f, 0.0f, 255, 10, 20, 22, 32));
+    EXPECT_FALSE(QuadBlit::CoversRect(QuadBlit::MakeSource(px, 4, 4, QuadBlit::PixelLayout::Alpha8()), 10, 20, 3.0f,
+                                      3.0f, 0.0f, 0.0f, 0.0f, 255, 10, 20, 22, 32));
+    QuadBlit::Source keyed = opaque;
+    keyed.hasChromaKey = true;
+    EXPECT_FALSE(QuadBlit::CoversRect(keyed, 10, 20, 3.0f, 3.0f, 0.0f, 0.0f, 0.0f, 255, 10, 20, 22, 32));
+
+    // The clip stack: short of the rect, around it, switched off.
+    QuadBlit::PushClipRect(10, 20, 22, 31);
+    EXPECT_FALSE(QuadBlit::CoversRect(opaque, 10, 20, 3.0f, 3.0f, 0.0f, 0.0f, 0.0f, 255, 10, 20, 22, 32));
+    QuadBlit::SetClipEnabled(false);
+    EXPECT_TRUE(QuadBlit::CoversRect(opaque, 10, 20, 3.0f, 3.0f, 0.0f, 0.0f, 0.0f, 255, 10, 20, 22, 32));
+    QuadBlit::SetClipEnabled(true);
+    QuadBlit::PopClipRect();
+    QuadBlit::PushClipRect(-100, -100, 100, 100);
+    EXPECT_TRUE(QuadBlit::CoversRect(opaque, 10, 20, 3.0f, 3.0f, 0.0f, 0.0f, 0.0f, 255, 10, 20, 22, 32));
+    QuadBlit::PopClipRect();
+
+    // A rect above the target's first row (a later strip's whole view): only
+    // where the blit lands counts.
+    EXPECT_TRUE(QuadBlit::CoversRect(opaque, 0, -8, 4.0f, 4.0f, 0.0f, 0.0f, 0.0f, 255, 0, -8, 16, 8));
 }

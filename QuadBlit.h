@@ -1,4 +1,5 @@
 #pragma once
+#include <cstddef>
 #include <cstdint>
 #include <deki/assets/Texture2D.h>  // TextureFormat, for PixelLayout::FromTexture
 
@@ -185,7 +186,33 @@ struct Source
     // blit skips them without reading: an outline or frame baked at a panel's
     // size is mostly the empty run inside it. Set it only when it holds.
     const int16_t* clearRowSpans = nullptr;
+
+    // The pixels never change while they live, so a scaled blit may keep a
+    // copy made at the size it is drawn and draw that 1:1 next time (see
+    // NextFrame). Set it only for pixels that stay as they are at this
+    // address (a sprite's own); call ForgetScaled before they are freed.
+    bool cacheScaled = false;
 };
+
+/// The scaled-blit cache. A non-rotated blit of a cacheScaled source onto
+/// RGB565, drawn at a size its pixels are not (an icon at twice its size),
+/// is scaled into a copy once it has been drawn at that size in two frames,
+/// and from then on the copy is drawn 1:1: the same pixels, through the 1:1
+/// paths' runs instead of sampling every pixel every frame. Copies live in
+/// external memory within a fixed budget, and one not drawn for a while is
+/// dropped.
+///
+/// NextFrame starts a frame: the render system calls it once a frame.
+void NextFrame();
+/// Drops the copies made of pixels in [begin, begin + bytes): call it before
+/// freeing pixels a source marked cacheScaled.
+void ForgetScaled(const uint8_t* begin, size_t bytes);
+/// Drops every copy.
+void ClearScaledCache();
+/// The bytes the copies hold, and how many there are (made or waiting for
+/// their second frame).
+size_t ScaledCacheBytes();
+size_t ScaledCacheEntries();
 
 /// Describes a source buffer of the given layout. `ownsPixels` hands the
 /// buffer to the renderer, which frees it through Deki::Memory after the blit.
@@ -205,6 +232,15 @@ void Blit(const Source& source, uint8_t* target, int32_t targetWidth, int32_t ta
           Deki::ColorFormat targetFormat, int32_t screenX, int32_t screenY, float scaleX, float scaleY, float rotation,
           float pivotX, float pivotY, uint8_t tintR = 255, uint8_t tintG = 255, uint8_t tintB = 255,
           uint8_t tintA = 255, bool useOrderedDither = false);
+
+/// Whether Blit() with these arguments, under the current clip stack, writes
+/// every pixel of the rect [left, right) x [top, bottom) of its target with
+/// the source's own colours, so nothing there before shows through. No
+/// whenever that is not certain: a source with alpha or a colour key, an alpha
+/// tint, a rotation. The rect may reach outside the target (the whole view
+/// around a strip): the blit's placement is checked, not the target's size.
+bool CoversRect(const Source& source, int32_t screenX, int32_t screenY, float scaleX, float scaleY, float rotation,
+                float pivotX, float pivotY, uint8_t tintA, int32_t left, int32_t top, int32_t right, int32_t bottom);
 
 /// A faster blit without rotation, into the rect destX, destY, destWidth,
 /// destHeight.
@@ -238,10 +274,13 @@ enum class KernelOp : uint8_t
     // opaque middle of the chroma-key row-span path.
     RGB565CopyRow,
 
-    // RGB565A8 source to RGB565 dest, 1:1 alpha blend. src is 3 bytes/pixel
-    // (RGB565 plus an alpha byte), dst is 2. The kernel handles the a == 0
-    // skip and a == 255 fast path itself. Tint and chroma key must be absent;
-    // the caller checks, the kernel does not.
+    // RGB565A8 source to RGB565 dest, 1:1 alpha blend, tinted by tintR/G/B
+    // and alpha-tinted by tintA (255: none). src is 3 bytes/pixel (RGB565
+    // plus an alpha byte), dst is 2, each at its natural alignment. It must
+    // write the scalar blend's pixels exactly: a pixel whose alpha (times
+    // tintA) is 0 keeps the destination, one at 255 takes the tinted source,
+    // and the rest are Div255(source * a + destination * (255 - a)) per
+    // 8-bit channel, packed. Chroma keys stay with the caller.
     RGB565A8BlendRow,
 
     // RGB565 source to RGB565A8 dest, 1:1 opaque expand. src is 2

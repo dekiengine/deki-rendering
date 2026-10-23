@@ -2,6 +2,7 @@
 #include "RenderProfiler.h"
 #include "DekiRenderer.h"
 #include "PixelFormat.h"
+#include "QuadBlit.h"
 #include <deki/Engine.h>
 #include <deki/LogSystem.h>
 #include <deki/SceneSystem.h>
@@ -503,6 +504,7 @@ void DekiRenderSystem::Render(Deki::Scene* currentScene)
     }
 
     RenderProfiler::CountFrame();
+    QuadBlit::NextFrame();
     RenderContext ctx{ camera, m_RenderBuffer, m_ScreenWidth, m_ScreenHeight, m_ColorFormat };
     ctx.trackDirty = tracking;
     m_Renderer->Render(currentScene, ctx);
@@ -582,6 +584,7 @@ void DekiRenderSystem::RenderBands(Deki::Scene* scene, CameraComponent* camera, 
         m_ContentFrame = 1;  // 0 means "not in strips"
     }
     RenderProfiler::CountFrame();
+    QuadBlit::NextFrame();
 
     const Deki::Color clear = camera->clearColor;
     const bool clearChanged = ClearChanged(*camera);
@@ -617,13 +620,24 @@ void DekiRenderSystem::RenderBands(Deki::Scene* scene, CameraComponent* camera, 
         const int32_t rows = std::min(m_BandRows, m_ScreenHeight - top);
         uint8_t* const wholeRows = whole ? whole + static_cast<size_t>(top) * pitch : nullptr;
 
+        RenderContext ctx{ camera, m_BandBuffer, m_ScreenWidth, rows, m_ColorFormat };
+        ctx.viewTop = top;
+        ctx.viewHeight = m_ScreenHeight;
+        ctx.contentFrame = m_ContentFrame;
+        ctx.trackDirty = tracking;
+
         // The strip's starting pixels: the kept frame's rows, or the clear
         // colour. The strip buffer still holds the strip drawn before, so
-        // with tracking only what that one drew is cleared.
+        // with tracking only what that one drew is cleared, and nothing when
+        // the renderer will cover all of it (a full-screen background).
         const uint64_t clearStart = RenderProfiler::IsEnabled() ? RenderProfiler::Now() : 0;
         if (keep)
         {
             memcpy(m_BandBuffer, wholeRows, static_cast<size_t>(rows) * pitch);
+        }
+        else if (m_Renderer->CoversView(ctx))
+        {
+            // Nothing: every pixel is drawn over.
         }
         else if (m_BandHeldValid && !m_BandHeld.IsFull())
         {
@@ -643,11 +657,6 @@ void DekiRenderSystem::RenderBands(Deki::Scene* scene, CameraComponent* camera, 
             RenderProfiler::AddContent(RenderProfiler::kClear, RenderProfiler::Now() - clearStart);
         }
 
-        RenderContext ctx{ camera, m_BandBuffer, m_ScreenWidth, rows, m_ColorFormat };
-        ctx.viewTop = top;
-        ctx.viewHeight = m_ScreenHeight;
-        ctx.contentFrame = m_ContentFrame;
-        ctx.trackDirty = tracking;
         m_Renderer->Render(scene, ctx);
 
         // What this strip drew, in its own rows. Null: unknown, so all of it.

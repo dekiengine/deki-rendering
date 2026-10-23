@@ -47,6 +47,7 @@ public:
 
     uint16_t colour = 0xF800;
     float sourcePpm = 16.0f;
+    uint8_t alpha = 255;  // the tint's alpha
 
     bool GetContentExtents(float& outW, float& outH) const override
     {
@@ -64,7 +65,8 @@ public:
         outSource = QuadBlit::MakeSource(m_Pixels, 4, 4, QuadBlit::PixelLayout::RGB565(), false, nullptr);
         outSource.pixelsPerMeter = sourcePpm;
         outPivotX = outPivotY = 0.5f;
-        tr = tg = tb = ta = 255;
+        tr = tg = tb = 255;
+        ta = alpha;
         return true;
     }
 
@@ -165,6 +167,19 @@ public:
     }
 };
 
+// Remembers what CoversView answered, strip by strip.
+class WatchedRenderer : public Standard2DRenderer
+{
+public:
+    mutable std::vector<bool> covers;
+    bool CoversView(const RenderContext& ctx) const override
+    {
+        const bool c = Standard2DRenderer::CoversView(ctx);
+        covers.push_back(c);
+        return c;
+    }
+};
+
 // One scene, two render systems: `whole` draws whole frames, `strips` draws
 // strips into `display`.
 struct Fixture
@@ -177,7 +192,7 @@ struct Fixture
     Deki::Object* mover = nullptr;
     Deki::Object* still = nullptr;
     Standard2DRenderer wholeRenderer;
-    Standard2DRenderer stripRenderer;
+    WatchedRenderer stripRenderer;
     DekiRenderSystem whole;
     DekiRenderSystem strips;
     Deki::ColorFormat format;
@@ -444,4 +459,53 @@ TEST(StripFeatures, DefaultPassAnswers)
     EXPECT_TRUE(objectPass.DrawsInStrips(nullptr));
     EXPECT_FALSE(framePass.DrawsInStrips(nullptr));
     EXPECT_FALSE(everything.DrawsInStrips(nullptr));
+}
+
+// Under a full-screen opaque background the first strip of a frame finds it,
+// and the later strips are not cleared: it covers them. The display still
+// shows the whole frame every frame, also once the background no longer
+// covers the view, and once it is gone.
+TEST(StripFeatures, StripsUnderAFullScreenBackgroundAreNotCleared)
+{
+    for (Deki::ColorFormat fmt : kFormats)
+    {
+        for (bool tracking : { false, true })
+        {
+            Fixture f(fmt, 8, tracking);
+            Deki::Object* back = f.Sprite("back", 0.0f, 0.0f, 0x001F);
+            auto* sprite = back->GetComponent<StripSprite>();
+            sprite->sourcePpm = 1.0f;   // 4 m: 64 x 64 px over the 64 x 48 view
+            sprite->sortingOrder = -1;  // under the other sprites
+            const std::vector<bool> covered{ false, true, true, true, true, true };
+            const std::vector<bool> cleared(6, false);
+
+            auto frame = [&](const std::vector<bool>& expected, const char* what)
+            {
+                f.stripRenderer.covers.clear();
+                f.Frame();
+                EXPECT_EQ(f.stripRenderer.covers, expected) << what << ", tracking " << tracking;
+                EXPECT_EQ(f.display.frame, f.WholeFrame()) << what << ", tracking " << tracking;
+            };
+
+            for (int i = 0; i < 4; ++i)
+            {
+                f.mover->SetX(-1.5f + 0.4f * i);
+                frame(covered, "moving sprite");
+            }
+
+            back->SetX(1.0f / 16.0f);
+            frame(cleared, "a column short");
+            back->SetX(0.0f);
+            sprite->alpha = 200;
+            frame(cleared, "see-through");
+            sprite->alpha = 255;
+            back->SetRotation(0.01f);
+            frame(cleared, "turned");
+            back->SetRotation(0.0f);
+            back->SetActive(false);
+            frame(cleared, "gone");
+            back->SetActive(true);
+            frame(covered, "back again");
+        }
+    }
 }

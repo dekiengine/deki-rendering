@@ -12,6 +12,7 @@
 // in a translation unit that includes DekiEngine.h.
 #include <deki/Engine.h>
 #include <deki/LogSystem.h>
+#include <deki/providers/Memory.h>
 
 // ============================================================================
 // How this file is organised
@@ -563,6 +564,19 @@ template <bool SourceAlpha>
     }
 }
 
+// Destination columns [x0, x1) of one row through a platform's blend kernel.
+// (Not a lambda shared with TintRun: its body would be a function of its own,
+// outside IRAM, and the scalar loop inlined into it ran from flash.)
+static inline void KernelRun(RowKernelFn kernel, const uint8_t* srcRow, uint16_t* dstRow, int32_t destX, int32_t bpp,
+                             int32_t x0, int32_t x1, const BlitParams& p, uint8_t tintA)
+{
+    if (x1 > x0)
+    {
+        kernel(srcRow + (x0 - destX) * bpp, reinterpret_cast<uint8_t*>(dstRow + x0), x1 - x0, p.tintR, p.tintG, p.tintB,
+               tintA);
+    }
+}
+
 // RGB565 or RGB565A8 -> RGB565, 1:1, any tint and alpha tint; no key, dither or
 // flips. The pipeline's arithmetic in one tight loop per row: CompositePixel
 // per pixel cost several times as much, most of it for opaque pixels that
@@ -580,6 +594,9 @@ static DEKI_FAST_ATTR void TintRows_RGB565(const Source& source, uint16_t* targe
     const uint32_t tintA = p.tintA;
 
     const int16_t* clear = SourceAlpha ? source.clearRowSpans : nullptr;
+    // A platform's blend kernel, when it registers one, writes the same pixels.
+    RowKernelFn kernel = (SourceAlpha && bpp == 3) ? s_Kernels[(int)KernelOp::RGB565A8BlendRow] : nullptr;
+    const uint8_t kernelA = alphaTint ? static_cast<uint8_t>(tintA) : 255;
 
     for (int32_t py = b.startY; py < b.endY; py++)
     {
@@ -592,8 +609,20 @@ static DEKI_FAST_ATTR void TintRows_RGB565(const Source& source, uint16_t* targe
             // read: only the columns either side of it, inside the clip.
             const int32_t cs = std::clamp<int32_t>(destX + clear[srcY * 2], b.startX, b.endX);
             const int32_t ce = std::clamp<int32_t>(destX + clear[srcY * 2 + 1], cs, b.endX);
-            TintRun<SourceAlpha>(t, srcRow, dstRow, destX, bpp, b.startX, cs, alphaTint, tintA);
-            TintRun<SourceAlpha>(t, srcRow, dstRow, destX, bpp, ce, b.endX, alphaTint, tintA);
+            if (kernel)
+            {
+                KernelRun(kernel, srcRow, dstRow, destX, bpp, b.startX, cs, p, kernelA);
+                KernelRun(kernel, srcRow, dstRow, destX, bpp, ce, b.endX, p, kernelA);
+            }
+            else
+            {
+                TintRun<SourceAlpha>(t, srcRow, dstRow, destX, bpp, b.startX, cs, alphaTint, tintA);
+                TintRun<SourceAlpha>(t, srcRow, dstRow, destX, bpp, ce, b.endX, alphaTint, tintA);
+            }
+        }
+        else if (kernel)
+        {
+            KernelRun(kernel, srcRow, dstRow, destX, bpp, b.startX, b.endX, p, kernelA);
         }
         else
         {
@@ -860,10 +889,19 @@ static DEKI_FAST_ATTR bool BlendRows_RGB565A8_to_RGB565(const Source& source, ui
             const int32_t clampedEnd = std::min<int32_t>(rowSpans[srcY * 2 + 1], srcEndX);
 
             // Left alpha region.
-            for (int32_t sx = srcStartX; sx < clampedStart && sx < srcEndX; sx++)
+            const int32_t leftEnd = std::min(clampedStart, srcEndX);
+            if (blendKernel && bpp == 3 && leftEnd > srcStartX)
             {
-                CompositePixel<SrcKind::RGB565A8, Deki::ColorFormat::RGB565, true>(
-                    source, rowBase + sx * bpp, (uint8_t*)target16, rowIdx + destX + sx, destX + sx, py, plain);
+                blendKernel(rowBase + srcStartX * bpp, (uint8_t*)(dstRow + destX + srcStartX), leftEnd - srcStartX,
+                            255, 255, 255, 255);
+            }
+            else
+            {
+                for (int32_t sx = srcStartX; sx < leftEnd; sx++)
+                {
+                    CompositePixel<SrcKind::RGB565A8, Deki::ColorFormat::RGB565, true>(
+                        source, rowBase + sx * bpp, (uint8_t*)target16, rowIdx + destX + sx, destX + sx, py, plain);
+                }
             }
 
             // Opaque middle: direct copy, no alpha checks.
@@ -876,17 +914,26 @@ static DEKI_FAST_ATTR bool BlendRows_RGB565A8_to_RGB565(const Source& source, ui
             // Right alpha region. Starts at the clip start when the opaque span
             // ends before it or is empty; starting at opaqueEnd then would
             // write pixels the clip rect excludes.
-            for (int32_t sx = std::max(clampedEnd, srcStartX); sx < srcEndX; sx++)
+            const int32_t rightStart = std::max(clampedEnd, srcStartX);
+            if (blendKernel && bpp == 3 && srcEndX > rightStart)
             {
-                CompositePixel<SrcKind::RGB565A8, Deki::ColorFormat::RGB565, true>(
-                    source, rowBase + sx * bpp, (uint8_t*)target16, rowIdx + destX + sx, destX + sx, py, plain);
+                blendKernel(rowBase + rightStart * bpp, (uint8_t*)(dstRow + destX + rightStart), srcEndX - rightStart,
+                            255, 255, 255, 255);
+            }
+            else
+            {
+                for (int32_t sx = rightStart; sx < srcEndX; sx++)
+                {
+                    CompositePixel<SrcKind::RGB565A8, Deki::ColorFormat::RGB565, true>(
+                        source, rowBase + sx * bpp, (uint8_t*)target16, rowIdx + destX + sx, destX + sx, py, plain);
+                }
             }
             continue;
         }
 
         const uint8_t* srcPtr = rowBase + srcStartX * bpp;
         uint16_t* dstPtr = dstRow + b.startX;
-        if (blendKernel && bpp == 3 && Aligned16(srcPtr, dstPtr))
+        if (blendKernel && bpp == 3)
         {
             blendKernel(srcPtr, (uint8_t*)dstPtr, b.endX - b.startX, 255, 255, 255, 255);
             continue;
@@ -1078,6 +1125,289 @@ static void BlitRowsDispatch(SrcKind kind, Deki::ColorFormat targetFormat, const
     }
 }
 
+// ============================================================================
+// Scaled-blit cache (Source::cacheScaled)
+// ============================================================================
+
+namespace
+{
+// One source drawn at one size: waiting for its second frame (no pixels yet),
+// or its scaled copy.
+struct ScaledCopy
+{
+    const uint8_t* src = nullptr;
+    int32_t srcW = 0, srcH = 0, stride = 0, bpp = 0;
+    int32_t w = 0, h = 0;
+    uint32_t firstSeen = 0;
+    uint32_t lastUsed = 0;
+    uint8_t* pixels = nullptr;
+    size_t bytes = 0;
+    int16_t* spans = nullptr;  // opaque runs, as Source::alphaRowSpans
+    int16_t* clear = nullptr;  // transparent runs, as Source::clearRowSpans
+};
+
+// Policy: what the copies may hold, how many sizes are tracked, and how many
+// frames a copy lives undrawn. A copy bigger than a quarter of the budget is
+// not made: a scaled background is cheap to sample anyway.
+constexpr size_t kScaledBudget = 256 * 1024;
+constexpr size_t kScaledMaxEntries = 64;
+constexpr uint32_t kScaledIdleFrames = 120;
+
+std::vector<ScaledCopy> s_Scaled;
+uint32_t s_ScaledFrame = 1;
+size_t s_ScaledBytes = 0;
+
+void FreeCopy(ScaledCopy& e)
+{
+    if (e.pixels)
+    {
+        s_ScaledBytes -= e.bytes;
+        Deki::Memory::Free(e.pixels);
+        Deki::Memory::Free(e.spans);
+        Deki::Memory::Free(e.clear);
+    }
+    e.pixels = nullptr;
+    e.spans = nullptr;
+    e.clear = nullptr;
+    e.bytes = 0;
+}
+
+void EraseCopy(size_t i)
+{
+    FreeCopy(s_Scaled[i]);
+    s_Scaled[i] = s_Scaled.back();
+    s_Scaled.pop_back();
+}
+
+// Makes room for `need` bytes by dropping the copies drawn longest ago, never
+// one drawn this frame. False when that is not enough.
+bool MakeRoom(size_t need)
+{
+    while (s_ScaledBytes + need > kScaledBudget)
+    {
+        size_t oldest = s_Scaled.size();
+        for (size_t i = 0; i < s_Scaled.size(); i++)
+        {
+            const ScaledCopy& e = s_Scaled[i];
+            if (e.pixels && e.lastUsed != s_ScaledFrame &&
+                (oldest == s_Scaled.size() || e.lastUsed < s_Scaled[oldest].lastUsed))
+            {
+                oldest = i;
+            }
+        }
+        if (oldest == s_Scaled.size())
+        {
+            return false;
+        }
+        FreeCopy(s_Scaled[oldest]);
+    }
+    return true;
+}
+
+// Scales `s` into `e`'s copy with TintScaledRows' sampling, so drawing the
+// copy 1:1 gives the pixels the scaled blit would, and finds the copy's
+// opaque and transparent runs for the 1:1 paths.
+bool MakeCopy(ScaledCopy& e, const Source& s)
+{
+    const size_t rowBytes = static_cast<size_t>(e.w) * static_cast<size_t>(e.bpp);
+    const size_t pixelBytes = rowBytes * static_cast<size_t>(e.h);
+    const bool alpha = s.hasAlpha && s.bytesPerPixel >= 3;
+    const size_t spanBytes = alpha ? static_cast<size_t>(e.h) * 2 * sizeof(int16_t) : 0;
+    const size_t need = pixelBytes + 2 * spanBytes;
+    if (need > kScaledBudget / 4 || !MakeRoom(need))
+    {
+        return false;
+    }
+    e.pixels = static_cast<uint8_t*>(Deki::Memory::Allocate(pixelBytes, Deki::Memory::External));
+    if (alpha)
+    {
+        e.spans = static_cast<int16_t*>(Deki::Memory::Allocate(spanBytes, Deki::Memory::External));
+        e.clear = static_cast<int16_t*>(Deki::Memory::Allocate(spanBytes, Deki::Memory::External));
+    }
+    if (!e.pixels || (alpha && (!e.spans || !e.clear)))
+    {
+        Deki::Memory::Free(e.pixels);
+        Deki::Memory::Free(e.spans);
+        Deki::Memory::Free(e.clear);
+        e.pixels = nullptr;
+        e.spans = nullptr;
+        e.clear = nullptr;
+        return false;
+    }
+    e.bytes = need;
+    s_ScaledBytes += need;
+
+    const uint32_t xStep = (static_cast<uint32_t>(e.srcW) << 16) / static_cast<uint32_t>(e.w);
+    const uint32_t yStep = (static_cast<uint32_t>(e.srcH) << 16) / static_cast<uint32_t>(e.h);
+    for (int32_t y = 0; y < e.h; y++)
+    {
+        const uint8_t* srcRow = s.pixels + static_cast<int32_t>((static_cast<uint32_t>(y) * yStep) >> 16) * e.stride;
+        uint8_t* dst = e.pixels + static_cast<size_t>(y) * rowBytes;
+        uint32_t acc = 0;
+        for (int32_t x = 0; x < e.w; x++, acc += xStep, dst += e.bpp)
+        {
+            std::memcpy(dst, srcRow + static_cast<int32_t>(acc >> 16) * e.bpp, static_cast<size_t>(e.bpp));
+        }
+    }
+    if (alpha)
+    {
+        const int32_t a = s.alphaOffset;
+        for (int32_t y = 0; y < e.h; y++)
+        {
+            const uint8_t* row = e.pixels + static_cast<size_t>(y) * rowBytes;
+            // The first run of opaque pixels; [0, 0) for none.
+            int32_t start = 0;
+            while (start < e.w && row[start * e.bpp + a] != 255)
+            {
+                start++;
+            }
+            int32_t end = start;
+            while (end < e.w && row[end * e.bpp + a] == 255)
+            {
+                end++;
+            }
+            if (start >= e.w)
+            {
+                start = end = 0;
+            }
+            e.spans[y * 2] = static_cast<int16_t>(start);
+            e.spans[y * 2 + 1] = static_cast<int16_t>(end);
+            // The longest run of transparent pixels; [0, 0) for none.
+            int32_t bestStart = 0, bestEnd = 0;
+            for (int32_t x = 0; x < e.w;)
+            {
+                if (row[x * e.bpp + a] != 0)
+                {
+                    x++;
+                    continue;
+                }
+                const int32_t runStart = x;
+                while (x < e.w && row[x * e.bpp + a] == 0)
+                {
+                    x++;
+                }
+                if (x - runStart > bestEnd - bestStart)
+                {
+                    bestStart = runStart;
+                    bestEnd = x;
+                }
+            }
+            e.clear[y * 2] = static_cast<int16_t>(bestStart);
+            e.clear[y * 2 + 1] = static_cast<int16_t>(bestEnd);
+        }
+    }
+    return true;
+}
+
+// The copy of `s` at w x h when there is one, made now if `s` was drawn at that
+// size in an earlier frame. False: draw `s` scaled as usual.
+bool ScaledCopyFor(const Source& s, int32_t w, int32_t h, Source& out)
+{
+    const int32_t stride = SourceStride(s);
+    ScaledCopy* found = nullptr;
+    for (ScaledCopy& e : s_Scaled)
+    {
+        if (e.src == s.pixels && e.w == w && e.h == h && e.srcW == s.width && e.srcH == s.height &&
+            e.stride == stride && e.bpp == s.bytesPerPixel)
+        {
+            found = &e;
+            break;
+        }
+    }
+    if (!found)
+    {
+        if (s_Scaled.size() >= kScaledMaxEntries)
+        {
+            // Drop the entry drawn longest ago to track this one.
+            size_t oldest = 0;
+            for (size_t i = 1; i < s_Scaled.size(); i++)
+            {
+                if (s_Scaled[i].lastUsed < s_Scaled[oldest].lastUsed)
+                {
+                    oldest = i;
+                }
+            }
+            if (s_Scaled[oldest].lastUsed == s_ScaledFrame)
+            {
+                return false;
+            }
+            EraseCopy(oldest);
+        }
+        ScaledCopy e;
+        e.src = s.pixels;
+        e.srcW = s.width;
+        e.srcH = s.height;
+        e.stride = stride;
+        e.bpp = s.bytesPerPixel;
+        e.w = w;
+        e.h = h;
+        e.firstSeen = s_ScaledFrame;
+        e.lastUsed = s_ScaledFrame;
+        s_Scaled.push_back(e);
+        return false;
+    }
+    found->lastUsed = s_ScaledFrame;
+    // A size seen only this frame may be one step of an animation: wait.
+    if (!found->pixels && (found->firstSeen == s_ScaledFrame || !MakeCopy(*found, s)))
+    {
+        return false;
+    }
+    out = s;
+    out.pixels = found->pixels;
+    out.width = w;
+    out.height = h;
+    out.stride = 0;
+    out.alphaRowSpans = found->spans;
+    out.clearRowSpans = found->clear;
+    out.chromaRowSpans = nullptr;
+    out.ownsPixels = false;
+    out.cacheScaled = false;
+    return true;
+}
+}  // namespace
+
+void NextFrame()
+{
+    ++s_ScaledFrame;
+    for (size_t i = s_Scaled.size(); i-- > 0;)
+    {
+        if (s_ScaledFrame - s_Scaled[i].lastUsed > kScaledIdleFrames)
+        {
+            EraseCopy(i);
+        }
+    }
+}
+
+void ForgetScaled(const uint8_t* begin, size_t bytes)
+{
+    const uint8_t* end = begin + bytes;
+    for (size_t i = s_Scaled.size(); i-- > 0;)
+    {
+        if (s_Scaled[i].src >= begin && s_Scaled[i].src < end)
+        {
+            EraseCopy(i);
+        }
+    }
+}
+
+void ClearScaledCache()
+{
+    while (!s_Scaled.empty())
+    {
+        EraseCopy(s_Scaled.size() - 1);
+    }
+}
+
+size_t ScaledCacheBytes()
+{
+    return s_ScaledBytes;
+}
+
+size_t ScaledCacheEntries()
+{
+    return s_Scaled.size();
+}
+
 void BlitScaled(const Source& source, uint8_t* target, int32_t targetWidth, int32_t targetHeight,
                 Deki::ColorFormat targetFormat, int32_t destX, int32_t destY, int32_t destWidth, int32_t destHeight,
                 uint8_t tintR, uint8_t tintG, uint8_t tintB, uint8_t tintA, bool useOrderedDither)
@@ -1100,6 +1430,23 @@ void BlitScaled(const Source& source, uint8_t* target, int32_t targetWidth, int3
     {
         return;
     }
+
+    // What TintScaledRows_RGB565 below would sample every frame: drawn 1:1
+    // from a copy scaled once instead (Source::cacheScaled).
+    if (source.cacheScaled && targetFormat == Deki::ColorFormat::RGB565 &&
+        (destWidth != source.width || destHeight != source.height) && !source.hasChromaKey &&
+        !(useOrderedDither && source.hasAlpha) && !HasFlips(source) &&
+        (KindOf(source) == SrcKind::RGB565 || KindOf(source) == SrcKind::RGB565A8))
+    {
+        Source copy;
+        if (ScaledCopyFor(source, destWidth, destHeight, copy))
+        {
+            BlitScaled(copy, target, targetWidth, targetHeight, targetFormat, destX, destY, destWidth, destHeight,
+                       tintR, tintG, tintB, tintA, useOrderedDither);
+            return;
+        }
+    }
+
     NoteBlitRect(target, bounds.startX, bounds.startY, bounds.endX, bounds.endY);
     PathScope scope(static_cast<uint64_t>(bounds.endX - bounds.startX) * static_cast<uint64_t>(bounds.endY - bounds.startY));
 
@@ -1123,15 +1470,16 @@ void BlitScaled(const Source& source, uint8_t* target, int32_t targetWidth, int3
     const bool plain = !p.hasTint && !p.hasAlphaTint && !p.hasKey && !p.dither && !p.flips;
 
     // 1:1 onto RGB565 from an RGB565 or RGB565A8 source, tinted or blended: one
-    // tight loop per row (TintRows_RGB565). Left to the paths below: a plain
-    // RGB565 copy, a plain blend with opaque spans to copy, and a plain blend
-    // a SIMD kernel does.
+    // tight loop per row (TintRows_RGB565), which a platform's blend kernel
+    // speeds up run by run. Left to the paths below: a plain RGB565 copy, and
+    // a plain blend with opaque spans to copy. A plain blend without spans
+    // stays here: its rows' transparent runs (clearRowSpans) are skipped
+    // unread, where blending whole rows read every pixel of a glyph's box.
     if (oneToOne && !p.hasKey && !p.dither && !p.flips && targetFormat == Deki::ColorFormat::RGB565 &&
         (kind == SrcKind::RGB565 || kind == SrcKind::RGB565A8))
     {
         const bool plainCopy = plain && kind == SrcKind::RGB565;
-        const bool plainSpans = plain && kind == SrcKind::RGB565A8 && source.hasAlpha &&
-                                (source.alphaRowSpans || s_Kernels[(int)KernelOp::RGB565A8BlendRow]);
+        const bool plainSpans = plain && kind == SrcKind::RGB565A8 && source.hasAlpha && source.alphaRowSpans;
         if (!plainCopy && !plainSpans)
         {
             uint16_t* target16 = (uint16_t*)target;
@@ -1301,6 +1649,37 @@ static void RotatedBlitForTarget(SrcKind kind, const Source& source, uint8_t* ta
         case SrcKind::RGB888: RotatedBlitT<SrcKind::RGB888, F>(source, target, targetWidth, a, p); break;
         case SrcKind::ALPHA8: RotatedBlitT<SrcKind::ALPHA8, F>(source, target, targetWidth, a, p); break;
     }
+}
+
+bool CoversRect(const Source& source, int32_t screenX, int32_t screenY, float scaleX, float scaleY, float rotation,
+                float pivotX, float pivotY, uint8_t tintA, int32_t left, int32_t top, int32_t right, int32_t bottom)
+{
+    // Every pixel of an opaque source writes its colour (a tint changes the
+    // colour, not that). Alpha-only sources and colour keys leave holes.
+    if (!source.pixels || source.width <= 0 || source.height <= 0 || source.bytesPerPixel < 2 || source.hasAlpha ||
+        source.hasChromaKey || tintA != 255 || rotation != 0.0f)
+    {
+        return false;
+    }
+
+    // Placed as Blit places an unrotated blit.
+    const float destWidth = source.width * scaleX;
+    const float destHeight = source.height * scaleY;
+    if (destWidth <= 0 || destHeight <= 0)
+    {
+        return false;
+    }
+    const int32_t destX = screenX - static_cast<int32_t>(std::floor(destWidth * pivotX));
+    const int32_t destY = screenY - static_cast<int32_t>(std::floor(destHeight * pivotY));
+    if (destX > left || destY > top || destX + static_cast<int32_t>(destWidth) < right ||
+        destY + static_cast<int32_t>(destHeight) < bottom)
+    {
+        return false;
+    }
+
+    // An unset clip limits nothing; the target's own edges are not the rect's.
+    const ClipRect clip = GetCurrentClipRect();
+    return !clip.IsSet() || (clip.left <= left && clip.top <= top && clip.right >= right && clip.bottom >= bottom);
 }
 
 void Blit(const Source& source, uint8_t* target, int32_t targetWidth, int32_t targetHeight,

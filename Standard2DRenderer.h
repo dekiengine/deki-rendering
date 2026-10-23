@@ -63,6 +63,9 @@ public:
     const DirtyRegion* GetLastFrameDirty() const override { return m_FrameDirtyValid ? &m_FrameDirty : nullptr; }
     /// Yes, unless one of its passes says no (RenderPass::DrawsInStrips).
     bool DrawsInStrips(Deki::Scene* scene) const override;
+    /// For the later strips of a frame whose first strip drew an opaque
+    /// image over the whole view (a full-screen background).
+    bool CoversView(const RenderContext& ctx) const override;
 
     /// Adds a custom render pass. Not owned: the caller manages its lifetime.
     void AddPass(RenderPass* pass);
@@ -174,6 +177,11 @@ private:
     uint32_t m_PlanRoots = 0;
     uint32_t m_PlanFrame = 0;
     PlanMode m_PlanMode = PlanMode::Off;
+    // Recording found a blit into the frame's buffer that writes the whole
+    // view opaquely. Every strip draws it the same, and it overwrites whatever
+    // came before it, so the later strips need no clear (CoversView).
+    bool m_PlanCovers = false;
+    const uint8_t* m_FrameBuffer = nullptr;  // the buffer Render() was given
 
     // planIndex: the object's entry in m_Plan while recording or replaying, -1 otherwise.
     void RenderObject(const SortItem& item, const RenderContext& ctx, int32_t planIndex);
