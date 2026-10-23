@@ -153,6 +153,11 @@ private:
         float screenX = 0.0f, screenY = 0.0f;                              // renderer origin, before snapping
         bool hasExtents = false;
         float reach = 0.0f;  // cull radius around the origin, when hasExtents
+        // The rows [rowsTop, rowsBottom) of the whole view that the renderer's
+        // blit can write, once a strip has worked them out (QuadBlit::BlitRows):
+        // the frame's other strips outside them skip the object's blit.
+        bool rowsKnown = false;
+        int32_t rowsTop = 0, rowsBottom = 0;
     };
 
     // A frame drawn strip by strip (RenderContext::contentFrame) is collected

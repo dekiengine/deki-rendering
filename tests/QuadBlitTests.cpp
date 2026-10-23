@@ -385,18 +385,6 @@ struct KernelProbe
             d[i] = s_Marker;
         }
     }
-
-    static void BlendRowMarker(const uint8_t* /*src*/, uint8_t* dst, int32_t pixelCount, uint8_t, uint8_t, uint8_t,
-                               uint8_t)
-    {
-        ++s_CallCount;
-        s_LastPixelCount = pixelCount;
-        uint16_t* d = reinterpret_cast<uint16_t*>(dst);
-        for (int32_t i = 0; i < pixelCount; ++i)
-        {
-            d[i] = s_Marker;
-        }
-    }
 };
 int KernelProbe::s_CallCount = 0;
 uint16_t KernelProbe::s_Marker = 0;
@@ -428,14 +416,12 @@ protected:
         QuadBlit::ClearClipStack();
         // Clear any kernels registered earlier.
         QuadBlit::RegisterKernel(QuadBlit::KernelOp::RGB565CopyRow, nullptr);
-        QuadBlit::RegisterKernel(QuadBlit::KernelOp::RGB565A8BlendRow, nullptr);
         KernelProbe::Reset();
     }
 
     void TearDown() override
     {
         QuadBlit::RegisterKernel(QuadBlit::KernelOp::RGB565CopyRow, nullptr);
-        QuadBlit::RegisterKernel(QuadBlit::KernelOp::RGB565A8BlendRow, nullptr);
         QuadBlit::ClearClipStack();
     }
 };
@@ -524,82 +510,16 @@ TEST_F(QuadBlitKernelDispatchTest, RGB565CopyRow_NoKernel_RunsScalar)
     }
 }
 
-TEST_F(QuadBlitKernelDispatchTest, RGB565A8BlendRow_UsesKernel_WhenAligned_AndUntinted)
-{
-    // Source is RGB565A8 (3 bytes/pixel). At 1:1 with hasAlpha true and no
-    // tint, chroma key or row spans, the blend kernel slot is used.
-    const int w = 16, h = 1;
-    AlignedBuf srcBuf(w * h * 3 + 16);
-    AlignedBuf dstBuf(w * h * 2);
-    // Non-zero alpha, so the per-pixel else branch is reached.
-    for (int i = 0; i < w * h; ++i)
-    {
-        srcBuf.aligned[i * 3 + 0] = 0x12;  // RGB565 lo
-        srcBuf.aligned[i * 3 + 1] = 0x34;  // RGB565 hi
-        srcBuf.aligned[i * 3 + 2] = 200;   // alpha (any value > 0 keeps us off the early-skip)
-    }
-
-    KernelProbe::s_Marker = MakeRGB565Free(0, 255, 255);
-    QuadBlit::RegisterKernel(QuadBlit::KernelOp::RGB565A8BlendRow, &KernelProbe::BlendRowMarker);
-
-    QuadBlit::Source src = QuadBlit::MakeSource(srcBuf.aligned, w, h, QuadBlit::PixelLayout::RGB565A8(), false);
-    QuadBlit::BlitScaled(src, dstBuf.aligned, w, h, Deki::ColorFormat::RGB565, 0, 0, w, h);
-
-    EXPECT_EQ(KernelProbe::s_CallCount, h);
-    EXPECT_EQ(KernelProbe::s_LastPixelCount, w);
-    auto* dstPx = reinterpret_cast<uint16_t*>(dstBuf.aligned);
-    for (int i = 0; i < w; ++i)
-    {
-        EXPECT_EQ(dstPx[i], KernelProbe::s_Marker) << "pixel " << i;
-    }
-}
-
-TEST_F(QuadBlitKernelDispatchTest, RGB565A8BlendRow_UsesKernel_WhenTinted)
-{
-    // The kernel takes the tint (KernelOp::RGB565A8BlendRow), so a tinted
-    // blend goes to it too, whole rows at a time.
-    const int w = 16, h = 1;
-    AlignedBuf srcBuf(w * h * 3 + 16);
-    AlignedBuf dstBuf(w * h * 2);
-    for (int i = 0; i < w * h; ++i)
-    {
-        srcBuf.aligned[i * 3 + 0] = 0x00;
-        srcBuf.aligned[i * 3 + 1] = 0x00;
-        srcBuf.aligned[i * 3 + 2] = 255;
-    }
-
-    KernelProbe::s_Marker = MakeRGB565Free(0, 255, 255);
-    QuadBlit::RegisterKernel(QuadBlit::KernelOp::RGB565A8BlendRow, &KernelProbe::BlendRowMarker);
-
-    QuadBlit::Source src = QuadBlit::MakeSource(srcBuf.aligned, w, h, QuadBlit::PixelLayout::RGB565A8(), false);
-    QuadBlit::BlitScaled(src, dstBuf.aligned, w, h, Deki::ColorFormat::RGB565, 0, 0, w, h, 128, 128, 128, 255);
-
-    EXPECT_EQ(KernelProbe::s_CallCount, 1);
-    EXPECT_EQ(KernelProbe::s_LastPixelCount, w);
-}
-
 // ============================================================================
 // RGB565A8 targets
 // ============================================================================
-// The paths into an RGB565A8 target and their kernel slots.
+// The paths into an RGB565A8 target.
 
 class QuadBlitRGB565A8TargetTest : public ::testing::Test
 {
 protected:
-    void SetUp() override
-    {
-        QuadBlit::ClearClipStack();
-        QuadBlit::RegisterKernel(QuadBlit::KernelOp::RGB565ToRGB565A8Row, nullptr);
-        QuadBlit::RegisterKernel(QuadBlit::KernelOp::RGB565A8CopyRow, nullptr);
-        QuadBlit::RegisterKernel(QuadBlit::KernelOp::RGB565A8BlendRowDestRGB565A8, nullptr);
-    }
-    void TearDown() override
-    {
-        QuadBlit::RegisterKernel(QuadBlit::KernelOp::RGB565ToRGB565A8Row, nullptr);
-        QuadBlit::RegisterKernel(QuadBlit::KernelOp::RGB565A8CopyRow, nullptr);
-        QuadBlit::RegisterKernel(QuadBlit::KernelOp::RGB565A8BlendRowDestRGB565A8, nullptr);
-        QuadBlit::ClearClipStack();
-    }
+    void SetUp() override { QuadBlit::ClearClipStack(); }
+    void TearDown() override { QuadBlit::ClearClipStack(); }
 };
 
 TEST_F(QuadBlitRGB565A8TargetTest, RGB565A8_to_RGB565A8_Opaque_Copies_RGB_AndSetsAlpha)
@@ -682,108 +602,6 @@ TEST_F(QuadBlitRGB565A8TargetTest, RGB565_to_RGB565A8_SetsAlphaTo255)
     EXPECT_EQ(target[3], (uint8_t)(srcPx[1] & 0xFF));
     EXPECT_EQ(target[4], (uint8_t)((srcPx[1] >> 8) & 0xFF));
     EXPECT_EQ(target[5], 255);
-}
-
-// Kernel dispatch for the RGB565A8-target slots.
-
-namespace
-{
-struct RGB565A8KernelProbe
-{
-    static int s_CallCount;
-    static int32_t s_LastPixelCount;
-    static uint8_t s_Marker;
-    static void Reset()
-    {
-        s_CallCount = 0;
-        s_LastPixelCount = 0;
-    }
-    static void Run(const uint8_t* /*src*/, uint8_t* dst, int32_t pixelCount, uint8_t, uint8_t, uint8_t, uint8_t)
-    {
-        ++s_CallCount;
-        s_LastPixelCount = pixelCount;
-        for (int32_t i = 0; i < pixelCount; ++i)
-        {
-            dst[i * 3] = s_Marker;
-            dst[i * 3 + 1] = s_Marker;
-            dst[i * 3 + 2] = s_Marker;
-        }
-    }
-};
-int RGB565A8KernelProbe::s_CallCount = 0;
-int32_t RGB565A8KernelProbe::s_LastPixelCount = 0;
-uint8_t RGB565A8KernelProbe::s_Marker = 0;
-}  // namespace
-
-TEST_F(QuadBlitRGB565A8TargetTest, RGB565A8CopyRow_KernelInvoked_WhenAlignedAndOpaqueSource)
-{
-    // Source hasAlpha false: the opaque-copy fast path.
-    const int w = 16, h = 1;
-    AlignedBuf srcBuf(w * h * 3 + 16);
-    AlignedBuf dstBuf(w * h * 3);
-    for (int i = 0; i < w * h; ++i)
-    {
-        srcBuf.aligned[i * 3 + 0] = 0x11;
-        srcBuf.aligned[i * 3 + 1] = 0x22;
-        srcBuf.aligned[i * 3 + 2] = 0xFF;
-    }
-
-    RGB565A8KernelProbe::Reset();
-    RGB565A8KernelProbe::s_Marker = 0x77;
-    QuadBlit::RegisterKernel(QuadBlit::KernelOp::RGB565A8CopyRow, &RGB565A8KernelProbe::Run);
-
-    QuadBlit::Source s = QuadBlit::MakeSource(srcBuf.aligned, w, h, QuadBlit::PixelLayout::RGB565A8NoAlpha(), false);
-    QuadBlit::BlitScaled(s, dstBuf.aligned, w, h, Deki::ColorFormat::RGB565A8, 0, 0, w, h);
-
-    EXPECT_EQ(RGB565A8KernelProbe::s_CallCount, h);
-    EXPECT_EQ(RGB565A8KernelProbe::s_LastPixelCount, w);
-    EXPECT_EQ(dstBuf.aligned[0], 0x77);
-}
-
-TEST_F(QuadBlitRGB565A8TargetTest, RGB565A8BlendRow_KernelInvoked_WhenAlignedAndAlphaSource)
-{
-    // Source hasAlpha true: the alpha blend path, whose kernel slot is used with no tint or key.
-    const int w = 16, h = 1;
-    AlignedBuf srcBuf(w * h * 3 + 16);
-    AlignedBuf dstBuf(w * h * 3);
-    for (int i = 0; i < w * h; ++i)
-    {
-        srcBuf.aligned[i * 3 + 0] = 0x33;
-        srcBuf.aligned[i * 3 + 1] = 0x44;
-        srcBuf.aligned[i * 3 + 2] = 200;  // partial alpha keeps us off the a==0/255 short-circuits
-    }
-
-    RGB565A8KernelProbe::Reset();
-    RGB565A8KernelProbe::s_Marker = 0x99;
-    QuadBlit::RegisterKernel(QuadBlit::KernelOp::RGB565A8BlendRowDestRGB565A8, &RGB565A8KernelProbe::Run);
-
-    QuadBlit::Source s = QuadBlit::MakeSource(srcBuf.aligned, w, h, QuadBlit::PixelLayout::RGB565A8(), false);
-    QuadBlit::BlitScaled(s, dstBuf.aligned, w, h, Deki::ColorFormat::RGB565A8, 0, 0, w, h);
-
-    EXPECT_EQ(RGB565A8KernelProbe::s_CallCount, h);
-    EXPECT_EQ(RGB565A8KernelProbe::s_LastPixelCount, w);
-}
-
-TEST_F(QuadBlitRGB565A8TargetTest, RGB565ToRGB565A8_KernelInvoked_WhenAligned)
-{
-    const int w = 16, h = 1;
-    AlignedBuf srcBuf(w * h * 2);
-    AlignedBuf dstBuf(w * h * 3);
-    auto* srcPx = reinterpret_cast<uint16_t*>(srcBuf.aligned);
-    for (int i = 0; i < w * h; ++i)
-    {
-        srcPx[i] = MakeRGB565Free((uint8_t)(i * 16), 0, 0);
-    }
-
-    RGB565A8KernelProbe::Reset();
-    RGB565A8KernelProbe::s_Marker = 0x55;
-    QuadBlit::RegisterKernel(QuadBlit::KernelOp::RGB565ToRGB565A8Row, &RGB565A8KernelProbe::Run);
-
-    QuadBlit::Source s = QuadBlit::MakeSource(srcBuf.aligned, w, h, QuadBlit::PixelLayout::RGB565(), false);
-    QuadBlit::BlitScaled(s, dstBuf.aligned, w, h, Deki::ColorFormat::RGB565A8, 0, 0, w, h);
-
-    EXPECT_EQ(RGB565A8KernelProbe::s_CallCount, h);
-    EXPECT_EQ(RGB565A8KernelProbe::s_LastPixelCount, w);
 }
 
 // ============================================================================
@@ -1201,7 +1019,7 @@ TEST(QuadBlitTintRows, EveryPixelMatchesThePipelinesArithmetic)
         return seed >> 8;
     };
     const uint8_t tints[][4] = { { 255, 255, 255, 255 }, { 58, 91, 160, 255 }, { 255, 255, 255, 128 },
-                                 { 200, 30, 255, 77 },  { 0, 0, 0, 255 },    { 255, 128, 64, 0 } };
+                                 { 200, 30, 255, 77 },   { 0, 0, 0, 255 },     { 255, 128, 64, 0 } };
     for (const auto& t : tints)
     {
         uint8_t src[kW * kH * 3];
@@ -1224,8 +1042,152 @@ TEST(QuadBlitTintRows, EveryPixelMatchesThePipelinesArithmetic)
                              kH, t[0], t[1], t[2], t[3]);
         for (int i = 0; i < kW * kH; ++i)
         {
-            ASSERT_EQ(target[i], expected[i]) << "pixel " << i << " tint " << int(t[0]) << "," << int(t[1]) << ","
-                                              << int(t[2]) << "," << int(t[3]);
+            ASSERT_EQ(target[i], expected[i])
+                << "pixel " << i << " tint " << int(t[0]) << "," << int(t[1]) << "," << int(t[2]) << "," << int(t[3]);
+        }
+    }
+}
+
+// TintRows remembers its last blend. Runs of one source pixel over one
+// destination pixel, broken by a change in either, must still come out pixel
+// for pixel as the pipeline's arithmetic.
+TEST(QuadBlitTintRows, RepeatedBlendsMatchThePipelinesArithmetic)
+{
+    constexpr int kW = 41, kH = 3;
+    for (const uint8_t tintA : { uint8_t(255), uint8_t(42) })
+    {
+        uint8_t src[kW * kH * 3];
+        uint16_t target[kW * kH];
+        uint16_t expected[kW * kH];
+        for (int i = 0; i < kW * kH; ++i)
+        {
+            const int x = i % kW;
+            // The source changes every 7 columns, the destination every 5,
+            // the alpha every 11: runs of repeats with every kind of break.
+            const uint16_t v = static_cast<uint16_t>(0xF81F ^ (x / 7) * 0x0841);
+            const uint8_t a = (x / 11) % 3 == 0 ? 200 : (x / 11) % 3 == 1 ? 255 : 0;
+            DekiPixel::Store565(src + i * 3, v);
+            src[i * 3 + 2] = a;
+            target[i] = DekiPixel::ToMemory565(static_cast<uint16_t>(0x1234 + (x / 5) * 0x0421));
+            expected[i] =
+                DekiPixel::ToMemory565(RefComposite(v, a, DekiPixel::FromMemory565(target[i]), 244, 114, 182, tintA));
+        }
+        const QuadBlit::Source source = QuadBlit::MakeSource(src, kW, kH, QuadBlit::PixelLayout::RGB565A8());
+        QuadBlit::BlitScaled(source, reinterpret_cast<uint8_t*>(target), kW, kH, Deki::ColorFormat::RGB565, 0, 0, kW,
+                             kH, 244, 114, 182, tintA);
+        for (int i = 0; i < kW * kH; ++i)
+        {
+            ASSERT_EQ(target[i], expected[i]) << "pixel " << i << " alpha tint " << int(tintA);
+        }
+    }
+}
+
+// A blend whose rows carry uniformRuns fills those runs instead of copying
+// them: the same pixels as without, whatever the clip cuts off.
+TEST(QuadBlitBlendSpans, UniformRunsDrawTheSamePixels)
+{
+    constexpr int kW = 30, kH = 4;
+    uint8_t src[kW * kH * 3];
+    for (int y = 0; y < kH; ++y)
+    {
+        for (int x = 0; x < kW; ++x)
+        {
+            uint8_t* p = src + (y * kW + x) * 3;
+            // Rounded ends of partial alpha, an opaque edge colour, and a long
+            // flat middle that starts and ends at a different column each row.
+            const bool end = x < 2 || x >= kW - 2;
+            const bool edge = x < 4 + y || x >= kW - 4;
+            DekiPixel::Store565(p, edge ? 0xFFFF : 0x18E3);
+            p[2] = end ? 120 : 255;
+        }
+    }
+    int16_t spans[kH * 2];
+    QuadBlit::UniformRun runs[kH];
+    for (int y = 0; y < kH; ++y)
+    {
+        spans[y * 2] = 2;
+        spans[y * 2 + 1] = kW - 2;
+    }
+    QuadBlit::FindUniformRuns(src, kW, kH, kW * 3, runs);
+    EXPECT_EQ(runs[1].start, 5);
+    EXPECT_EQ(runs[1].end, kW - 4);
+
+    const int clips[][2] = { { 0, 40 }, { 9, 40 }, { 0, 12 }, { 7, 20 }, { 27, 40 } };
+    for (const auto& c : clips)
+    {
+        uint16_t withRuns[40 * kH], without[40 * kH];
+        for (int i = 0; i < 40 * kH; ++i)
+        {
+            withRuns[i] = without[i] = static_cast<uint16_t>(0x5A5A + i);
+        }
+        QuadBlit::Source s = QuadBlit::MakeSource(src, kW, kH, QuadBlit::PixelLayout::RGB565A8(), false, spans);
+        QuadBlit::PushClipRect(c[0], 0, c[1], kH);
+        QuadBlit::BlitScaled(s, reinterpret_cast<uint8_t*>(without), 40, kH, Deki::ColorFormat::RGB565, 3, 0, kW, kH);
+        s.uniformRuns = runs;
+        QuadBlit::BlitScaled(s, reinterpret_cast<uint8_t*>(withRuns), 40, kH, Deki::ColorFormat::RGB565, 3, 0, kW, kH);
+        QuadBlit::PopClipRect();
+        for (int i = 0; i < 40 * kH; ++i)
+        {
+            ASSERT_EQ(withRuns[i], without[i]) << "pixel " << i << " clip " << c[0] << ".." << c[1];
+        }
+    }
+}
+
+// A tinted blit, with and without an alpha tint, whose rows carry uniformRuns
+// and clearRowSpans: the runs are drawn without reading the source, and the
+// pixels come out the same as without them, whatever the clip cuts off.
+TEST(QuadBlitTintRows, UniformAndClearRunsDrawTheSamePixels)
+{
+    constexpr int kW = 34, kH = 5, kTW = 48;
+    uint8_t src[kW * kH * 3];
+    int16_t clear[kH * 2];
+    for (int y = 0; y < kH; ++y)
+    {
+        for (int x = 0; x < kW; ++x)
+        {
+            uint8_t* p = src + (y * kW + x) * 3;
+            // A gap on the left (alpha 0), soft edges, an edge colour, and a
+            // flat middle whose ends move from row to row. Row 4's middle is
+            // short of a run.
+            const int mid0 = 9 + y, mid1 = y == 4 ? 15 : kW - 3;
+            const bool gap = x < 4;
+            const bool soft = x == 4 || x == kW - 1;
+            DekiPixel::Store565(p, x >= mid0 && x < mid1 ? 0x07E0 : static_cast<uint16_t>(0x8000 + x * 77));
+            p[2] = gap ? 0 : soft ? 90 : 255;
+        }
+        clear[y * 2] = 0;
+        clear[y * 2 + 1] = 4;
+    }
+    QuadBlit::UniformRun runs[kH];
+    QuadBlit::FindUniformRuns(src, kW, kH, kW * 3, runs);
+    EXPECT_EQ(runs[0].start, 9);
+    EXPECT_EQ(runs[4].end - runs[4].start, 0);
+
+    const int clips[][2] = { { 0, kTW }, { 10, kTW }, { 0, 14 }, { 12, 20 }, { 33, kTW }, { 5, 7 } };
+    for (const uint8_t tintA : { uint8_t(255), uint8_t(42) })
+    {
+        for (const auto& c : clips)
+        {
+            uint16_t withRuns[kTW * kH], without[kTW * kH];
+            for (int i = 0; i < kTW * kH; ++i)
+            {
+                // A destination that repeats in places and changes in others.
+                withRuns[i] = without[i] = static_cast<uint16_t>(0x2104 * ((i / 3) % 5));
+            }
+            QuadBlit::Source s = QuadBlit::MakeSource(src, kW, kH, QuadBlit::PixelLayout::RGB565A8());
+            s.clearRowSpans = clear;
+            QuadBlit::PushClipRect(c[0], 0, c[1], kH);
+            QuadBlit::BlitScaled(s, reinterpret_cast<uint8_t*>(without), kTW, kH, Deki::ColorFormat::RGB565, 7, 0, kW,
+                                 kH, 244, 114, 182, tintA);
+            s.uniformRuns = runs;
+            QuadBlit::BlitScaled(s, reinterpret_cast<uint8_t*>(withRuns), kTW, kH, Deki::ColorFormat::RGB565, 7, 0, kW,
+                                 kH, 244, 114, 182, tintA);
+            QuadBlit::PopClipRect();
+            for (int i = 0; i < kTW * kH; ++i)
+            {
+                ASSERT_EQ(withRuns[i], without[i])
+                    << "pixel " << i << " clip " << c[0] << ".." << c[1] << " alpha tint " << int(tintA);
+            }
         }
     }
 }
@@ -1234,7 +1196,7 @@ TEST(QuadBlitTintRows, EveryPixelMatchesThePipelinesArithmetic)
 // scaled pipeline: its 16.16 stepping, the composite above, and the alpha union.
 TEST(QuadBlitTintScaledRows, EveryPixelMatchesThePipelinesArithmetic)
 {
-    constexpr int kSW = 11, kSH = 7;  // source
+    constexpr int kSW = 11, kSH = 7;   // source
     constexpr int kTW = 31, kTH = 13;  // target
     uint32_t seed = 777;
     auto next = [&seed]()
@@ -1242,8 +1204,9 @@ TEST(QuadBlitTintScaledRows, EveryPixelMatchesThePipelinesArithmetic)
         seed = seed * 1664525u + 1013904223u;
         return seed >> 8;
     };
-    const uint8_t tints[][4] = { { 255, 255, 255, 255 }, { 58, 91, 160, 255 }, { 255, 255, 255, 128 },
-                                 { 200, 30, 255, 77 } };
+    const uint8_t tints[][4] = {
+        { 255, 255, 255, 255 }, { 58, 91, 160, 255 }, { 255, 255, 255, 128 }, { 200, 30, 255, 77 }
+    };
     // Destination rectangles: shrunk, grown, 1:1, and partly off the target.
     const int rects[][4] = { { 2, 1, 23, 9 }, { 0, 0, 5, 4 }, { 3, 2, kSW, kSH }, { 25, -3, 17, 10 } };
     for (const auto& t : tints)
@@ -1294,9 +1257,9 @@ TEST(QuadBlitTintScaledRows, EveryPixelMatchesThePipelinesArithmetic)
                                  t[1], t[2], t[3]);
             for (int i = 0; i < kTW * kTH * 3; ++i)
             {
-                ASSERT_EQ(target[i], expected[i]) << "byte " << i << " rect " << r[0] << "," << r[1] << "," << r[2]
-                                                  << "x" << r[3] << " tint " << int(t[0]) << "," << int(t[1]) << ","
-                                                  << int(t[2]) << "," << int(t[3]);
+                ASSERT_EQ(target[i], expected[i])
+                    << "byte " << i << " rect " << r[0] << "," << r[1] << "," << r[2] << "x" << r[3] << " tint "
+                    << int(t[0]) << "," << int(t[1]) << "," << int(t[2]) << "," << int(t[3]);
             }
         }
     }

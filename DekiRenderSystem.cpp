@@ -37,9 +37,7 @@ inline size_t WritePixel(uint8_t* p, Deki::ColorFormat format, uint8_t r, uint8_
 {
     switch (format)
     {
-        case Deki::ColorFormat::RGB565:
-            DekiPixel::Store565(p, DekiPixel::PackRGB565(r, g, b));
-            return 2;
+        case Deki::ColorFormat::RGB565: DekiPixel::Store565(p, DekiPixel::PackRGB565(r, g, b)); return 2;
         case Deki::ColorFormat::RGB888:
             p[0] = r;
             p[1] = g;
@@ -159,9 +157,10 @@ void DekiRenderSystem::NoteFrameChoice(const FrameChoice& choice, size_t frameBy
                           "%s: the %u KB framebuffer fits in internal RAM (%u KB free)", mode, frameKb, freeKb);
             break;
         case FrameChoice::Why::DoesNotFit:
-            std::snprintf(s_FrameModeNote, sizeof(s_FrameModeNote),
-                          "%s: the %u KB framebuffer does not fit in internal RAM (%u KB free, %u KB kept for the game)",
-                          mode, frameKb, freeKb, static_cast<unsigned>(kInternalHeadroom / 1024));
+            std::snprintf(
+                s_FrameModeNote, sizeof(s_FrameModeNote),
+                "%s: the %u KB framebuffer does not fit in internal RAM (%u KB free, %u KB kept for the game)", mode,
+                frameKb, freeKb, static_cast<unsigned>(kInternalHeadroom / 1024));
             break;
         case FrameChoice::Why::WholeDisplay:
             std::snprintf(s_FrameModeNote, sizeof(s_FrameModeNote), "%s: the display takes only whole frames", mode);
@@ -272,8 +271,8 @@ bool DekiRenderSystem::Setup(int32_t width, int32_t height, Deki::ColorFormat fo
 
     // Whole frames or strips (RenderingProjectSettings::frameMode), said in
     // the log with the reason, and kept for DEKI:STATS.
-    const size_t frameBytes = static_cast<size_t>(width) * static_cast<size_t>(height) *
-                              static_cast<size_t>(GetBytesPerPixel(format));
+    const size_t frameBytes =
+        static_cast<size_t>(width) * static_cast<size_t>(height) * static_cast<size_t>(GetBytesPerPixel(format));
 #ifdef DEKI_EDITOR
     // The editor reads whole frames back (the Play view, captures, the
     // pixel gates), so it never renders in strips.
@@ -727,7 +726,12 @@ void DekiRenderSystem::RenderBands(Deki::Scene* scene, CameraComponent* camera, 
         {
             const auto* frameBase = reinterpret_cast<const uint8_t*>(reinterpret_cast<uintptr_t>(m_BandBuffer) -
                                                                      static_cast<uintptr_t>(top) * pitch);
+            const uint64_t presentStart = RenderProfiler::IsEnabled() ? RenderProfiler::Now() : 0;
             display->PresentRegions(frameBase, m_ScreenWidth, m_ScreenHeight, m_ColorFormat, &send, 1);
+            if (RenderProfiler::IsEnabled())
+            {
+                RenderProfiler::AddContent(RenderProfiler::kPresent, RenderProfiler::Now() - presentStart, "Present");
+            }
         }
     }
 

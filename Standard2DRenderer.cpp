@@ -223,6 +223,13 @@ void Standard2DRenderer::ExecuteBuiltins(const SortItem& item, RenderContext& ct
 
         float fScreenX = g.screenX, fScreenY = g.screenY;
 
+        // A strip outside the rows an earlier strip found the blit writes:
+        // nothing to draw here.
+        if (g.rowsKnown && (g.rowsBottom <= viewTop || g.rowsTop >= viewTop + ctx.height))
+        {
+            return;
+        }
+
         // Cull before RenderContent, which may rasterise text, bake a gradient
         // or copy a frame.
         if (g.hasExtents)
@@ -287,7 +294,8 @@ void Standard2DRenderer::ExecuteBuiltins(const SortItem& item, RenderContext& ct
             }
             if (ctx.contentFrame != 0 && !(hasContent && source.ownsPixels))
             {
-                m_ContentCache[renderer] = CachedContent{ hasContent, source, pivotX, pivotY, tintR, tintG, tintB, tintA };
+                m_ContentCache[renderer] =
+                    CachedContent{ hasContent, source, pivotX, pivotY, tintR, tintG, tintB, tintA };
             }
         }
         if (hasContent)
@@ -325,20 +333,35 @@ void Standard2DRenderer::ExecuteBuiltins(const SortItem& item, RenderContext& ct
             const int32_t intScreenX = (renderer->pixelSnap || cam.snapStep > 0)
                                            ? static_cast<int32_t>(std::lround(fScreenX))
                                            : static_cast<int32_t>(fScreenX);
-            const int32_t intScreenY = ((renderer->pixelSnap || cam.snapStep > 0)
-                                            ? static_cast<int32_t>(std::lround(fScreenY))
-                                            : static_cast<int32_t>(fScreenY)) -
-                                       viewTop;
+            const int32_t intScreenY =
+                ((renderer->pixelSnap || cam.snapStep > 0) ? static_cast<int32_t>(std::lround(fScreenY))
+                                                           : static_cast<int32_t>(fScreenY)) -
+                viewTop;
 
             // Recording a frame's first strip: does this draw cover the whole
             // view? (Content handed over with ownsPixels is produced again in
             // each strip, so it may not be the same there.)
-            if (m_PlanMode == PlanMode::Recording && !m_PlanCovers && ctx.buffer == m_FrameBuffer &&
-                !source.ownsPixels)
+            if (m_PlanMode == PlanMode::Recording && !m_PlanCovers && ctx.buffer == m_FrameBuffer && !source.ownsPixels)
             {
                 const int32_t viewHeight = ctx.viewHeight > 0 ? ctx.viewHeight : ctx.height;
-                m_PlanCovers = QuadBlit::CoversRect(source, intScreenX, intScreenY, drawScaleX, drawScaleY, wt.rotation,
-                                                    pivotX, pivotY, tintA, 0, -viewTop, ctx.width, viewHeight - viewTop);
+                m_PlanCovers =
+                    QuadBlit::CoversRect(source, intScreenX, intScreenY, drawScaleX, drawScaleY, wt.rotation, pivotX,
+                                         pivotY, tintA, 0, -viewTop, ctx.width, viewHeight - viewTop);
+            }
+
+            // The rows it writes, for the frame's other strips (their content
+            // is this one: content made again for each strip may not be).
+            if (geo && !g.rowsKnown && ctx.contentFrame != 0 && !source.ownsPixels)
+            {
+                int32_t top = 0, bottom = 0;
+                if (!QuadBlit::BlitRows(source, intScreenY, drawScaleX, drawScaleY, wt.rotation, pivotX, pivotY, top,
+                                        bottom))
+                {
+                    top = bottom = 0;
+                }
+                g.rowsTop = top + viewTop;
+                g.rowsBottom = bottom + viewTop;
+                g.rowsKnown = true;
             }
 
             const uint64_t blitStart = profiling ? RenderProfiler::Now() : 0;
@@ -573,8 +596,7 @@ void Standard2DRenderer::Render(Deki::Scene* scene, const RenderContext& ctx)
         // but deeper levels use their own scratch lists, so this one stays put.
         for (size_t i = 0; i < sortableItems.size(); i++)
         {
-            RenderObject(sortableItems[i], frameCtx,
-                         m_PlanMode == PlanMode::Recording ? static_cast<int32_t>(i) : -1);
+            RenderObject(sortableItems[i], frameCtx, m_PlanMode == PlanMode::Recording ? static_cast<int32_t>(i) : -1);
         }
 
         if (m_PlanMode == PlanMode::Recording)

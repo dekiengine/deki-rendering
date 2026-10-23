@@ -287,6 +287,37 @@ Source MakeSource(const uint8_t* pixels, int32_t width, int32_t height, PixelLay
     return src;
 }
 
+void FindUniformRuns(const uint8_t* pixels, int32_t width, int32_t height, int32_t stride, UniformRun* runs)
+{
+    constexpr int32_t kMinRun = 8;
+    for (int32_t y = 0; y < height; y++)
+    {
+        const uint8_t* row = pixels + static_cast<size_t>(y) * stride;
+        UniformRun best;
+        for (int32_t x = 0; x < width;)
+        {
+            if (row[x * 3 + 2] != 255)
+            {
+                x++;
+                continue;
+            }
+            const uint16_t color = LoadU16(row + x * 3);
+            const int32_t start = x;
+            while (x < width && row[x * 3 + 2] == 255 && LoadU16(row + x * 3) == color)
+            {
+                x++;
+            }
+            if (x - start >= kMinRun && x - start > best.end - best.start)
+            {
+                best.start = static_cast<int16_t>(start);
+                best.end = static_cast<int16_t>(x);
+                best.color = color;
+            }
+        }
+        runs[y] = best;
+    }
+}
+
 // Bytes per row of a Source buffer. Source::stride 0 means tightly packed
 // (each row right after the previous); a non-zero stride lets a Source point
 // at a sub-rect of a larger buffer (e.g. a tile in an atlas) without a copy.
@@ -493,22 +524,68 @@ static void MakeTintTables(TintTables& t, uint8_t tintR, uint8_t tintG, uint8_t 
     }
 }
 
-// The tables for the last tint asked for, kept between blits: the same tint is
-// usually drawn many times a frame (a row of cards, a particle emitter's
-// colour while only its alpha fades), and building the tables costs about as
-// much as tinting a hundred pixels. QuadBlit runs on one thread (its clip
-// stack is shared too), so one static entry is enough.
+// The tables for the last few tints asked for, kept between blits: the same
+// tints are usually drawn many times a frame (a row of cards, each with its
+// coloured badge and white label; a particle emitter's colour while only its
+// alpha fades), and building the tables costs about as much as tinting a
+// hundred pixels. QuadBlit runs on one thread (its clip stack is shared too),
+// so static entries are enough.
 static const TintTables& TintTablesFor(uint8_t tintR, uint8_t tintG, uint8_t tintB)
 {
-    static TintTables s_Tables;
-    static uint32_t s_Key = 0xFFFFFFFFu;  // no RGB tint packs to this
+    constexpr uint32_t kEntries = 8;
+    static TintTables s_Tables[kEntries];
+    // No RGB tint packs to 0xFFFFFFFF.
+    static uint32_t s_Keys[kEntries] = { 0xFFFFFFFFu, 0xFFFFFFFFu, 0xFFFFFFFFu, 0xFFFFFFFFu,
+                                         0xFFFFFFFFu, 0xFFFFFFFFu, 0xFFFFFFFFu, 0xFFFFFFFFu };
+    static uint32_t s_Next = 0;
     const uint32_t key = (static_cast<uint32_t>(tintR) << 16) | (static_cast<uint32_t>(tintG) << 8) | tintB;
-    if (key != s_Key)
+    for (uint32_t i = 0; i < kEntries; i++)
     {
-        MakeTintTables(s_Tables, tintR, tintG, tintB);
-        s_Key = key;
+        if (s_Keys[i] == key)
+        {
+            return s_Tables[i];
+        }
     }
-    return s_Tables;
+    const uint32_t i = s_Next;
+    s_Next = (s_Next + 1) % kEntries;
+    MakeTintTables(s_Tables[i], tintR, tintG, tintB);
+    s_Keys[i] = key;
+    return s_Tables[i];
+}
+
+// Fills n RGB565 pixels with one stored value, two at a time.
+static DEKI_FAST_ATTR void FillRow565(uint16_t* dst, int32_t n, uint16_t value)
+{
+    if (n <= 0)
+    {
+        return;
+    }
+    if (reinterpret_cast<uintptr_t>(dst) & 2)
+    {
+        *dst++ = value;
+        --n;
+    }
+    const uint32_t pair = static_cast<uint32_t>(value) | (static_cast<uint32_t>(value) << 16);
+    uint32_t* dst32 = reinterpret_cast<uint32_t*>(dst);
+    for (int32_t i = 0; i < n / 2; ++i)
+    {
+        dst32[i] = pair;
+    }
+    if (n & 1)
+    {
+        dst[n - 1] = value;
+    }
+}
+
+// A tinted source pixel v of alpha a (not 0 or 255) over the destination
+// pixel bg16 as stored, as the pipeline composites it.
+[[gnu::always_inline]] static inline uint16_t TintBlend565(const TintTables& t, uint32_t v, uint32_t a, uint16_t bg16)
+{
+    const uint32_t bg = FromMemory565(bg16);
+    const uint32_t invA = 255u - a;
+    return ToMemory565(PackRGB565(Div255(t.r[v >> 11] * a + ((bg >> 11) << 3) * invA),
+                                  Div255(t.g[(v >> 5) & 0x3F] * a + (((bg >> 5) & 0x3F) << 2) * invA),
+                                  Div255(t.b[v & 0x1F] * a + ((bg & 0x1F) << 3) * invA)));
 }
 
 // One tinted source pixel of alpha `a` (already multiplied by any alpha tint,
@@ -517,63 +594,72 @@ static const TintTables& TintTablesFor(uint8_t tintR, uint8_t tintG, uint8_t tin
 // loops that use it) cost more than the work.
 [[gnu::always_inline]] static inline void TintPixel565(const TintTables& t, uint32_t v, uint32_t a, uint16_t* dp)
 {
-    const uint32_t r5 = v >> 11;
-    const uint32_t g6 = (v >> 5) & 0x3F;
-    const uint32_t b5 = v & 0x1F;
     if (a == 255)
     {
-        *dp = static_cast<uint16_t>(t.pr[r5] | t.pg[g6] | t.pb[b5]);
+        *dp = static_cast<uint16_t>(t.pr[v >> 11] | t.pg[(v >> 5) & 0x3F] | t.pb[v & 0x1F]);
         return;
     }
-    const uint32_t bg = FromMemory565(*dp);
-    const uint32_t invA = 255u - a;
-    *dp = ToMemory565(PackRGB565(Div255(t.r[r5] * a + ((bg >> 11) << 3) * invA),
-                                 Div255(t.g[g6] * a + (((bg >> 5) & 0x3F) << 2) * invA),
-                                 Div255(t.b[b5] * a + ((bg & 0x1F) << 3) * invA)));
+    *dp = TintBlend565(t, v, a, *dp);
 }
 
 // Destination columns [x0, x1) of one row of a 1:1 tinted blit, each pixel
-// with its own alpha. Inlined: its loop is the blit's inner loop.
-template <bool SourceAlpha>
+// with its own alpha. Inlined: its loop is the blit's inner loop. The source's
+// bytes per pixel and whether there is an alpha tint are constants, so the
+// loop keeps what it needs in registers: an Xtensa core has few, and each one
+// spilled was a load per pixel.
+template <bool SourceAlpha, bool AlphaTint, int32_t Bpp>
 [[gnu::always_inline]] static inline void TintRun(const TintTables& t, const uint8_t* srcRow, uint16_t* dstRow,
-                                                  int32_t destX, int32_t bpp, int32_t x0, int32_t x1, bool alphaTint,
-                                                  uint32_t tintA)
+                                                  int32_t destX, int32_t x0, int32_t x1, uint32_t tintA)
 {
-    const uint8_t* sp = srcRow + (x0 - destX) * bpp;
+    const uint8_t* sp = srcRow + (x0 - destX) * Bpp;
     uint16_t* dp = dstRow + x0;
-    for (int32_t px = x0; px < x1; px++, sp += bpp, dp++)
+    if constexpr (AlphaTint)
     {
-        uint32_t a = 255;
-        if constexpr (SourceAlpha)
+        // Every pixel blends: an alpha tint is below 255, and so is any alpha
+        // it scales. The last blend is remembered: a translucent shape over a
+        // flat background (a card's tinted glow, a faded panel) blends the
+        // same source pixel over the same destination pixel after pixel.
+        uint32_t lastIn = 0xFFFFFFFFu;  // source alpha << 16 | pixel as stored; nothing packs to this
+        uint16_t lastBg = 0;
+        uint16_t lastOut = 0;
+        for (int32_t px = x0; px < x1; px++, sp += Bpp, dp++)
         {
-            a = sp[2];
-            if (a == 0)
+            uint32_t a8 = 255;
+            if constexpr (SourceAlpha)
             {
-                continue;
+                a8 = sp[2];
+                if (a8 == 0)
+                {
+                    continue;
+                }
             }
-        }
-        if (alphaTint)
-        {
-            a = Div255(a * tintA);
-            if (a == 0)
+            const uint32_t in = (a8 << 16) | LoadU16(sp);
+            const uint16_t bg = *dp;
+            if (in != lastIn || bg != lastBg)
             {
-                continue;
+                lastIn = in;
+                lastBg = bg;
+                const uint32_t a = Div255(a8 * tintA);
+                lastOut = a == 0 ? bg : TintBlend565(t, FromMemory565(static_cast<uint16_t>(in)), a, bg);
             }
+            *dp = lastOut;
         }
-        TintPixel565(t, Load565(sp), a, dp);
     }
-}
-
-// Destination columns [x0, x1) of one row through a platform's blend kernel.
-// (Not a lambda shared with TintRun: its body would be a function of its own,
-// outside IRAM, and the scalar loop inlined into it ran from flash.)
-static inline void KernelRun(RowKernelFn kernel, const uint8_t* srcRow, uint16_t* dstRow, int32_t destX, int32_t bpp,
-                             int32_t x0, int32_t x1, const BlitParams& p, uint8_t tintA)
-{
-    if (x1 > x0)
+    else
     {
-        kernel(srcRow + (x0 - destX) * bpp, reinterpret_cast<uint8_t*>(dstRow + x0), x1 - x0, p.tintR, p.tintG, p.tintB,
-               tintA);
+        for (int32_t px = x0; px < x1; px++, sp += Bpp, dp++)
+        {
+            uint32_t a = 255;
+            if constexpr (SourceAlpha)
+            {
+                a = sp[2];
+                if (a == 0)
+                {
+                    continue;
+                }
+            }
+            TintPixel565(t, Load565(sp), a, dp);
+        }
     }
 }
 
@@ -583,51 +669,99 @@ static inline void KernelRun(RowKernelFn kernel, const uint8_t* srcRow, uint16_t
 // need no blending at all. (Splitting rows at their opaque run, as
 // BlendRows_RGB565A8_to_RGB565 does, was measured slower here on an
 // ESP32-S3: 100 ns a pixel against 80.)
-template <bool SourceAlpha>
+template <bool SourceAlpha, bool AlphaTint, int32_t Bpp>
 static DEKI_FAST_ATTR void TintRows_RGB565(const Source& source, uint16_t* target16, int32_t targetWidth, int32_t destX,
                                            int32_t destY, const BlitBounds& b, const BlitParams& p)
 {
     const TintTables& t = TintTablesFor(p.tintR, p.tintG, p.tintB);
     const int32_t stride = SourceStride(source);
-    const int32_t bpp = source.bytesPerPixel;
-    const bool alphaTint = p.hasAlphaTint;
     const uint32_t tintA = p.tintA;
 
     const int16_t* clear = SourceAlpha ? source.clearRowSpans : nullptr;
-    // A platform's blend kernel, when it registers one, writes the same pixels.
-    RowKernelFn kernel = (SourceAlpha && bpp == 3) ? s_Kernels[(int)KernelOp::RGB565A8BlendRow] : nullptr;
-    const uint8_t kernelA = alphaTint ? static_cast<uint8_t>(tintA) : 255;
+    const UniformRun* runs = SourceAlpha ? source.uniformRuns : nullptr;
 
     for (int32_t py = b.startY; py < b.endY; py++)
     {
         const int32_t srcY = py - destY;
         const uint8_t* srcRow = source.pixels + srcY * stride;
         uint16_t* dstRow = target16 + py * targetWidth;
+
+        // The row's transparent run (alpha 0 everywhere in it) is not read,
+        // and its run of one opaque colour is drawn without reading the
+        // source: only the columns either side of them, inside the clip, go
+        // pixel by pixel. The two runs never overlap.
+        int32_t cs = b.endX, ce = b.endX, us = b.endX, ue = b.endX;
         if (clear)
         {
-            // The row's transparent run (alpha 0 everywhere in it) is not
-            // read: only the columns either side of it, inside the clip.
-            const int32_t cs = std::clamp<int32_t>(destX + clear[srcY * 2], b.startX, b.endX);
-            const int32_t ce = std::clamp<int32_t>(destX + clear[srcY * 2 + 1], cs, b.endX);
-            if (kernel)
+            cs = std::clamp<int32_t>(destX + clear[srcY * 2], b.startX, b.endX);
+            ce = std::clamp<int32_t>(destX + clear[srcY * 2 + 1], cs, b.endX);
+        }
+        if (runs)
+        {
+            us = std::clamp<int32_t>(destX + runs[srcY].start, b.startX, b.endX);
+            ue = std::clamp<int32_t>(destX + runs[srcY].end, us, b.endX);
+        }
+        // An empty run goes to the row's end, out of the other's way.
+        if (ce == cs)
+        {
+            cs = ce = b.endX;
+        }
+        if (ue == us)
+        {
+            us = ue = b.endX;
+        }
+        const bool clearFirst = cs < us;
+        const int32_t parts[6] = {
+            b.startX, clearFirst ? cs : us, clearFirst ? ce : ue, clearFirst ? us : cs, clearFirst ? ue : ce, b.endX
+        };
+#pragma GCC unroll 1
+        for (int32_t i = 0; i < 6; i += 2)
+        {
+            TintRun<SourceAlpha, AlphaTint, Bpp>(t, srcRow, dstRow, destX, parts[i], parts[i + 1], tintA);
+        }
+
+        if (ue > us)
+        {
+            // Alpha 255 throughout: the tinted colour, or with an alpha tint
+            // that colour at the tint's alpha (Div255(255 * a) is a) over
+            // each destination pixel, worked out again only when it changes.
+            const uint32_t v = FromMemory565(runs[srcY].color);
+            uint16_t* dp = dstRow + us;
+            if constexpr (AlphaTint)
             {
-                KernelRun(kernel, srcRow, dstRow, destX, bpp, b.startX, cs, p, kernelA);
-                KernelRun(kernel, srcRow, dstRow, destX, bpp, ce, b.endX, p, kernelA);
+                uint16_t lastBg = static_cast<uint16_t>(~dp[0]);
+                uint16_t lastOut = 0;
+                for (int32_t i = 0; i < ue - us; i++)
+                {
+                    const uint16_t bg = dp[i];
+                    if (bg != lastBg)
+                    {
+                        lastBg = bg;
+                        lastOut = TintBlend565(t, v, tintA, bg);
+                    }
+                    dp[i] = lastOut;
+                }
             }
             else
             {
-                TintRun<SourceAlpha>(t, srcRow, dstRow, destX, bpp, b.startX, cs, alphaTint, tintA);
-                TintRun<SourceAlpha>(t, srcRow, dstRow, destX, bpp, ce, b.endX, alphaTint, tintA);
+                FillRow565(dp, ue - us, static_cast<uint16_t>(t.pr[v >> 11] | t.pg[(v >> 5) & 0x3F] | t.pb[v & 0x1F]));
             }
         }
-        else if (kernel)
-        {
-            KernelRun(kernel, srcRow, dstRow, destX, bpp, b.startX, b.endX, p, kernelA);
-        }
-        else
-        {
-            TintRun<SourceAlpha>(t, srcRow, dstRow, destX, bpp, b.startX, b.endX, alphaTint, tintA);
-        }
+    }
+}
+
+// TintRows_RGB565 for a source of Bpp bytes a pixel, with or without an alpha tint.
+template <bool SourceAlpha, int32_t Bpp>
+static inline void TintRowsFor(const Source& source, uint16_t* target16, int32_t targetWidth, int32_t destX,
+                               int32_t destY, const BlitBounds& b, const BlitParams& p)
+{
+    if (p.hasAlphaTint)
+    {
+        TintRows_RGB565<SourceAlpha, true, Bpp>(source, target16, targetWidth, destX, destY, b, p);
+    }
+    else
+    {
+        TintRows_RGB565<SourceAlpha, false, Bpp>(source, target16, targetWidth, destX, destY, b, p);
     }
 }
 
@@ -696,30 +830,6 @@ static DEKI_FAST_ATTR void TintScaledRows_RGB565A8(const Source& source, uint8_t
             }
             StoreU16(dp, static_cast<uint16_t>(out));
         }
-    }
-}
-
-// Fills n RGB565 pixels with one stored value, two at a time.
-static DEKI_FAST_ATTR void FillRow565(uint16_t* dst, int32_t n, uint16_t value)
-{
-    if (n <= 0)
-    {
-        return;
-    }
-    if (reinterpret_cast<uintptr_t>(dst) & 2)
-    {
-        *dst++ = value;
-        --n;
-    }
-    const uint32_t pair = static_cast<uint32_t>(value) | (static_cast<uint32_t>(value) << 16);
-    uint32_t* dst32 = reinterpret_cast<uint32_t*>(dst);
-    for (int32_t i = 0; i < n / 2; ++i)
-    {
-        dst32[i] = pair;
-    }
-    if (n & 1)
-    {
-        dst[n - 1] = value;
     }
 }
 
@@ -863,15 +973,14 @@ static DEKI_FAST_ATTR bool CopyRows_RGB565_ChromaSpans(const Source& source, uin
 
 // RGB565A8 with alpha -> RGB565, no tint or key: a per-row opaque-span split
 // (left blend | opaque copy | right blend) when spans are available,
-// otherwise the SIMD blend kernel when aligned. Rows neither can take go
-// through the plain pipeline.
+// otherwise the plain pipeline per pixel.
 static DEKI_FAST_ATTR bool BlendRows_RGB565A8_to_RGB565(const Source& source, uint16_t* target16, int32_t targetWidth,
                                                         int32_t destX, int32_t destY, const BlitBounds& b)
 {
     const int32_t stride = SourceStride(source);
     const int32_t bpp = source.bytesPerPixel;
     const int16_t* rowSpans = source.alphaRowSpans;
-    RowKernelFn blendKernel = s_Kernels[(int)KernelOp::RGB565A8BlendRow];
+    const UniformRun* runs = source.uniformRuns;
     const BlitParams plain;
 
     for (int32_t py = b.startY; py < b.endY; py++)
@@ -889,24 +998,28 @@ static DEKI_FAST_ATTR bool BlendRows_RGB565A8_to_RGB565(const Source& source, ui
             const int32_t clampedEnd = std::min<int32_t>(rowSpans[srcY * 2 + 1], srcEndX);
 
             // Left alpha region.
-            const int32_t leftEnd = std::min(clampedStart, srcEndX);
-            if (blendKernel && bpp == 3 && leftEnd > srcStartX)
+            for (int32_t sx = srcStartX; sx < clampedStart && sx < srcEndX; sx++)
             {
-                blendKernel(rowBase + srcStartX * bpp, (uint8_t*)(dstRow + destX + srcStartX), leftEnd - srcStartX,
-                            255, 255, 255, 255);
-            }
-            else
-            {
-                for (int32_t sx = srcStartX; sx < leftEnd; sx++)
-                {
-                    CompositePixel<SrcKind::RGB565A8, Deki::ColorFormat::RGB565, true>(
-                        source, rowBase + sx * bpp, (uint8_t*)target16, rowIdx + destX + sx, destX + sx, py, plain);
-                }
+                CompositePixel<SrcKind::RGB565A8, Deki::ColorFormat::RGB565, true>(
+                    source, rowBase + sx * bpp, (uint8_t*)target16, rowIdx + destX + sx, destX + sx, py, plain);
             }
 
-            // Opaque middle: direct copy, no alpha checks.
+            // Opaque middle: direct copy, no alpha checks. A run of one colour
+            // (uniformRuns) is filled, without reading the source.
+            int32_t fillStart = clampedEnd, fillEnd = clampedEnd;
+            if (runs && clampedEnd > clampedStart)
+            {
+                fillStart = std::clamp<int32_t>(runs[srcY].start, clampedStart, clampedEnd);
+                fillEnd = std::clamp<int32_t>(runs[srcY].end, fillStart, clampedEnd);
+                FillRow565(dstRow + destX + fillStart, fillEnd - fillStart, runs[srcY].color);
+            }
             const uint8_t* srcPtr = rowBase + clampedStart * bpp;
-            for (int32_t sx = clampedStart; sx < clampedEnd; sx++, srcPtr += bpp)
+            for (int32_t sx = clampedStart; sx < fillStart; sx++, srcPtr += bpp)
+            {
+                dstRow[destX + sx] = LoadU16(srcPtr);
+            }
+            srcPtr = rowBase + fillEnd * bpp;
+            for (int32_t sx = fillEnd; sx < clampedEnd; sx++, srcPtr += bpp)
             {
                 dstRow[destX + sx] = LoadU16(srcPtr);
             }
@@ -914,30 +1027,15 @@ static DEKI_FAST_ATTR bool BlendRows_RGB565A8_to_RGB565(const Source& source, ui
             // Right alpha region. Starts at the clip start when the opaque span
             // ends before it or is empty; starting at opaqueEnd then would
             // write pixels the clip rect excludes.
-            const int32_t rightStart = std::max(clampedEnd, srcStartX);
-            if (blendKernel && bpp == 3 && srcEndX > rightStart)
+            for (int32_t sx = std::max(clampedEnd, srcStartX); sx < srcEndX; sx++)
             {
-                blendKernel(rowBase + rightStart * bpp, (uint8_t*)(dstRow + destX + rightStart), srcEndX - rightStart,
-                            255, 255, 255, 255);
-            }
-            else
-            {
-                for (int32_t sx = rightStart; sx < srcEndX; sx++)
-                {
-                    CompositePixel<SrcKind::RGB565A8, Deki::ColorFormat::RGB565, true>(
-                        source, rowBase + sx * bpp, (uint8_t*)target16, rowIdx + destX + sx, destX + sx, py, plain);
-                }
+                CompositePixel<SrcKind::RGB565A8, Deki::ColorFormat::RGB565, true>(
+                    source, rowBase + sx * bpp, (uint8_t*)target16, rowIdx + destX + sx, destX + sx, py, plain);
             }
             continue;
         }
 
         const uint8_t* srcPtr = rowBase + srcStartX * bpp;
-        uint16_t* dstPtr = dstRow + b.startX;
-        if (blendKernel && bpp == 3)
-        {
-            blendKernel(srcPtr, (uint8_t*)dstPtr, b.endX - b.startX, 255, 255, 255, 255);
-            continue;
-        }
         for (int32_t px = b.startX; px < b.endX; px++, srcPtr += bpp)
         {
             CompositePixel<SrcKind::RGB565A8, Deki::ColorFormat::RGB565, true>(source, srcPtr, (uint8_t*)target16,
@@ -947,22 +1045,16 @@ static DEKI_FAST_ATTR bool BlendRows_RGB565A8_to_RGB565(const Source& source, ui
     return true;
 }
 
-// RGB565 -> RGB565A8, no tint or key: opaque expand (the SIMD kernel when aligned).
+// RGB565 -> RGB565A8, no tint or key: opaque expand.
 static DEKI_FAST_ATTR bool ExpandRows_RGB565_to_RGB565A8(const Source& source, uint8_t* target, int32_t targetWidth,
                                                          int32_t destX, int32_t destY, const BlitBounds& b)
 {
     const int32_t stride = SourceStride(source);
     const int32_t rowPixels = b.endX - b.startX;
-    RowKernelFn expandKernel = s_Kernels[(int)KernelOp::RGB565ToRGB565A8Row];
     for (int32_t py = b.startY; py < b.endY; py++)
     {
         const uint16_t* srcPtr = (const uint16_t*)(source.pixels + (py - destY) * stride) + (b.startX - destX);
         uint8_t* dstPtr = target + (py * targetWidth + b.startX) * 3;
-        if (expandKernel && Aligned16(srcPtr, dstPtr))
-        {
-            expandKernel((const uint8_t*)srcPtr, dstPtr, rowPixels, 255, 255, 255, 255);
-            continue;
-        }
         for (int32_t i = 0; i < rowPixels; i++)
         {
             const uint16_t v = srcPtr[i];
@@ -974,7 +1066,7 @@ static DEKI_FAST_ATTR bool ExpandRows_RGB565_to_RGB565A8(const Source& source, u
 }
 
 // RGB565A8 -> RGB565A8, no tint or key: opaque copy when the source declares
-// no alpha, otherwise the SIMD blend kernel when aligned.
+// no alpha, otherwise the plain pipeline per pixel.
 static DEKI_FAST_ATTR bool Rows_RGB565A8_to_RGB565A8(const Source& source, uint8_t* target, int32_t targetWidth,
                                                      int32_t destX, int32_t destY, const BlitBounds& b)
 {
@@ -992,12 +1084,6 @@ static DEKI_FAST_ATTR bool Rows_RGB565A8_to_RGB565A8(const Source& source, uint8
         uint8_t* dstPtr = target + (py * targetWidth + b.startX) * 3;
         if (!source.hasAlpha)
         {
-            RowKernelFn copyKernel = s_Kernels[(int)KernelOp::RGB565A8CopyRow];
-            if (copyKernel && Aligned16(srcPtr, dstPtr))
-            {
-                copyKernel(srcPtr, dstPtr, rowPixels, 255, 255, 255, 255);
-                continue;
-            }
             // Byte 2 of the source is ignored: the source declares itself opaque.
             for (int32_t i = 0; i < rowPixels; i++)
             {
@@ -1005,12 +1091,6 @@ static DEKI_FAST_ATTR bool Rows_RGB565A8_to_RGB565A8(const Source& source, uint8
                 dstPtr[i * 3 + 1] = srcPtr[i * 3 + 1];
                 dstPtr[i * 3 + 2] = 0xFF;
             }
-            continue;
-        }
-        RowKernelFn blendKernel = s_Kernels[(int)KernelOp::RGB565A8BlendRowDestRGB565A8];
-        if (blendKernel && Aligned16(srcPtr, dstPtr))
-        {
-            blendKernel(srcPtr, dstPtr, rowPixels, 255, 255, 255, 255);
             continue;
         }
         const size_t rowIdx = (size_t)py * (size_t)targetWidth;
@@ -1142,8 +1222,9 @@ struct ScaledCopy
     uint32_t lastUsed = 0;
     uint8_t* pixels = nullptr;
     size_t bytes = 0;
-    int16_t* spans = nullptr;  // opaque runs, as Source::alphaRowSpans
-    int16_t* clear = nullptr;  // transparent runs, as Source::clearRowSpans
+    int16_t* spans = nullptr;    // opaque runs, as Source::alphaRowSpans
+    int16_t* clear = nullptr;    // transparent runs, as Source::clearRowSpans
+    UniformRun* runs = nullptr;  // runs of one opaque colour, as Source::uniformRuns
 };
 
 // Policy: what the copies may hold, how many sizes are tracked, and how many
@@ -1165,10 +1246,12 @@ void FreeCopy(ScaledCopy& e)
         Deki::Memory::Free(e.pixels);
         Deki::Memory::Free(e.spans);
         Deki::Memory::Free(e.clear);
+        Deki::Memory::Free(e.runs);
     }
     e.pixels = nullptr;
     e.spans = nullptr;
     e.clear = nullptr;
+    e.runs = nullptr;
     e.bytes = 0;
 }
 
@@ -1213,7 +1296,8 @@ bool MakeCopy(ScaledCopy& e, const Source& s)
     const size_t pixelBytes = rowBytes * static_cast<size_t>(e.h);
     const bool alpha = s.hasAlpha && s.bytesPerPixel >= 3;
     const size_t spanBytes = alpha ? static_cast<size_t>(e.h) * 2 * sizeof(int16_t) : 0;
-    const size_t need = pixelBytes + 2 * spanBytes;
+    const size_t runBytes = alpha ? static_cast<size_t>(e.h) * sizeof(UniformRun) : 0;
+    const size_t need = pixelBytes + 2 * spanBytes + runBytes;
     if (need > kScaledBudget / 4 || !MakeRoom(need))
     {
         return false;
@@ -1223,15 +1307,18 @@ bool MakeCopy(ScaledCopy& e, const Source& s)
     {
         e.spans = static_cast<int16_t*>(Deki::Memory::Allocate(spanBytes, Deki::Memory::External));
         e.clear = static_cast<int16_t*>(Deki::Memory::Allocate(spanBytes, Deki::Memory::External));
+        e.runs = static_cast<UniformRun*>(Deki::Memory::Allocate(runBytes, Deki::Memory::External));
     }
-    if (!e.pixels || (alpha && (!e.spans || !e.clear)))
+    if (!e.pixels || (alpha && (!e.spans || !e.clear || !e.runs)))
     {
         Deki::Memory::Free(e.pixels);
         Deki::Memory::Free(e.spans);
         Deki::Memory::Free(e.clear);
+        Deki::Memory::Free(e.runs);
         e.pixels = nullptr;
         e.spans = nullptr;
         e.clear = nullptr;
+        e.runs = nullptr;
         return false;
     }
     e.bytes = need;
@@ -1295,6 +1382,7 @@ bool MakeCopy(ScaledCopy& e, const Source& s)
             e.clear[y * 2] = static_cast<int16_t>(bestStart);
             e.clear[y * 2 + 1] = static_cast<int16_t>(bestEnd);
         }
+        FindUniformRuns(e.pixels, e.w, e.h, static_cast<int32_t>(rowBytes), e.runs);
     }
     return true;
 }
@@ -1359,6 +1447,7 @@ bool ScaledCopyFor(const Source& s, int32_t w, int32_t h, Source& out)
     out.stride = 0;
     out.alphaRowSpans = found->spans;
     out.clearRowSpans = found->clear;
+    out.uniformRuns = found->runs;
     out.chromaRowSpans = nullptr;
     out.ownsPixels = false;
     out.cacheScaled = false;
@@ -1448,7 +1537,8 @@ void BlitScaled(const Source& source, uint8_t* target, int32_t targetWidth, int3
     }
 
     NoteBlitRect(target, bounds.startX, bounds.startY, bounds.endX, bounds.endY);
-    PathScope scope(static_cast<uint64_t>(bounds.endX - bounds.startX) * static_cast<uint64_t>(bounds.endY - bounds.startY));
+    PathScope scope(static_cast<uint64_t>(bounds.endX - bounds.startX) *
+                    static_cast<uint64_t>(bounds.endY - bounds.startY));
 
     BlitParams p;
     p.hasTint = (tintR != 255 || tintG != 255 || tintB != 255);
@@ -1470,8 +1560,7 @@ void BlitScaled(const Source& source, uint8_t* target, int32_t targetWidth, int3
     const bool plain = !p.hasTint && !p.hasAlphaTint && !p.hasKey && !p.dither && !p.flips;
 
     // 1:1 onto RGB565 from an RGB565 or RGB565A8 source, tinted or blended: one
-    // tight loop per row (TintRows_RGB565), which a platform's blend kernel
-    // speeds up run by run. Left to the paths below: a plain RGB565 copy, and
+    // tight loop per row (TintRows_RGB565). Left to the paths below: a plain RGB565 copy, and
     // a plain blend with opaque spans to copy. A plain blend without spans
     // stays here: its rows' transparent runs (clearRowSpans) are skipped
     // unread, where blending whole rows read every pixel of a glyph's box.
@@ -1486,11 +1575,15 @@ void BlitScaled(const Source& source, uint8_t* target, int32_t targetWidth, int3
             scope.path = BlitPath::TintRows;
             if (kind == SrcKind::RGB565A8 && source.hasAlpha)
             {
-                TintRows_RGB565<true>(source, target16, targetWidth, destX, destY, bounds, p);
+                TintRowsFor<true, 3>(source, target16, targetWidth, destX, destY, bounds, p);
+            }
+            else if (kind == SrcKind::RGB565A8)
+            {
+                TintRowsFor<false, 3>(source, target16, targetWidth, destX, destY, bounds, p);
             }
             else
             {
-                TintRows_RGB565<false>(source, target16, targetWidth, destX, destY, bounds, p);
+                TintRowsFor<false, 2>(source, target16, targetWidth, destX, destY, bounds, p);
             }
             return;
         }
@@ -1528,8 +1621,7 @@ void BlitScaled(const Source& source, uint8_t* target, int32_t targetWidth, int3
         }
         else
         {
-            TintScaledRows_RGB565<false>(source, target16, targetWidth, destX, destY, destWidth, destHeight, bounds,
-                                         p);
+            TintScaledRows_RGB565<false>(source, target16, targetWidth, destX, destY, destWidth, destHeight, bounds, p);
         }
         return;
     }
@@ -1680,6 +1772,40 @@ bool CoversRect(const Source& source, int32_t screenX, int32_t screenY, float sc
     // An unset clip limits nothing; the target's own edges are not the rect's.
     const ClipRect clip = GetCurrentClipRect();
     return !clip.IsSet() || (clip.left <= left && clip.top <= top && clip.right >= right && clip.bottom >= bottom);
+}
+
+bool BlitRows(const Source& source, int32_t screenY, float scaleX, float scaleY, float rotation, float pivotX,
+              float pivotY, int32_t& top, int32_t& bottom)
+{
+    // Placed as Blit places it, unrotated or rotated.
+    const float destWidth = source.width * scaleX;
+    const float destHeight = source.height * scaleY;
+    if (!source.pixels || source.width <= 0 || source.height <= 0 || destWidth <= 0 || destHeight <= 0)
+    {
+        return false;
+    }
+    if (rotation == 0.0f)
+    {
+        top = screenY - static_cast<int32_t>(std::floor(destHeight * pivotY));
+        bottom = top + static_cast<int32_t>(destHeight);
+        return bottom > top;
+    }
+    const float cosR = std::cos(rotation);
+    const float sinR = std::sin(rotation);
+    const float pivotSX = destWidth * pivotX;
+    const float pivotSY = destHeight * pivotY;
+    const float xs[2] = { -pivotSX, destWidth - pivotSX };
+    const float ys[2] = { -pivotSY, destHeight - pivotSY };
+    float minY = 0, maxY = 0;
+    for (int i = 0; i < 4; i++)
+    {
+        const float ry = xs[i & 1] * sinR + ys[i >> 1] * cosR;
+        minY = i == 0 ? ry : std::min(minY, ry);
+        maxY = i == 0 ? ry : std::max(maxY, ry);
+    }
+    top = screenY + static_cast<int32_t>(std::floor(minY));
+    bottom = screenY + static_cast<int32_t>(std::floor(maxY + 1));
+    return bottom > top;
 }
 
 void Blit(const Source& source, uint8_t* target, int32_t targetWidth, int32_t targetHeight,

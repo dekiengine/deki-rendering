@@ -23,13 +23,15 @@ DEKI_RENDERING_API void Enable(Clock clock);
 DEKI_RENDERING_API bool IsEnabled();
 DEKI_RENDERING_API uint64_t Now();
 
-/// Type id for the frame's clear, which belongs to no component.
+/// Type ids for the frame's clear and for handing its strips to the display,
+/// which belong to no component.
 constexpr uint32_t kClear = 1;
+constexpr uint32_t kPresent = 2;
 
 struct Entry
 {
-    uint32_t typeId = 0;          // the component's type, or kClear
-    const char* name = nullptr;   // its short name, when the caller gave one
+    uint32_t typeId = 0;         // the component's type, kClear or kPresent
+    const char* name = nullptr;  // its short name, when the caller gave one
     uint64_t contentUs = 0;
     uint64_t blitUs = 0;
     uint32_t draws = 0;

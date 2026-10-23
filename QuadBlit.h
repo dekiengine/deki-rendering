@@ -111,6 +111,15 @@ struct PixelLayout
     }
 };
 
+/// One row's longest run of a single opaque colour: columns [start, end) are
+/// all `color` (as stored) at alpha 255. start >= end for none.
+struct UniformRun
+{
+    int16_t start = 0;
+    int16_t end = 0;
+    uint16_t color = 0;
+};
+
 /// A source buffer.
 struct Source
 {
@@ -187,6 +196,12 @@ struct Source
     // size is mostly the empty run inside it. Set it only when it holds.
     const int16_t* clearRowSpans = nullptr;
 
+    // Optional per-row runs of one opaque colour (FindUniformRuns), one per
+    // row. A 1:1 blend fills them without reading the source: a 9-slice
+    // panel's middle in PSRAM is then written, not copied. Set it only when
+    // it holds.
+    const UniformRun* uniformRuns = nullptr;
+
     // The pixels never change while they live, so a scaled blit may keep a
     // copy made at the size it is drawn and draw that 1:1 next time (see
     // NextFrame). Set it only for pixels that stay as they are at this
@@ -221,6 +236,11 @@ size_t ScaledCacheEntries();
 Source MakeSource(const uint8_t* pixels, int32_t width, int32_t height, PixelLayout layout, bool ownsPixels = false,
                   const int16_t* alphaRowSpans = nullptr);
 
+/// Each row's longest run of one opaque colour in RGB565A8 pixels (3 bytes
+/// each, rows `stride` bytes apart), for Source::uniformRuns. Runs shorter
+/// than 8 pixels are not worth filling and are left out.
+void FindUniformRuns(const uint8_t* pixels, int32_t width, int32_t height, int32_t stride, UniformRun* runs);
+
 /// Blits `source` to the target with full 2D transforms.
 ///
 /// screenX/screenY: screen position, after WorldToScreen.
@@ -241,6 +261,12 @@ void Blit(const Source& source, uint8_t* target, int32_t targetWidth, int32_t ta
 /// around a strip): the blit's placement is checked, not the target's size.
 bool CoversRect(const Source& source, int32_t screenX, int32_t screenY, float scaleX, float scaleY, float rotation,
                 float pivotX, float pivotY, uint8_t tintA, int32_t left, int32_t top, int32_t right, int32_t bottom);
+
+/// The target rows [top, bottom) that Blit() with these arguments can write,
+/// whatever the clip and the target's size: a renderer drawing in strips
+/// skips the blit in a strip outside them. False when it writes nothing.
+bool BlitRows(const Source& source, int32_t screenY, float scaleX, float scaleY, float rotation, float pivotX,
+              float pivotY, int32_t& top, int32_t& bottom);
 
 /// A faster blit without rotation, into the rect destX, destY, destWidth,
 /// destHeight.
@@ -274,44 +300,16 @@ enum class KernelOp : uint8_t
     // opaque middle of the chroma-key row-span path.
     RGB565CopyRow,
 
-    // RGB565A8 source to RGB565 dest, 1:1 alpha blend, tinted by tintR/G/B
-    // and alpha-tinted by tintA (255: none). src is 3 bytes/pixel (RGB565
-    // plus an alpha byte), dst is 2, each at its natural alignment. It must
-    // write the scalar blend's pixels exactly: a pixel whose alpha (times
-    // tintA) is 0 keeps the destination, one at 255 takes the tinted source,
-    // and the rest are Div255(source * a + destination * (255 - a)) per
-    // 8-bit channel, packed. Chroma keys stay with the caller.
-    RGB565A8BlendRow,
-
-    // RGB565 source to RGB565A8 dest, 1:1 opaque expand. src is 2
-    // bytes/pixel, dst 3, laid out as [lo, hi, alpha]. Output alpha is 0xFF
-    // for every pixel. Tint and chroma key must be absent.
-    RGB565ToRGB565A8Row,
-
-    // RGB565A8 source to RGB565A8 dest, 1:1 opaque copy. Both are 3
-    // bytes/pixel. The caller guarantees the whole row is opaque (alpha 255
-    // everywhere), so the kernel may skip alpha checks; in effect
-    // `memcpy(dst, src, count*3)`. Tint and chroma key must be absent.
-    RGB565A8CopyRow,
-
-    // RGB565A8 source to RGB565A8 dest, 1:1 alpha blend with src-over alpha
-    // union (out.a = src.a + dst.a * (255 - src.a) / 255). Both are 3
-    // bytes/pixel. The kernel handles the a == 0 skip and a == 255 fast path
-    // itself. Tint and chroma key must be absent.
-    RGB565A8BlendRowDestRGB565A8,
-
     Count
 };
 
 // Per-row kernel signature.
 //   src, dst      16-byte-aligned source and destination row pointers
 //   pixelCount    number of pixels to process, not bytes
-//   tintR/G/B/A   passed through for kernels that use them; the no-tint
-//                 kernel slots receive (255, 255, 255, 255)
+//   tintR/G/B/A   always (255, 255, 255, 255) for the ops above
 //
-// The caller guarantees alignment, format, scale 1, rotation 0 and, where it
-// applies, no tint, so the kernel may assume them and use unrolled or SIMD
-// loads.
+// The caller guarantees alignment, format, scale 1, rotation 0 and no tint, so
+// the kernel may assume them and use unrolled or SIMD loads.
 using RowKernelFn = void (*)(const uint8_t* src, uint8_t* dst, int32_t pixelCount, uint8_t tintR, uint8_t tintG,
                              uint8_t tintB, uint8_t tintA);
 
