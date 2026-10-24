@@ -56,7 +56,7 @@
  <tbody>
  <tr id="projectrow">
   <td id="projectalign">
-   <div id="projectname">deki-rendering<span id="projectnumber">&#160;0.19.0</span>
+   <div id="projectname">deki-rendering<span id="projectnumber">&#160;0.20.2</span>
    </div>
    <div id="projectbrief">Deki package reference</div>
   </td>
@@ -114,7 +114,7 @@ document.addEventListener('DOMContentLoaded',() => { initNavTree('index.html',''
 <img src="deki-rendering.png" alt=""/>
 </div>
     <p>Core rendering system with camera and renderer components</p>
-<p>Repository: <a href="https://github.com/dekiengine/deki-rendering">github.com/dekiengine/deki-rendering</a> · Latest release: 0.19.0 · Needs engine 0.19.0+</p>
+<p>Repository: <a href="https://github.com/dekiengine/deki-rendering">github.com/dekiengine/deki-rendering</a> · Latest release: 0.20.0 · Needs engine 0.20.0+</p>
 <p>Install with <span class="tt">DekiEditor --packages-add deki-rendering &lt;project&gt;</span>, or from the Package Manager. The engine's own components and C++ API are in the <a href="https://dekiengine.github.io/docs/">Deki docs</a>.</p>
 <p>Shown in the editor as <b>Rendering</b>.</p>
 <h1 class="doxsection"><a class="anchor" id="components"></a>
@@ -161,50 +161,52 @@ Rendering settings</h2>
 <tr class="markdownTableHead">
 <th class="markdownTableHeadNone">Property  </th><th class="markdownTableHeadNone">Type  </th><th class="markdownTableHeadNone">Default  </th><th class="markdownTableHeadNone">Constraints  </th><th class="markdownTableHeadNone">Description  </th></tr>
 <tr class="markdownTableRowOdd">
-<td class="markdownTableBodyNone"><span class="tt">halfWidthFramebuffer</span>  </td><td class="markdownTableBodyNone">bool  </td><td class="markdownTableBodyNone"><span class="tt">false</span>  </td><td class="markdownTableBodyNone"></td><td class="markdownTableBodyNone">Render at half horizontal resolution and double-up at present time. Halves blit cost and framebuffer memory but pixel art looks 2:1-stretched horizontally.  </td></tr>
-<tr class="markdownTableRowEven">
-<td class="markdownTableBodyNone"><span class="tt">interlaced60hz</span>  </td><td class="markdownTableBodyNone">bool  </td><td class="markdownTableBodyNone"><span class="tt">false</span>  </td><td class="markdownTableBodyNone"></td><td class="markdownTableBodyNone">Render odd scanlines one frame, even the next, at 60Hz. Halves per-frame work but produces visible combing on vertical motion.  </td></tr>
-<tr class="markdownTableRowOdd">
 <td class="markdownTableBodyNone"><span class="tt">dirtyTileTracking</span>  </td><td class="markdownTableBodyNone">bool  </td><td class="markdownTableBodyNone"><span class="tt">false</span>  </td><td class="markdownTableBodyNone"></td><td class="markdownTableBodyNone">Dirty-rect tracking: record the rectangles each frame draws, clear only those next frame and push only what changed (this frame's and last frame's rectangles) to the display. Big win for mostly-static scenes; small bookkeeping cost for fully-animating ones. Displays that cannot present partial frames still receive whole frames.  </td></tr>
 <tr class="markdownTableRowEven">
 <td class="markdownTableBodyNone"><span class="tt">dirtyTileSize</span>  </td><td class="markdownTableBodyNone">int32  </td><td class="markdownTableBodyNone"><span class="tt">32</span>  </td><td class="markdownTableBodyNone">1 to 256; shown when <span class="tt">dirtyTileTracking</span> allows  </td><td class="markdownTableBodyNone">Alignment of dirty rectangles in pixels: each rectangle is rounded out to multiples of this. Larger = fewer, bigger pushes and a small movement reuses the same rectangle; smaller = tighter rectangles.  </td></tr>
+<tr class="markdownTableRowOdd">
+<td class="markdownTableBodyNone"><span class="tt">frameMode</span>  </td><td class="markdownTableBodyNone">enum  </td><td class="markdownTableBodyNone"><span class="tt">"Auto"</span>  </td><td class="markdownTableBodyNone"><span class="tt">Auto</span>, <span class="tt">WholeFrames</span>, <span class="tt">Strips</span>  </td><td class="markdownTableBodyNone">How each frame reaches the screen. Auto (the default) chooses on the device when the game starts: whole frames when the framebuffer fits in internal RAM with room to spare, strips when it does not (a 536x240 screen at 2 bytes a pixel is 257 KB, more than the free internal RAM of an ESP32-S3). Whole frames draws each frame once, in one buffer, and is the faster choice whenever that buffer is in internal RAM. Strips draws the frame a strip of rows at a time into a small buffer in internal RAM and sends each strip while the next is drawn, which is much faster than drawing a whole frame in PSRAM. Both give the same pixels and keep every feature. The boot log and DEKI:STATS say which one a board uses and why. The editor always draws whole frames.  </td></tr>
+<tr class="markdownTableRowEven">
+<td class="markdownTableBodyNone"><span class="tt">bandRows</span>  </td><td class="markdownTableBodyNone">int32  </td><td class="markdownTableBodyNone"><span class="tt">40</span>  </td><td class="markdownTableBodyNone">2 to 256  </td><td class="markdownTableBodyNone">Rows in each strip, when frames are drawn in strips. 40 suits most screens. Taller strips walk the scene fewer times a frame but need more internal RAM: a strip, and two copies of it for sending, of the screen's width times this many rows at 2 bytes a pixel.  </td></tr>
 </table>
 <h1 class="doxsection"><a class="anchor" id="changelog"></a>
 Changelog</h1>
 <h2 class="doxsection"><a class="anchor" id="autotoc_md0"></a>
-0.19.0</h2>
+0.20.0</h2>
 <h2 class="doxsection"><a class="anchor" id="autotoc_md1"></a>
+Added</h2>
+<ul>
+<li>Strips along a display's refresh. A display that wants it offers <span class="tt">IScanOrderedDisplay</span> (<span class="tt">RegisterScanOrderedDisplay</span>): the order its panel refreshes the screen in, rows down or up, or columns left to right or right to left. <span class="tt">DekiRenderSystem</span> then cuts strips along it, in that order, and sends each with <span class="tt">PresentStrip</span>: the whole strip, what changed in it, and whether it is the frame's first. A strip of columns is as many pixels as <span class="tt">bandRows</span> rows would be, in whole eights of columns so the ordered dither's tile stays where the whole frame has it. <span class="tt">RenderContext</span> gains <span class="tt">viewLeft</span> and <span class="tt">viewWidth</span>, the x twins of <span class="tt">viewTop</span> and <span class="tt">viewHeight</span>, and <span class="tt">DrawsInStrips</span> means strips of rows or of columns. Every whole-frame feature works in either: dirty rectangles, a camera that does not clear, screenshots. <span class="tt">Deki::IDisplay</span> does not change, so no package is rebuilt for it.</li>
+<li>Big-endian RGB565 (<span class="tt">DEKI_RGB565_BIG_ENDIAN</span>, see <span class="tt">Deki::kRGB565BigEndian</span>): <span class="tt">DekiPixel::Load565</span>, <span class="tt">Store565</span>, <span class="tt">ToMemory565</span>, <span class="tt">FromMemory565</span> and <span class="tt">FileToMemory565</span> read and write 565 values in memory's byte order. The blitter, its tint tables and chroma keys, clears and <span class="tt">GetPixel</span> use them. Copies of whole pixels are unchanged. The golden tests run in both byte orders and give the same hashes.</li>
+<li><span class="tt">RenderProfiler</span> times each of QuadBlit's paths (its fast loops and the generic scaled and rotated pipelines): blits, destination pixels and microseconds per frame (<span class="tt">AddPath</span>, <span class="tt">TakePaths</span>). Entries carry the component's short name, which a stripped build's registry cannot give.</li>
+</ul>
+<h2 class="doxsection"><a class="anchor" id="autotoc_md2"></a>
+Changed</h2>
+<ul>
+<li><span class="tt">minEngine</span> 0.20.0: built against engine 0.20.0. A build of this package from before does not load and is rebuilt.</li>
+<li>On the ESP32's Xtensa cores an RGB565 pixel is read and written with one 16-bit access, aligned or not (<span class="tt">DekiPixel::LoadU16</span> and <span class="tt">StoreU16</span>). The cores handle unaligned loads and stores in hardware; GCC assumes they fault, so the byte-by-byte read it replaced was four instructions. Other targets use <span class="tt">memcpy</span>.</li>
+</ul>
+<h2 class="doxsection"><a class="anchor" id="autotoc_md3"></a>
+Removed</h2>
+<ul>
+<li><span class="tt">halfWidthFramebuffer</span> and <span class="tt">interlaced60hz</span> from the Rendering settings: neither was ever built, though their tooltips described them as if they were. A project that still has them in its settings loads as before; they are left out when it is saved.</li>
+</ul>
+<h2 class="doxsection"><a class="anchor" id="autotoc_md4"></a>
+0.19.0</h2>
+<h2 class="doxsection"><a class="anchor" id="autotoc_md5"></a>
 Changed</h2>
 <ul>
 <li><span class="tt">minEngine</span> 0.19.0: built against engine 0.19.0, whose component metadata records the package each class is in. A build of this package from before does not load and is rebuilt.</li>
 </ul>
-<h2 class="doxsection"><a class="anchor" id="autotoc_md2"></a>
+<h2 class="doxsection"><a class="anchor" id="autotoc_md6"></a>
 Added</h2>
 <ul>
 <li>Japanese, Simplified Chinese and Korean: <span class="tt">editor/lang/ja.json</span>, <span class="tt">zh.json</span> and <span class="tt">ko.json</span> translate the names, tooltips and enum values this package's components show in the Inspector.</li>
 <li>The package's editor text goes through the editor's translation (<span class="tt">Tr</span>), so it shows in the editor's language. Needs the editor release that adds <span class="tt">Localization.h</span>; raise <span class="tt">minEngine</span> to it when releasing.</li>
 </ul>
-<h2 class="doxsection"><a class="anchor" id="autotoc_md3"></a>
-0.18.2</h2>
-<h2 class="doxsection"><a class="anchor" id="autotoc_md4"></a>
-Added</h2>
-<ul>
-<li><span class="tt">RenderProfiler</span>: once enabled, the draws, content time, blit time and pixels per frame of each component type, and the frame's clear. The ESP32's <span class="tt">DEKI:PROFILE</span> console request reports it.</li>
-</ul>
-<h2 class="doxsection"><a class="anchor" id="autotoc_md5"></a>
-Changed</h2>
-<ul>
-<li><p class="startli"><b>Blits are several times faster on the ESP32.</b></p><ul>
-<li>A pixel is read from RGB565 sources byte by byte. With <span class="tt">memcpy</span>, which GCC makes a function call on the ESP32's Xtensa when the pixel may be unaligned, every pixel cost a call.</li>
-<li>A 1:1 sprite drawn onto RGB565 with a tint or alpha tint runs in one loop per row, with the tint worked out once for each of RGB565's channel values. It went through the per-pixel pipeline.</li>
-<li>So does a sprite drawn onto RGB565A8 scaled or tinted: each particle into its emitter's composite. The demo's two fountains took 3.6 ms a frame on a LilyGO T-Deck, now 2.4 ms.</li>
-</ul>
-<p class="startli">The pixels are the same as before.</p>
-</li>
-</ul>
 <p>Earlier releases: <a href="https://github.com/dekiengine/deki-rendering/blob/master/CHANGELOG.md">CHANGELOG.md</a>.</p>
 <hr  />
-<p>Generated from the package's reflection data (engine 0.19.0). Property names are the keys used in scene files. Renames keep an alias (<a href="https://github.com/dekiengine/deki-editor/blob/master/COMPATIBILITY.md">compatibility</a>). </p>
+<p>Generated from the package's reflection data (engine 0.20.2). Property names are the keys used in scene files. Renames keep an alias (<a href="https://github.com/dekiengine/deki-editor/blob/master/COMPATIBILITY.md">compatibility</a>). </p>
 </div></div><!-- PageDoc -->
 <a href="doxygen_crawl.html"></a>
 </div><!-- contents -->
