@@ -42,6 +42,12 @@ alongside one that has them.
   fault, so the byte-by-byte read it replaced was four instructions. Other
   targets use `memcpy`.
 
+### Removed
+- `halfWidthFramebuffer` and `interlaced60hz` from the Rendering settings:
+  neither was ever built, though their tooltips described them as if they
+  were. A project that still has them in its settings loads as before; they
+  are left out when it is saved.
+
 ## 0.19.0
 
 ### Changed

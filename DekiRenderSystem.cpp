@@ -224,19 +224,15 @@ bool DekiRenderSystem::Setup(int32_t width, int32_t height, Deki::ColorFormat fo
 {
     // Project-wide rendering settings. In the editor the registry holds the
     // loaded instance; on device there is no registry, so the values come
-    // straight from project_data.bin. Half-width and interlaced are not
-    // implemented yet and are only reported.
+    // straight from project_data.bin.
     m_TrackDirty = false;
     m_DirtyAlign = 32;
-    bool halfWidth = false, interlaced = false;
     int32_t bandRows = 40;
     FrameMode frameMode = FrameMode::Auto;
     if (auto* rs = Deki::SettingsRegistry::Instance().Get<RenderingProjectSettings>())
     {
         m_TrackDirty = rs->dirtyTileTracking;
         m_DirtyAlign = rs->dirtyTileSize;
-        halfWidth = rs->halfWidthFramebuffer;
-        interlaced = rs->interlaced60hz;
         bandRows = rs->bandRows;
         frameMode = rs->frameMode;
     }
@@ -253,14 +249,6 @@ bool DekiRenderSystem::Setup(int32_t width, int32_t height, Deki::ColorFormat fo
         {
             m_DirtyAlign = a;
         }
-        if (Deki::ProjectSettings::ReadPackageSettingBool("Rendering", "halfWidthFramebuffer", b))
-        {
-            halfWidth = b;
-        }
-        if (Deki::ProjectSettings::ReadPackageSettingBool("Rendering", "interlaced60hz", b))
-        {
-            interlaced = b;
-        }
         if (Deki::ProjectSettings::ReadPackageSettingInt32("Rendering", "bandRows", a))
         {
             bandRows = a;
@@ -273,11 +261,6 @@ bool DekiRenderSystem::Setup(int32_t width, int32_t height, Deki::ColorFormat fo
     if (m_DirtyAlign < 1)
     {
         m_DirtyAlign = 1;
-    }
-    if (halfWidth || interlaced)
-    {
-        DEKI_LOG(Deki::LogLevel::Info, "[Rendering] settings: half_width=%d interlaced=%d (no implementation yet)",
-                 (int)halfWidth, (int)interlaced);
     }
     if (m_TrackDirty)
     {
