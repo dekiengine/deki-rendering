@@ -1,6 +1,7 @@
 // QuadBlit: the clip stack, MakeSource, blitting.
 
 #include <gtest/gtest.h>
+#include <vector>
 #include <algorithm>
 #include <cstring>
 #include <cstdint>
@@ -1109,6 +1110,78 @@ TEST(QuadBlitAlphaRows, EveryPixelMatchesThePipelinesArithmetic)
             ASSERT_EQ(target[i], expected[i])
                 << "pixel " << i << " tint " << int(t[0]) << "," << int(t[1]) << "," << int(t[2]) << "," << int(t[3]);
         }
+    }
+}
+
+// An untinted RGB565A8 sprite with its row spans: each row a transparent run
+// (clearRowSpans), soft pixels, an opaque run (alphaRowSpans), soft pixels
+// again. Drawn 1:1 onto RGB565, clipped on both sides, every pixel comes out
+// as the pipeline composites it, and the transparent runs are never read.
+TEST(QuadBlitBlendSpans, EveryPixelMatchesThePipelinesArithmetic)
+{
+    constexpr int kW = 61, kH = 40, kTW = 70;
+    uint32_t seed = 777;
+    auto next = [&seed]()
+    {
+        seed = seed * 1664525u + 1013904223u;
+        return seed >> 8;
+    };
+    std::vector<uint8_t> src(kW * kH * 3);
+    std::vector<int16_t> opaque(kH * 2), clear(kH * 2);
+    for (int y = 0; y < kH; ++y)
+    {
+        // [0, c) clear, [c, o0) soft, [o0, o1) opaque, [o1, kW) soft or clear.
+        const int c = static_cast<int>(next() % 12);
+        const int o0 = c + static_cast<int>(next() % 10);
+        const int o1 = y % 7 == 3 ? o0 : o0 + 1 + static_cast<int>(next() % (kW - o0 - 1));
+        for (int x = 0; x < kW; ++x)
+        {
+            uint8_t* px = &src[(y * kW + x) * 3];
+            DekiPixel::Store565(px, static_cast<uint16_t>(next()));
+            const uint32_t soft = next() % 3 == 0 ? 0 : 1 + next() % 254;
+            px[2] = x < c ? 0 : x < o0 ? soft : x < o1 ? 255 : soft;
+        }
+        opaque[y * 2] = static_cast<int16_t>(o0);
+        opaque[y * 2 + 1] = static_cast<int16_t>(o1);
+        clear[y * 2] = 0;
+        clear[y * 2 + 1] = static_cast<int16_t>(c);
+    }
+
+    std::vector<uint16_t> target(kTW * kH), expected(kTW * kH);
+    for (int i = 0; i < kTW * kH; ++i)
+    {
+        target[i] = expected[i] = static_cast<uint16_t>(next());  // as stored
+    }
+    constexpr int kX = 6, kClipLeft = 9, kClipRight = 63;  // drawn at x 6, clipped to [9, 63)
+    for (int y = 0; y < kH; ++y)
+    {
+        for (int x = kClipLeft; x < kClipRight; ++x)
+        {
+            const uint8_t* px = &src[(y * kW + (x - kX)) * 3];
+            expected[y * kTW + x] = DekiPixel::ToMemory565(RefComposite(
+                DekiPixel::Load565(px), px[2], DekiPixel::FromMemory565(expected[y * kTW + x]), 255, 255, 255, 255));
+        }
+    }
+
+    // The transparent runs hold colours that would show if they were drawn.
+    for (int y = 0; y < kH; ++y)
+    {
+        for (int x = 0; x < clear[y * 2 + 1]; ++x)
+        {
+            src[(y * kW + x) * 3 + 2] = 255;
+        }
+    }
+
+    QuadBlit::Source source =
+        QuadBlit::MakeSource(src.data(), kW, kH, QuadBlit::PixelLayout::RGB565A8(), false, opaque.data());
+    source.clearRowSpans = clear.data();
+    QuadBlit::PushClipRect(kClipLeft, 0, kClipRight, kH);
+    QuadBlit::BlitScaled(source, reinterpret_cast<uint8_t*>(target.data()), kTW, kH, Deki::ColorFormat::RGB565, kX, 0,
+                         kW, kH, 255, 255, 255, 255);
+    QuadBlit::PopClipRect();
+    for (int i = 0; i < kTW * kH; ++i)
+    {
+        ASSERT_EQ(target[i], expected[i]) << "pixel " << i % kTW << "," << i / kTW;
     }
 }
 

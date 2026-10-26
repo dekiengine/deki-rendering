@@ -66,6 +66,16 @@ bool Standard2DRenderer::CoversView(const RenderContext& ctx) const
     return m_PlanCovers && ctx.contentFrame != 0 && ctx.contentFrame == m_PlanFrame;
 }
 
+void Standard2DRenderer::RunClear()
+{
+    if (m_Clear)
+    {
+        const DeferredClear* clear = m_Clear;
+        m_Clear = nullptr;
+        clear->run(clear->owner);
+    }
+}
+
 void Standard2DRenderer::AddSortingCallback(SortingCallback cb)
 {
     if (cb && std::find(m_SortingCallbacks.begin(), m_SortingCallbacks.end(), cb) == m_SortingCallbacks.end())
@@ -373,6 +383,22 @@ void Standard2DRenderer::ExecuteBuiltins(const SortItem& item, RenderContext& ct
                 g.areaKnown = true;
             }
 
+            // The frame's first draw: when it covers the view opaquely, the
+            // clear would only be drawn over.
+            if (m_Clear)
+            {
+                if (ctx.buffer == m_FrameBuffer &&
+                    QuadBlit::CoversRect(source, intScreenX, intScreenY, drawScaleX, drawScaleY, wt.rotation, pivotX,
+                                         pivotY, tintA, 0, 0, ctx.width, ctx.height))
+                {
+                    m_Clear = nullptr;
+                }
+                else
+                {
+                    RunClear();
+                }
+            }
+
             const uint64_t blitStart = profiling ? RenderProfiler::Now() : 0;
             QuadBlit::Blit(source, ctx.buffer, ctx.width, ctx.height, ctx.format, intScreenX, intScreenY, drawScaleX,
                            drawScaleY, wt.rotation, pivotX, pivotY, tintR, tintG, tintB, tintA, useOrderedDither);
@@ -494,8 +520,10 @@ void SetCurrentDrawView(const DrawView& view)
 
 void Standard2DRenderer::Render(Deki::Scene* scene, const RenderContext& ctx)
 {
+    m_Clear = ctx.clear && ctx.clear->run ? ctx.clear : nullptr;
     if (!scene || !ctx.camera || !ctx.buffer)
     {
+        RunClear();
         return;
     }
 
@@ -515,7 +543,16 @@ void Standard2DRenderer::Render(Deki::Scene* scene, const RenderContext& ctx)
     // The frame's own context. Passes can swap frameCtx.buffer in BeginFrame
     // to set the render target for the whole frame; every RenderObject below
     // uses frameCtx, not the original ctx.
+    //
+    // The clear waits for the frame's first draw, which may cover it. Passes
+    // may write anywhere, so it is made before any of them runs; an Execute
+    // pass only for an object it wants.
     RenderContext frameCtx = ctx;
+    frameCtx.clear = nullptr;
+    if (!m_BeginPasses.empty())
+    {
+        RunClear();
+    }
     for (RenderPass* pass : m_BeginPasses)
     {
         pass->BeginFrame(frameCtx);
@@ -614,6 +651,9 @@ void Standard2DRenderer::Render(Deki::Scene* scene, const RenderContext& ctx)
     }
     m_PlanMode = PlanMode::Off;
 
+    // Nothing was drawn: the clear is all there is.
+    RunClear();
+
     // Post-frame composites (e.g. screen-space overlays).
     for (auto it = m_EndPasses.rbegin(); it != m_EndPasses.rend(); ++it)
     {
@@ -633,6 +673,10 @@ void Standard2DRenderer::RenderObject(const SortItem& item, const RenderContext&
     RenderContext objCtx = ctx;
 
     // Phase 1: PreExecute passes, which may redirect ctx.buffer for this object.
+    if (!m_PrePasses.empty())
+    {
+        RunClear();
+    }
     for (RenderPass* pass : m_PrePasses)
     {
         pass->PreExecute(obj, objCtx);
@@ -660,6 +704,10 @@ void Standard2DRenderer::RenderObject(const SortItem& item, const RenderContext&
                 m_Plan[planIndex].execPasses &= ~bit;
                 continue;
             }
+        }
+        if (m_Clear && pass->WantsObject(obj))
+        {
+            RunClear();
         }
         pass->Execute(obj, objCtx);
     }
@@ -713,6 +761,10 @@ void Standard2DRenderer::RenderObject(const SortItem& item, const RenderContext&
     }
 
     // Phase 5: PostExecute passes, in reverse order.
+    if (!m_PostPasses.empty())
+    {
+        RunClear();
+    }
     for (auto it = m_PostPasses.rbegin(); it != m_PostPasses.rend(); ++it)
     {
         (*it)->PostExecute(obj, objCtx);

@@ -56,6 +56,8 @@ private:
     Deki::Color m_LastClearColor;
     bool m_LastClearEveryFrame = true;
     bool m_HaveClearColor = false;
+    Deki::Color m_ClearColor;
+    const DirtyRegion* m_ClearRects = nullptr;
     DirtyRegion m_DrawnScratch;
     DirtyRegion m_PresentScratch;
     std::vector<Deki::Rect> m_PresentRects;
@@ -125,6 +127,10 @@ private:
     // True when the camera's clear colour or clearEveryFrame differs from
     // the last frame's (what was not drawn is then something else); notes it.
     bool ClearChanged(const CameraComponent& camera);
+    // The whole frame's clear, made here or left to the renderer
+    // (DeferredClear): m_ClearRects null clears all of it.
+    void ClearFrame();
+    static void ClearFrame(void* owner);
 
 public:
     DekiRenderSystem();

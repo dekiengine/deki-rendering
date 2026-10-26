@@ -171,6 +171,15 @@ struct Source
     // units. The default 1 treats source pixels as world units.
     float pixelsPerMeter = 1.0f;
 
+    // A strip standing in for a whole picture: one column (width 1) drawn as
+    // if it were stretchWidth columns wide, every column that one, or one row
+    // (height 1) drawn as if stretchHeight rows tall. Placed, scaled and
+    // covered as the whole picture would be, so it draws exactly what that
+    // would, from a fraction of the memory: a gradient that changes only top
+    // to bottom is one column. 0 draws the pixels as they are.
+    int32_t stretchWidth = 0;
+    int32_t stretchHeight = 0;
+
     // Mirror the source when sampling. Tiled's flags map straight onto these:
     // flipD transposes (x<->y, square sources only), then flipH mirrors
     // horizontally, then flipV vertically. Flipped blits take the generic
@@ -212,6 +221,17 @@ struct Source
     // address (a sprite's own); call ForgetScaled before they are freed.
     bool cacheScaled = false;
 };
+
+/// The size `source` is drawn as: its stretched size (Source::stretchWidth,
+/// stretchHeight) where it has one, else its own.
+inline int32_t DrawnWidth(const Source& source)
+{
+    return source.stretchWidth > 0 ? source.stretchWidth : source.width;
+}
+inline int32_t DrawnHeight(const Source& source)
+{
+    return source.stretchHeight > 0 ? source.stretchHeight : source.height;
+}
 
 /// The scaled-blit cache. A non-rotated blit of a cacheScaled source onto
 /// RGB565, drawn at a size its pixels are not (an icon at twice its size),

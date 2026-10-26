@@ -596,6 +596,115 @@ TEST(StripFeatures, StripsUnderAFullScreenBackgroundAreNotCleared)
     }
 }
 
+// Whole frames clear lazily: the renderer clears before its first draw, or
+// not at all when that draw covers the view. Every frame matches one drawn
+// by a renderer that has it cleared first.
+namespace
+{
+
+class CountedClears : public Standard2DRenderer
+{
+public:
+    int clears = 0;
+    void Render(Deki::Scene* scene, const RenderContext& ctx) override
+    {
+        m_Given = ctx.clear;
+        const DeferredClear counted{ &Count, this };
+        RenderContext own = ctx;
+        own.clear = ctx.clear ? &counted : nullptr;
+        Standard2DRenderer::Render(scene, own);
+    }
+
+private:
+    const DeferredClear* m_Given = nullptr;
+    static void Count(void* owner)
+    {
+        auto* self = static_cast<CountedClears*>(owner);
+        ++self->clears;
+        self->m_Given->run(self->m_Given->owner);
+    }
+};
+
+class EagerClears : public Standard2DRenderer
+{
+public:
+    bool ClearsLazily() const override { return false; }
+};
+
+}  // namespace
+
+TEST(StripFeatures, WholeFramesUnderAFullScreenBackgroundAreNotCleared)
+{
+    for (Deki::ColorFormat fmt : kFormats)
+    {
+        for (bool tracking : { false, true })
+        {
+            Fixture f(fmt, 8, tracking);
+            CountedClears lazy;
+            EagerClears eager;
+            DekiRenderSystem lazySystem;
+            DekiRenderSystem eagerSystem;
+            ASSERT_TRUE(lazySystem.Setup(kW, kH, fmt));
+            ASSERT_TRUE(eagerSystem.Setup(kW, kH, fmt));
+            lazySystem.SetRenderer(&lazy);
+            eagerSystem.SetRenderer(&eager);
+            lazySystem.SetDirtyTracking(tracking, 8);
+            eagerSystem.SetDirtyTracking(tracking, 8);
+
+            Deki::Object* back = f.Sprite("back", 0.0f, 0.0f, 0x001F);
+            auto* sprite = back->GetComponent<StripSprite>();
+            sprite->sourcePpm = 1.0f;   // 4 m: 64 x 64 px over the 64 x 48 view
+            sprite->sortingOrder = -1;  // under the other sprites
+
+            auto frame = [&](int clears, const char* what)
+            {
+                lazy.clears = 0;
+                lazySystem.Render(&f.scene);
+                eagerSystem.Render(&f.scene);
+                EXPECT_EQ(lazy.clears, clears) << what << ", tracking " << tracking;
+                EXPECT_EQ(0, std::memcmp(lazySystem.GetFrameBuffer(), eagerSystem.GetFrameBuffer(),
+                                         Deki::FrameBufferBytes(fmt, kW, kH)))
+                    << what << ", tracking " << tracking;
+            };
+
+            for (int i = 0; i < 4; ++i)
+            {
+                f.mover->SetX(-1.5f + 0.4f * i);
+                frame(0, "moving sprite");
+            }
+
+            back->SetX(1.0f / 16.0f);
+            frame(1, "a column short");
+            back->SetX(0.0f);
+            sprite->alpha = 200;
+            frame(1, "see-through");
+            sprite->alpha = 255;
+            back->SetRotation(0.01f);
+            frame(1, "turned");
+            back->SetRotation(0.0f);
+            back->SetActive(false);
+            frame(1, "gone");
+            f.mover->SetActive(false);
+            f.still->SetActive(false);
+            frame(1, "nothing drawn");
+            f.mover->SetActive(true);
+            f.still->SetActive(true);
+            back->SetActive(true);
+            frame(0, "back again");
+
+            // A pass may write anywhere: with one, the clear comes first.
+            MiddleRowPass lazyPass;
+            MiddleRowPass eagerPass;
+            lazy.AddPass(&lazyPass);
+            eager.AddPass(&eagerPass);
+            frame(1, "with a pass");
+            lazy.RemovePass(&lazyPass);
+            eager.RemovePass(&eagerPass);
+            frame(0, "pass gone");
+        }
+    }
+}
+
 // ---- Along a display's scan order: the same features in strips of columns,
 // and in either direction ----
 

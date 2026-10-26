@@ -66,6 +66,7 @@ public:
     /// For the later strips of a frame whose first strip drew an opaque
     /// image over the whole view (a full-screen background).
     bool CoversView(const RenderContext& ctx) const override;
+    bool ClearsLazily() const override { return true; }
 
     /// Adds a custom render pass. Not owned: the caller manages its lifetime.
     void AddPass(RenderPass* pass);
@@ -190,6 +191,10 @@ private:
     // came before it, so the later strips need no clear (CoversView).
     bool m_PlanCovers = false;
     const uint8_t* m_FrameBuffer = nullptr;  // the buffer Render() was given
+    // The frame's clear while nothing has been written yet (ctx.clear).
+    const DeferredClear* m_Clear = nullptr;
+    // Runs the frame's clear, if still pending, before something is drawn.
+    void RunClear();
 
     // planIndex: the object's entry in m_Plan while recording or replaying, -1 otherwise.
     void RenderObject(const SortItem& item, const RenderContext& ctx, int32_t planIndex);

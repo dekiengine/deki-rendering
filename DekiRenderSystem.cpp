@@ -498,31 +498,22 @@ void DekiRenderSystem::Render(Deki::Scene* currentScene)
 
     // Clear before rendering, unless the camera says the scene paints every
     // pixel itself. With tracking, only what the last frame on this buffer
-    // drew needs clearing.
-    if (camera->clearEveryFrame)
+    // drew needs clearing. A renderer that can tell its first draw covers the
+    // frame clears lazily: then often never.
+    m_ClearColor = clear;
+    m_ClearRects = (full || hist->lastDrawn.IsFull()) ? nullptr : &hist->lastDrawn;
+    const DeferredClear deferred{ &DekiRenderSystem::ClearFrame, this };
+    const bool lazily = camera->clearEveryFrame && m_Renderer->ClearsLazily();
+    if (camera->clearEveryFrame && !lazily)
     {
-        if (full || hist->lastDrawn.IsFull())
-        {
-            const uint64_t clearStart = RenderProfiler::IsEnabled() ? RenderProfiler::Now() : 0;
-            ClearBuffer(clear);
-            if (RenderProfiler::IsEnabled())
-            {
-                RenderProfiler::AddContent(RenderProfiler::kClear, RenderProfiler::Now() - clearStart);
-            }
-        }
-        else
-        {
-            for (const Deki::Rect& r : hist->lastDrawn.Rects())
-            {
-                ClearRect(r.left, r.top, r.Width(), r.Height(), clear.r, clear.g, clear.b);
-            }
-        }
+        ClearFrame();
     }
 
     RenderProfiler::CountFrame();
     QuadBlit::NextFrame();
     RenderContext ctx{ camera, m_RenderBuffer, m_ScreenWidth, m_ScreenHeight, m_ColorFormat };
     ctx.trackDirty = tracking;
+    ctx.clear = lazily ? &deferred : nullptr;
     m_Renderer->Render(currentScene, ctx);
 
     if (!tracking)
@@ -1103,6 +1094,31 @@ void DekiRenderSystem::ClearRect(int32_t x, int32_t y, int32_t w, int32_t h, uin
         return;
     }
     FillRect(m_RenderBuffer, m_ScreenWidth, m_ScreenHeight, m_ColorFormat, x, y, w, h, r, g, b);
+}
+
+void DekiRenderSystem::ClearFrame()
+{
+    const uint64_t clearStart = RenderProfiler::IsEnabled() ? RenderProfiler::Now() : 0;
+    if (!m_ClearRects)
+    {
+        ClearBuffer(m_ClearColor);
+    }
+    else
+    {
+        for (const Deki::Rect& r : m_ClearRects->Rects())
+        {
+            ClearRect(r.left, r.top, r.Width(), r.Height(), m_ClearColor.r, m_ClearColor.g, m_ClearColor.b);
+        }
+    }
+    if (RenderProfiler::IsEnabled())
+    {
+        RenderProfiler::AddContent(RenderProfiler::kClear, RenderProfiler::Now() - clearStart);
+    }
+}
+
+void DekiRenderSystem::ClearFrame(void* owner)
+{
+    static_cast<DekiRenderSystem*>(owner)->ClearFrame();
 }
 
 void DekiRenderSystem::ClearBuffer(uint8_t r, uint8_t g, uint8_t b)

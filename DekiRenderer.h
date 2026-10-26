@@ -14,6 +14,14 @@ namespace DekiRendering
 class CameraComponent;
 class DirtyRegion;
 
+/// A clear of the frame's buffer that its caller leaves to the renderer
+/// (DekiRenderer::ClearsLazily): run(owner) clears it.
+struct DeferredClear
+{
+    void (*run)(void* owner) = nullptr;
+    void* owner = nullptr;
+};
+
 /// Everything a renderer or render pass needs to produce a frame.
 struct RenderContext
 {
@@ -49,6 +57,11 @@ struct RenderContext
     // content from an earlier strip of the frame with this id is reused
     // rather than produced again.
     uint32_t contentFrame = 0;
+    // The clear of `buffer` DekiRenderSystem left to a renderer that
+    // ClearsLazily(), or null. The renderer runs it once, before its first
+    // write into `buffer`, or skips it when that write covers every pixel
+    // opaquely: the clear would only be drawn over.
+    const DeferredClear* clear = nullptr;
 };
 
 /// Base class for renderers. Subclass it for a custom rendering strategy;
@@ -103,6 +116,11 @@ public:
         (void)ctx;
         return false;
     }
+
+    /// Whether Render() takes over the clear of a whole frame
+    /// (RenderContext::clear) instead of DekiRenderSystem clearing first. The
+    /// default is no.
+    virtual bool ClearsLazily() const { return false; }
 };
 
 }  // namespace DekiRendering

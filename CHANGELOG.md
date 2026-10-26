@@ -8,6 +8,30 @@ breaking change bumps the minor across the editor, the engine and every
 package together, so a package with no changes of its own is still released
 alongside one that has them.
 
+## Unreleased
+
+### Changed
+- **No clear under a full-screen background.** A whole frame was cleared to
+  the camera's colour and then drawn over. `Standard2DRenderer` now clears
+  just before its first draw, and not at all when that draw is opaque and
+  covers the screen: 0.49 ms a frame on a T-Deck Plus. Passes can write
+  anywhere, so the clear comes before any of them runs (an Execute pass only
+  for an object it `WantsObject`). A renderer takes this on with
+  `DekiRenderer::ClearsLazily()` and `RenderContext::clear`.
+- **See-through sprite edges draw faster.** An untinted sprite with soft
+  edges blended them through the general per-pixel pipeline; it now has its
+  own loop, which also skips each row's transparent run without reading it.
+  Its blits in the demo's meadow take 1.29 ms instead of 1.97 ms on a T-Deck
+  Plus (render 5.9 to 5.1 ms), with the same pixels. Blends onto RGB565 mix
+  red and blue in one word: two multiplies fewer a pixel, the same result.
+
+### Added
+- `QuadBlit::Source::stretchWidth` / `stretchHeight`: one column or one row
+  drawn as the whole picture it stands for, placed, scaled, clipped and rotated
+  as that picture would be. A plain opaque one onto RGB565 is filled row by row
+  (`StretchRows` in the profiler) instead of sampled pixel by pixel.
+  `QuadBlit::DrawnWidth` / `DrawnHeight` give the size a source is drawn as.
+
 ## 0.20.0
 
 ### Added

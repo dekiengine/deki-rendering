@@ -105,13 +105,14 @@ enum class BlitPath : uint32_t
     GenericScaled,
     GenericRotated,
     AlphaRows,
+    StretchRows,
     None
 };
 
 // One word each, so a report line splits on spaces.
 constexpr const char* kBlitPathNames[] = {
     "CopyRows",  "ChromaSpans",        "BlendSpans",    "TintRows",       "TintScaledRows", "ExpandRows",
-    "Rows565A8", "GenericScaledPlain", "GenericScaled", "GenericRotated", "AlphaRows",
+    "Rows565A8", "GenericScaledPlain", "GenericScaled", "GenericRotated", "AlphaRows",      "StretchRows",
 };
 
 struct PathScope
@@ -578,15 +579,27 @@ static DEKI_FAST_ATTR void FillRow565(uint16_t* dst, int32_t n, uint16_t value)
     }
 }
 
+// A source colour of 8-bit channels (r, g, b) at alpha a (not 0 or 255) over
+// the destination pixel bg16 as stored, as the pipeline composites it: each
+// channel Div255(source * a + destination * (255 - a)). Red and blue are mixed
+// together, in the two halves of one word: each mix is under 65536, so the
+// halves never carry into each other, nor does Div255's rounding. Two
+// multiplies fewer a pixel, the same result.
+[[gnu::always_inline]] static inline uint16_t Blend565(uint32_t r, uint32_t g, uint32_t b, uint32_t a, uint16_t bg16)
+{
+    const uint32_t bg = FromMemory565(bg16);
+    const uint32_t invA = 255u - a;
+    uint32_t rb = ((r << 16) | b) * a + ((((bg >> 11) << 19) | ((bg & 0x1Fu) << 3)) * invA);
+    rb = ((rb + 0x00010001u + ((rb >> 8) & 0x00FF00FFu)) >> 8) & 0x00FF00FFu;
+    const uint32_t g8 = Div255(g * a + (((bg >> 5) & 0x3Fu) << 2) * invA);
+    return ToMemory565(static_cast<uint16_t>(((rb >> 19) << 11) | ((g8 >> 2) << 5) | ((rb & 0xFFu) >> 3)));
+}
+
 // A tinted source pixel v of alpha a (not 0 or 255) over the destination
 // pixel bg16 as stored, as the pipeline composites it.
 [[gnu::always_inline]] static inline uint16_t TintBlend565(const TintTables& t, uint32_t v, uint32_t a, uint16_t bg16)
 {
-    const uint32_t bg = FromMemory565(bg16);
-    const uint32_t invA = 255u - a;
-    return ToMemory565(PackRGB565(Div255(t.r[v >> 11] * a + ((bg >> 11) << 3) * invA),
-                                  Div255(t.g[(v >> 5) & 0x3F] * a + (((bg >> 5) & 0x3F) << 2) * invA),
-                                  Div255(t.b[v & 0x1F] * a + ((bg & 0x1F) << 3) * invA)));
+    return Blend565(t.r[v >> 11], t.g[(v >> 5) & 0x3F], t.b[v & 0x1F], a, bg16);
 }
 
 // One tinted source pixel of alpha `a` (already multiplied by any alpha tint,
@@ -790,11 +803,7 @@ template <bool AlphaTint>
                 *dp = opaque;
                 continue;
             }
-            const uint32_t bg = FromMemory565(*dp);
-            const uint32_t invA = 255u - a;
-            *dp = ToMemory565(PackRGB565(Div255(r * a + ((bg >> 11) << 3) * invA),
-                                         Div255(g * a + (((bg >> 5) & 0x3F) << 2) * invA),
-                                         Div255(bl * a + ((bg & 0x1F) << 3) * invA)));
+            *dp = Blend565(r, g, bl, a, *dp);
         }
     }
 }
@@ -967,6 +976,39 @@ static DEKI_FAST_ATTR bool CopyRows_RGB565(const Source& source, uint16_t* targe
     return true;
 }
 
+// RGB565 -> RGB565 from one column or one row stretched over its rectangle
+// (Source::stretchWidth/stretchHeight), no tint: one column fills each row
+// with its pixel for that row; one row is sampled into the first row drawn,
+// as the scaled paths sample it, and that row copied down the rest.
+static DEKI_FAST_ATTR void StretchRows_RGB565(const Source& source, uint16_t* target16, int32_t targetWidth,
+                                              int32_t destX, int32_t destY, int32_t destWidth, int32_t destHeight,
+                                              const BlitBounds& b)
+{
+    const int32_t stride = SourceStride(source);
+    const int32_t rowPixels = b.endX - b.startX;
+    if (source.width == 1)
+    {
+        const uint32_t yStep = ((uint32_t)source.height << 16) / (uint32_t)destHeight;
+        for (int32_t py = b.startY; py < b.endY; py++)
+        {
+            const int32_t srcY = (int32_t)(((uint32_t)(py - destY) * yStep) >> 16);
+            FillRow565(target16 + py * targetWidth + b.startX, rowPixels, LoadU16(source.pixels + srcY * stride));
+        }
+        return;
+    }
+    const uint32_t xStep = ((uint32_t)source.width << 16) / (uint32_t)destWidth;
+    uint16_t* first = target16 + b.startY * targetWidth + b.startX;
+    uint32_t acc = (uint32_t)(b.startX - destX) * xStep;
+    for (int32_t i = 0; i < rowPixels; i++, acc += xStep)
+    {
+        first[i] = LoadU16(source.pixels + (int32_t)(acc >> 16) * 2);
+    }
+    for (int32_t py = b.startY + 1; py < b.endY; py++)
+    {
+        memcpy(target16 + py * targetWidth + b.startX, first, rowPixels * sizeof(uint16_t));
+    }
+}
+
 // RGB565 -> RGB565 with a chroma key and per-row non-key spans, no tint.
 // Inside [start, end) no pixel is the key (straight copy); outside, every
 // pixel is the key (skipped without a read). A row stored as (-1, -1) has a
@@ -1021,26 +1063,71 @@ static DEKI_FAST_ATTR bool CopyRows_RGB565_ChromaSpans(const Source& source, uin
     return true;
 }
 
+// One untinted RGB565A8 source pixel onto an RGB565 destination pixel, as
+// the pipeline composites it.
+[[gnu::always_inline]] static inline void BlendPixel565A8(const uint8_t* sp, uint16_t* dp)
+{
+    const uint32_t a = sp[2];
+    if (a == 0)
+    {
+        return;
+    }
+    const uint16_t stored = LoadU16(sp);
+    if (a == 255)
+    {
+        *dp = stored;
+        return;
+    }
+    const uint32_t v = FromMemory565(stored);
+    *dp = Blend565((v >> 11) << 3, ((v >> 5) & 0x3Fu) << 2, (v & 0x1Fu) << 3, a, *dp);
+}
+
+// Source columns [x0, x1) of an untinted RGB565A8 row onto RGB565 (dst is the
+// destination pixel of source column 0), skipping the row's transparent run
+// [c0, c1) without reading it.
+[[gnu::always_inline]] static inline void BlendRun565A8(const uint8_t* srcRow, int32_t bpp, uint16_t* dst, int32_t x0,
+                                                        int32_t x1, int32_t c0, int32_t c1)
+{
+    int32_t sx = x0;
+    while (sx < x1)
+    {
+        if (sx >= c0 && sx < c1)
+        {
+            sx = c1;
+            continue;
+        }
+        const int32_t end = sx < c0 ? std::min(x1, c0) : x1;
+        const uint8_t* sp = srcRow + sx * bpp;
+        for (; sx < end; sx++, sp += bpp)
+        {
+            BlendPixel565A8(sp, dst + sx);
+        }
+    }
+}
+
 // RGB565A8 with alpha -> RGB565, no tint or key: a per-row opaque-span split
 // (left blend | opaque copy | right blend) when spans are available,
-// otherwise the plain pipeline per pixel.
+// otherwise a blend of the whole row. The blends skip the row's transparent
+// run (clearRowSpans) without reading it.
 static DEKI_FAST_ATTR bool BlendRows_RGB565A8_to_RGB565(const Source& source, uint16_t* target16, int32_t targetWidth,
                                                         int32_t destX, int32_t destY, const BlitBounds& b)
 {
     const int32_t stride = SourceStride(source);
     const int32_t bpp = source.bytesPerPixel;
     const int16_t* rowSpans = source.alphaRowSpans;
+    const int16_t* clear = source.clearRowSpans;
     const UniformRun* runs = source.uniformRuns;
-    const BlitParams plain;
 
     for (int32_t py = b.startY; py < b.endY; py++)
     {
         const int32_t srcY = py - destY;
         const uint8_t* rowBase = source.pixels + srcY * stride;
         uint16_t* dstRow = target16 + py * targetWidth;
+        uint16_t* dst = dstRow + destX;  // source column 0
         const int32_t srcStartX = b.startX - destX;
         const int32_t srcEndX = b.endX - destX;
-        const size_t rowIdx = (size_t)py * (size_t)targetWidth;
+        const int32_t c0 = clear ? clear[srcY * 2] : 0;
+        const int32_t c1 = clear ? clear[srcY * 2 + 1] : 0;
 
         if (rowSpans)
         {
@@ -1048,11 +1135,7 @@ static DEKI_FAST_ATTR bool BlendRows_RGB565A8_to_RGB565(const Source& source, ui
             const int32_t clampedEnd = std::min<int32_t>(rowSpans[srcY * 2 + 1], srcEndX);
 
             // Left alpha region.
-            for (int32_t sx = srcStartX; sx < clampedStart && sx < srcEndX; sx++)
-            {
-                CompositePixel<SrcKind::RGB565A8, Deki::ColorFormat::RGB565, true>(
-                    source, rowBase + sx * bpp, (uint8_t*)target16, rowIdx + destX + sx, destX + sx, py, plain);
-            }
+            BlendRun565A8(rowBase, bpp, dst, srcStartX, std::min(clampedStart, srcEndX), c0, c1);
 
             // Opaque middle: direct copy, no alpha checks. A run of one colour
             // (uniformRuns) is filled, without reading the source.
@@ -1077,20 +1160,11 @@ static DEKI_FAST_ATTR bool BlendRows_RGB565A8_to_RGB565(const Source& source, ui
             // Right alpha region. Starts at the clip start when the opaque span
             // ends before it or is empty; starting at opaqueEnd then would
             // write pixels the clip rect excludes.
-            for (int32_t sx = std::max(clampedEnd, srcStartX); sx < srcEndX; sx++)
-            {
-                CompositePixel<SrcKind::RGB565A8, Deki::ColorFormat::RGB565, true>(
-                    source, rowBase + sx * bpp, (uint8_t*)target16, rowIdx + destX + sx, destX + sx, py, plain);
-            }
+            BlendRun565A8(rowBase, bpp, dst, std::max(clampedEnd, srcStartX), srcEndX, c0, c1);
             continue;
         }
 
-        const uint8_t* srcPtr = rowBase + srcStartX * bpp;
-        for (int32_t px = b.startX; px < b.endX; px++, srcPtr += bpp)
-        {
-            CompositePixel<SrcKind::RGB565A8, Deki::ColorFormat::RGB565, true>(source, srcPtr, (uint8_t*)target16,
-                                                                               rowIdx + px, px, py, plain);
-        }
+        BlendRun565A8(rowBase, bpp, dst, srcStartX, srcEndX, c0, c1);
     }
     return true;
 }
@@ -1577,9 +1651,9 @@ void BlitScaled(const Source& source, uint8_t* target, int32_t targetWidth, int3
 
     // What TintScaledRows_RGB565 below would sample every frame: drawn 1:1
     // from a copy scaled once instead (Source::cacheScaled).
-    if (source.cacheScaled && targetFormat == Deki::ColorFormat::RGB565 &&
-        (destWidth != source.width || destHeight != source.height) && !source.hasChromaKey &&
-        !(useOrderedDither && source.hasAlpha) && !HasFlips(source) &&
+    if (source.cacheScaled && source.stretchWidth == 0 && source.stretchHeight == 0 &&
+        targetFormat == Deki::ColorFormat::RGB565 && (destWidth != source.width || destHeight != source.height) &&
+        !source.hasChromaKey && !(useOrderedDither && source.hasAlpha) && !HasFlips(source) &&
         (KindOf(source) == SrcKind::RGB565 || KindOf(source) == SrcKind::RGB565A8))
     {
         Source copy;
@@ -1613,6 +1687,16 @@ void BlitScaled(const Source& source, uint8_t* target, int32_t targetWidth, int3
     const SrcKind kind = KindOf(source);
     const bool oneToOne = (destWidth == source.width && destHeight == source.height);
     const bool plain = !p.hasTint && !p.hasAlphaTint && !p.hasKey && !p.dither && !p.flips;
+
+    // One column or one row stretched over the rectangle, opaque and plain:
+    // filled and copied, not sampled pixel by pixel.
+    if (!oneToOne && plain && kind == SrcKind::RGB565 && targetFormat == Deki::ColorFormat::RGB565 &&
+        (source.width == 1 || source.height == 1))
+    {
+        scope.path = BlitPath::StretchRows;
+        StretchRows_RGB565(source, (uint16_t*)target, targetWidth, destX, destY, destWidth, destHeight, bounds);
+        return;
+    }
 
     // 1:1 onto RGB565 from an RGB565 or RGB565A8 source, tinted or blended: one
     // tight loop per row (TintRows_RGB565). Left to the paths below: a plain RGB565 copy, and
@@ -1775,7 +1859,10 @@ static DEKI_FAST_ATTR void RotatedBlitT(const Source& source, uint8_t* target, i
 {
     const int32_t stride = SourceStride(source);
     const int32_t bpp = source.bytesPerPixel;
-    const uint32_t srcW = (uint32_t)source.width, srcH = (uint32_t)source.height;
+    const uint32_t srcW = (uint32_t)DrawnWidth(source), srcH = (uint32_t)DrawnHeight(source);
+    // A stretched strip's every column (or row) is its one.
+    const int32_t keepX = source.stretchWidth > 0 ? 0 : -1;
+    const int32_t keepY = source.stretchHeight > 0 ? 0 : -1;
 
     int32_t rowSx = a.rowSx, rowSy = a.rowSy;
     for (int32_t py = a.startY; py < a.endY; py++, rowSx += a.dSxDy, rowSy += a.dSyDy)
@@ -1791,6 +1878,8 @@ static DEKI_FAST_ATTR void RotatedBlitT(const Source& source, uint8_t* target, i
             {
                 continue;
             }
+            ix &= keepX;
+            iy &= keepY;
             if (P.flips)
             {
                 ApplyFlips(source, ix, iy);
@@ -1851,8 +1940,8 @@ bool CoversRect(const Source& source, int32_t screenX, int32_t screenY, float sc
     }
 
     // Placed as Blit places an unrotated blit.
-    const float destWidth = source.width * scaleX;
-    const float destHeight = source.height * scaleY;
+    const float destWidth = DrawnWidth(source) * scaleX;
+    const float destHeight = DrawnHeight(source) * scaleY;
     if (destWidth <= 0 || destHeight <= 0)
     {
         return false;
@@ -1874,8 +1963,8 @@ bool BlitArea(const Source& source, int32_t screenX, int32_t screenY, float scal
               float pivotX, float pivotY, int32_t& left, int32_t& top, int32_t& right, int32_t& bottom)
 {
     // Placed as Blit places it, unrotated or rotated.
-    const float destWidth = source.width * scaleX;
-    const float destHeight = source.height * scaleY;
+    const float destWidth = DrawnWidth(source) * scaleX;
+    const float destHeight = DrawnHeight(source) * scaleY;
     if (!source.pixels || source.width <= 0 || source.height <= 0 || destWidth <= 0 || destHeight <= 0)
     {
         return false;
@@ -1925,8 +2014,8 @@ void Blit(const Source& source, uint8_t* target, int32_t targetWidth, int32_t ta
         return;
     }
 
-    float destWidth = source.width * scaleX;
-    float destHeight = source.height * scaleY;
+    float destWidth = DrawnWidth(source) * scaleX;
+    float destHeight = DrawnHeight(source) * scaleY;
 
     if (destWidth <= 0 || destHeight <= 0)
     {
@@ -2011,8 +2100,10 @@ void Blit(const Source& source, uint8_t* target, int32_t targetWidth, int32_t ta
     //   srcX   = localX * srcW / destWidth,  srcY = localY * srcH / destHeight
     // which is affine in (px, py), so it is evaluated once at the box corner and
     // stepped per column and per row in 16.16.
-    const float sxScale = source.width / destWidth;
-    const float syScale = source.height / destHeight;
+    // In the drawn size: a stretched strip's one column or row is read
+    // wherever the whole picture would be (RotatedBlitT).
+    const float sxScale = DrawnWidth(source) / destWidth;
+    const float syScale = DrawnHeight(source) / destHeight;
     const float dx0 = static_cast<float>(startX - screenX);
     const float dy0 = static_cast<float>(startY - screenY);
     const float localX0 = dx0 * cosR + dy0 * sinR + pivotSX;
