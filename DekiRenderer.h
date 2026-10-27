@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <deki/Engine.h>
+#include <deki/providers/Rect.h>
 #include "FrameCamera.h"
 
 namespace Deki
@@ -37,10 +38,6 @@ struct RenderContext
     // that redirects an object to a target of another size must refresh it
     // (camera->CaptureFrameCamera) for that object.
     FrameCamera cam = {};
-    // Ask the renderer to record which pixels of `buffer` this frame changes
-    // (see DekiRenderer::GetLastFrameDirty). Set by DekiRenderSystem when the
-    // project's dirty-rect tracking is on; off for edit-mode renders.
-    bool trackDirty = false;
     // Strip rendering: `buffer` holds rows [viewTop, viewTop + height) and
     // columns [viewLeft, viewLeft + width) of a view viewWidth by viewHeight.
     // A strip of rows is the view's full width, a strip of columns its full
@@ -62,6 +59,10 @@ struct RenderContext
     // write into `buffer`, or skips it when that write covers every pixel
     // opaquely: the clear would only be drawn over.
     const DeferredClear* clear = nullptr;
+    // Redrawing only what changed: the part of `buffer` to draw, in its own
+    // pixels. Nothing outside it is written, and the clear covers only it.
+    // Empty (the default): all of `buffer`.
+    Deki::Rect redraw = {};
 };
 
 /// Base class for renderers. Subclass it for a custom rendering strategy;
@@ -86,12 +87,6 @@ public:
 
     /// Renders `scene` into the buffer `ctx` describes.
     virtual void Render(Deki::Scene* scene, const RenderContext& ctx) = 0;
-
-    /// The pixels the last Render() changed in ctx.buffer, when that render had
-    /// ctx.trackDirty set. nullptr when it did not or the renderer cannot say;
-    /// the caller then treats the whole frame as changed. Valid until the next
-    /// Render().
-    virtual const DirtyRegion* GetLastFrameDirty() const { return nullptr; }
 
     /// Whether this renderer draws `scene` correctly strip by strip
     /// (RenderContext::viewTop, viewHeight, viewLeft and viewWidth), in strips
@@ -121,6 +116,22 @@ public:
     /// (RenderContext::clear) instead of DekiRenderSystem clearing first. The
     /// default is no.
     virtual bool ClearsLazily() const { return false; }
+
+    /// Redrawing only what changed (RenderingProjectSettings::redrawChanges).
+    /// Works out, before anything is drawn, where `scene` draws differently
+    /// from the last frame this was asked about, and adds those pixels of the
+    /// whole view to `changed` (SetFull for all of them). The Render() calls
+    /// that follow with the same ctx.contentFrame draw that frame, each only
+    /// within its ctx.redraw. ctx is the whole view; its buffer may be null.
+    /// Returns false when it cannot tell (the default): the frame is then
+    /// drawn and sent whole, and the next call compares with nothing.
+    virtual bool FindChanges(Deki::Scene* scene, const RenderContext& ctx, DirtyRegion& changed)
+    {
+        (void)scene;
+        (void)ctx;
+        (void)changed;
+        return false;
+    }
 };
 
 }  // namespace DekiRendering

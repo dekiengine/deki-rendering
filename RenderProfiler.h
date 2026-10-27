@@ -23,10 +23,11 @@ DEKI_RENDERING_API void Enable(Clock clock);
 DEKI_RENDERING_API bool IsEnabled();
 DEKI_RENDERING_API uint64_t Now();
 
-/// Type ids for the frame's clear and for handing its strips to the display,
-/// which belong to no component.
+/// Type ids for the frame's clear, for handing its strips to the display and
+/// for finding what changed (redrawChanges), which belong to no component.
 constexpr uint32_t kClear = 1;
 constexpr uint32_t kPresent = 2;
+constexpr uint32_t kChanges = 3;
 
 struct Entry
 {

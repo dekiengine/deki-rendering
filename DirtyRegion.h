@@ -9,12 +9,9 @@
 namespace DekiRendering
 {
 
-/// The pixels a frame touched, as a small set of rectangles.
-///
-/// QuadBlit adds every clipped blit rectangle to the region the renderer gives
-/// it (see QuadBlit::SetDirtyTracking); DekiRenderSystem combines regions
-/// across frames into the rectangles the display must push and the rectangles
-/// the next frame must clear.
+/// The pixels a frame changed, as a small set of rectangles: what
+/// Standard2DRenderer::FindChanges finds, and what DekiRenderSystem redraws
+/// and sends of it.
 ///
 /// Nothing here is a limit. The two numbers are policies:
 /// - merge threshold: above this many rectangles, the pair whose union grows

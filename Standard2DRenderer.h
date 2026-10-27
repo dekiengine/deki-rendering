@@ -60,13 +60,18 @@ public:
     uint32_t GetRendererType() const override { return kRendererTypeID; }
 
     void Render(Deki::Scene* scene, const RenderContext& ctx) override;
-    const DirtyRegion* GetLastFrameDirty() const override { return m_FrameDirtyValid ? &m_FrameDirty : nullptr; }
     /// Yes, unless one of its passes says no (RenderPass::DrawsInStrips).
     bool DrawsInStrips(Deki::Scene* scene) const override;
     /// For the later strips of a frame whose first strip drew an opaque
     /// image over the whole view (a full-screen background).
     bool CoversView(const RenderContext& ctx) const override;
     bool ClearsLazily() const override { return true; }
+    /// Compares each renderer's draw with the last frame's: where it lands,
+    /// and a signature of everything that decides its pixels (content, its
+    /// version, size, pivot, tint, scale, rotation, clip, place in the draw
+    /// order). Passes say for themselves (RenderPass::ReportsChanges). No when
+    /// a pass has hooks other than Execute.
+    bool FindChanges(Deki::Scene* scene, const RenderContext& ctx, DirtyRegion& changed) override;
 
     /// Adds a custom render pass. Not owned: the caller manages its lifetime.
     void AddPass(RenderPass* pass);
@@ -91,12 +96,6 @@ private:
     void RebuildHookLists();
 
     std::vector<SortingCallback> m_SortingCallbacks;
-
-    // Pixels of ctx.buffer the last frame changed, for ctx.trackDirty renders
-    // only. QuadBlit adds every clipped blit rectangle; a pass that installs
-    // its own frame target makes it full.
-    DirtyRegion m_FrameDirty;
-    bool m_FrameDirtyValid = false;
 
     // What a component type contributes to rendering, resolved once per type:
     // one hash lookup in this DLL per component per frame instead of two
@@ -144,6 +143,15 @@ private:
 
     void CollectSortableItems(Deki::Object* obj, std::vector<SortItem>& items);
 
+    // A renderer's content (RenderContent's results).
+    struct CachedContent
+    {
+        bool hasContent = false;
+        QuadBlit::Source source{};
+        float pivotX = 0.5f, pivotY = 0.5f;
+        uint8_t tintR = 255, tintG = 255, tintB = 255, tintA = 255;
+    };
+
     // What ExecuteBuiltins works out in the whole view for one object, which
     // is the same in every strip of a frame.
     struct BuiltinGeometry
@@ -159,6 +167,11 @@ private:
         // other strips outside them skip the object's blit.
         bool areaKnown = false;
         int32_t areaLeft = 0, areaTop = 0, areaRight = 0, areaBottom = 0;
+        // The renderer's content, made once for every part of the frame
+        // (RenderContext::contentFrame). Content handed over with ownsPixels
+        // is freed after its blit, so it is made again for each.
+        bool contentKnown = false;
+        CachedContent content;
     };
 
     // A frame drawn strip by strip (RenderContext::contentFrame) is collected
@@ -176,12 +189,16 @@ private:
         // bit per pass in m_ExecPasses' order; past 32 passes, all do.
         uint32_t execPasses = 0xFFFFFFFFu;
     };
+    // Measuring is FindChanges' walk: it records the plan as Recording does,
+    // and each renderer's content, but draws nothing.
     enum class PlanMode
     {
         Off,
         Recording,
+        Measuring,
         Replaying
     };
+    bool BuildingPlan() const { return m_PlanMode == PlanMode::Recording || m_PlanMode == PlanMode::Measuring; }
     std::vector<PlanEntry> m_Plan;
     uint32_t m_PlanRoots = 0;
     uint32_t m_PlanFrame = 0;
@@ -199,23 +216,31 @@ private:
     // planIndex: the object's entry in m_Plan while recording or replaying, -1 otherwise.
     void RenderObject(const SortItem& item, const RenderContext& ctx, int32_t planIndex);
 
-    // A renderer's content for the frame being drawn strip by strip
-    // (RenderContext::contentFrame), so later strips reuse it.
-    struct CachedContent
-    {
-        bool hasContent;
-        QuadBlit::Source source;
-        float pivotX, pivotY;
-        uint8_t tintR, tintG, tintB, tintA;
-    };
-    std::unordered_map<const RendererComponent*, CachedContent> m_ContentCache;
-    uint32_t m_ContentCacheFrame = 0;
-
     // Built-in components: clip and renderer. geo, when given, holds the
     // object's whole-view geometry from an earlier strip of the frame, or is
     // filled in for later ones.
     void ExecuteBuiltins(const SortItem& item, RenderContext& ctx, BuiltinGeometry* geo);
     void PostExecuteBuiltins(const SortItem& item);
+
+    // FindChanges: what each renderer drew in the last frame it compared.
+    struct DrawRecord
+    {
+        uint64_t signature = 0;
+        Deki::Rect area = {};  // the pixels of the view it can write; empty for none
+        uint32_t seen = 0;     // the FindChanges call that met it last
+    };
+    std::unordered_map<const RendererComponent*, DrawRecord> m_Records;
+    uint32_t m_RecordCall = 0;
+    bool m_HaveRecords = false;
+    FrameCamera m_RecordCam;  // what the records were drawn through
+    int32_t m_RecordViewWidth = 0, m_RecordViewHeight = 0;
+    uint32_t m_RecordScene = 0;        // SceneSystem::GetRootSceneSerial then
+    DirtyRegion* m_Changes = nullptr;  // FindChanges' region while it walks
+    uint32_t m_DrawIndex = 0;          // renderers met so far in the walk
+    uint32_t m_AlwaysChanged = 0;      // makes signatures no other frame repeats
+    // Compares one renderer's draw with its record and keeps this one.
+    void NoteDraw(const RendererComponent* renderer, uint64_t signature, const Deki::Rect& area);
+    void ForgetRecords();
 };
 
 }  // namespace DekiRendering

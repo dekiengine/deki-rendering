@@ -133,6 +133,19 @@ public:
         outTintR = outTintG = outTintB = outTintA = 255;
         return false;
     }
+
+    /// Redrawing only what changed (RenderingProjectSettings::redrawChanges):
+    /// a number that changes whenever the pixels RenderContent hands over
+    /// change in place, behind the same buffer, size, pivot and tint (a
+    /// label's buffer filled with new text, a gradient baked again at its old
+    /// size). The renderer compares all of those itself. Return false when
+    /// the component cannot tell (the default): it then counts as changed in
+    /// every frame it is drawn, which is always right, only slower.
+    virtual bool GetContentVersion(uint32_t& outVersion) const
+    {
+        (void)outVersion;
+        return false;
+    }
 };
 
 }  // namespace DekiRendering

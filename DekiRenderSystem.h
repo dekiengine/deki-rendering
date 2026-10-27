@@ -34,37 +34,46 @@ private:
     // Active renderer. Not owned; the caller manages its lifetime.
     DekiRenderer* m_Renderer = nullptr;
 
-    // ---- dirty-rect present (RenderingProjectSettings::dirtyTileTracking) ----
-    // With tracking on, a frame clears only what the previous frame on the
-    // same buffer drew, and the present covers this frame's draws plus the
-    // previous frame's (the display still shows those; they are cleared or
-    // overdrawn now). One history entry per buffer pointer handles displays
-    // that alternate buffers. Whenever the bookkeeping is unsure, the frame is
-    // a full clear and a full present.
-    bool m_TrackDirty = false;
-    int32_t m_DirtyAlign = 32;  // rectangle alignment in px; a policy, not a limit
-    struct BufferHistory
-    {
-        const uint8_t* buffer;
-        DirtyRegion lastDrawn;  // what the frame rendered into this buffer drew
-        bool valid;             // false until the buffer has been fully cleared once
-    };
-    std::vector<BufferHistory> m_History;
-    DirtyRegion m_LastDrawn;  // the previous frame's draws, whatever buffer
-    bool m_HaveLastDrawn = false;
+    // What the next frame must know of the last: MarkAllDirty, the clear the
+    // last frame used, and what this frame sends (GetPresentRects).
     bool m_ForceFull = true;
     Deki::Color m_LastClearColor;
     bool m_LastClearEveryFrame = true;
     bool m_HaveClearColor = false;
     Deki::Color m_ClearColor;
     const DirtyRegion* m_ClearRects = nullptr;
-    DirtyRegion m_DrawnScratch;
-    DirtyRegion m_PresentScratch;
     std::vector<Deki::Rect> m_PresentRects;
     int32_t m_PresentCount = -1;
+    // Forgets all of it: the next frame is drawn and sent whole.
+    void ResetHistory();
 
-    BufferHistory& HistoryFor(const uint8_t* buffer);
-    void ResetDirtyHistory();
+    // ---- redrawing only what changed (RenderingProjectSettings::redrawChanges) ----
+    // Before anything is drawn, the renderer says where the frame differs
+    // from the last (DekiRenderer::FindChanges). Whole frames: only those
+    // parts of the buffer are cleared and drawn, and only this frame's
+    // changes are sent. A display that alternates buffers hands back one
+    // holding an older frame, so each buffer is owed every change since it was
+    // last drawn into. Strips: only strips with changes are drawn and sent,
+    // each only across them. Past kRedrawWholeAbove of the screen, or when
+    // the renderer cannot tell, the frame is drawn whole as usual.
+    static constexpr int32_t kRedrawWholeAbove = 75;  // percent of the screen; a policy
+    static constexpr int32_t kRedrawAlign = 8;        // part alignment in px: pairs of rows, the dither's tile
+    bool m_RedrawChanges = false;
+    struct OwedBuffer
+    {
+        const uint8_t* buffer = nullptr;
+        DirtyRegion owed;  // what changed since it was last drawn into
+    };
+    std::vector<OwedBuffer> m_Owed;
+    DirtyRegion m_Changed;        // this frame's changes, from FindChanges
+    DirtyRegion m_RedrawScratch;  // what the buffer drawn now needs
+    DirtyRegion m_ClearPart;      // the clear of one part
+    // The frame's changes, or null when they are unknown (the setting is off,
+    // the camera keeps its last frame, the renderer cannot tell).
+    const DirtyRegion* FindFrameChanges(Deki::Scene* scene, CameraComponent* camera, bool clearChanged);
+    bool MostOfScreen(const DirtyRegion& region) const;
+    // Whole frames drawn only where they changed. False: draw it as usual.
+    bool RenderChanges(Deki::Scene* scene, CameraComponent* camera);
 
     // ---- strip rendering (RenderingProjectSettings::bandRows) ----
     // With bandRows set there is no framebuffer: each frame is drawn a strip
@@ -77,10 +86,8 @@ private:
     // PresentStrip. bandRows is then the strip's width.
     //
     // Everything whole frames do, strips do too:
-    // - dirty-rect tracking: every strip is drawn, but only the rows of it
-    //   that changed (drawn this frame or the last) are sent, a strip with
-    //   none is not sent at all, and the strip buffer is cleared only where
-    //   the strip drawn into it before drew;
+    // - redrawing only what changed: a strip with nothing changed is neither
+    //   drawn nor sent, and one with changes only across them;
     // - a camera that does not clear: the frame is kept in m_WholeFrame,
     //   each strip read from it before drawing and written back after;
     // - screenshots: RequestFrameCapture() copies the next frame's strips
@@ -95,22 +102,6 @@ private:
     uint8_t* m_BandBuffer = nullptr;
     uint32_t m_ContentFrame = 0;
     bool m_BandWarned = false;
-    // What the strip buffer holds besides the clear colour (in its own rows),
-    // so the next strip clears only that. Invalid: clear all of it.
-    // What each strip buffer holds from the strip last drawn in it (ours, or
-    // one of those a display lends), so the next strip in it clears only that.
-    struct HeldStrip
-    {
-        const uint8_t* buffer = nullptr;
-        DirtyRegion held;
-        bool valid = false;
-        int32_t width = 0;  // the strip's width when `held` was recorded
-    };
-    HeldStrip m_Held[3];
-    uint32_t m_HeldNext = 0;
-    HeldStrip& HeldFor(const uint8_t* buffer);
-    void ForgetHeld();
-    DirtyRegion m_BandFrameDrawn;  // what this frame's strips drew, in view rows
     // A whole frame, in external memory where there is some, allocated only
     // while something needs it and freed the first frame nothing does.
     uint8_t* m_WholeFrame = nullptr;
@@ -145,11 +136,10 @@ public:
     /// Fills [x, x+w) x [y, y+h) of the framebuffer, clipped, with a colour.
     void ClearRect(int32_t x, int32_t y, int32_t w, int32_t h, uint8_t r, uint8_t g, uint8_t b);
 
-    // Dirty-rect present. Setup() reads the project setting; hosts and tests
-    // can override it here. Doing so resets the history, so the next frame is
-    // full.
-    void SetDirtyTracking(bool enabled, int32_t alignment);
-    bool IsDirtyTracking() const { return m_TrackDirty; }
+    // Redrawing only what changed. Setup() reads the project setting; hosts
+    // and tests can set it here. The next frame is whole.
+    void SetRedrawChanges(bool enabled);
+    bool IsRedrawingChanges() const { return m_RedrawChanges; }
     void MarkAllDirty() override { m_ForceFull = true; }
 
     // Strip rendering. Setup() reads the project setting on a device (the

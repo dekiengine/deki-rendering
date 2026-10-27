@@ -11,6 +11,32 @@ alongside one that has them.
 ## Unreleased
 
 ### Changed
+- **Redraw only what changed** (project setting `redrawChanges`, off by
+  default; `DekiRenderSystem::SetRedrawChanges`). Before drawing, the
+  renderer compares each object with the last frame: where it lands and what
+  decides its pixels (content and its version, size, pivot, tint, scale,
+  rotation, clip, place in the draw order). Only the parts that differ are
+  cleared, drawn and sent; a frame where nothing moved costs only the
+  comparison. Past 75% of the screen, or when something cannot say what it
+  draws, the frame is drawn whole as before. Whole frames and strips both do
+  it, and a display that alternates buffers gets every change since each was
+  drawn. On a T-Deck Plus the demo's menu went from 7.6 ms render and 3.4 ms
+  send to 2.0 ms and 0.1 ms; a fully animated scene costs what it did. The
+  editor's Play view does it too.
+  - `DekiRenderer::FindChanges` and `RenderContext::redraw` (Standard2DRenderer
+    implements them). `RendererComponent::GetContentVersion`: a component
+    whose pixels change in place says so; one that does not counts as
+    changed every frame it draws. `RenderPass::ReportsChanges`,
+    `AddChanges` and `FinishChanges`: a pass that cannot say where it draws
+    makes every frame whole, as does a pass with hooks other than Execute or
+    a camera that does not clear.
+  - `QuadBlit::SetTargetLimit`: a rect every blit stays inside, even with
+    clipping off (`ignoreClip`), so nothing writes outside the part redrawn.
+  - The profiler's `Changes` entry times the comparison.
+  - **Packages built against an older deki-rendering must be rebuilt**:
+    `RendererComponent` and `RenderPass` have new virtual functions.
+- Drawing in strips keeps each object's content with its place in the
+  frame's plan instead of in a map rebuilt every frame.
 - **No clear under a full-screen background.** A whole frame was cleared to
   the camera's colour and then drawn over. `Standard2DRenderer` now clears
   just before its first draw, and not at all when that draw is opaque and
@@ -25,12 +51,33 @@ alongside one that has them.
   Plus (render 5.9 to 5.1 ms), with the same pixels. Blends onto RGB565 mix
   red and blue in one word: two multiplies fewer a pixel, the same result.
 
+- **Turned sprites draw faster.** A rotated blit visits only the pixels
+  of its box that land inside the sprite, worked out once a row, instead of
+  testing every pixel of the box. An RGB565 or RGB565A8 sprite turned onto
+  an RGB565 frame, tinted or faded, has its own loop (`TintRotatedRows` in
+  the profiler) instead of the per-pixel pipeline: the demo's spinning gear
+  takes 0.67 ms instead of 0.87 ms on a T-Display S3, with the same pixels.
+  Other rotated blits (a colour key, dithering, flips, other formats) run
+  from flash, so they take no internal RAM.
+- Scaled sprites and particles onto RGB565 find each source pixel with a
+  shift instead of a multiply (`TintScaledRows`): 5% faster.
+
 ### Added
+- `Fingerprint.h`: a 64-bit fingerprint over 32-bit words with 32-bit
+  multiplies only, for telling whether something changed since the last
+  frame. A 32-bit microcontroller has no 64-bit multiply.
 - `QuadBlit::Source::stretchWidth` / `stretchHeight`: one column or one row
   drawn as the whole picture it stands for, placed, scaled, clipped and rotated
   as that picture would be. A plain opaque one onto RGB565 is filled row by row
   (`StretchRows` in the profiler) instead of sampled pixel by pixel.
   `QuadBlit::DrawnWidth` / `DrawnHeight` give the size a source is drawn as.
+
+### Removed
+- **Dirty-rect tracking** (project settings `dirtyTileTracking` and
+  `dirtyTileSize`, `QuadBlit::MarkDirty`, `SetDirtyTracking`,
+  `DekiRenderer::trackDirty`, `GetLastFrameDirty`). `redrawChanges` does the
+  same job and also skips the drawing. A project's old keys are ignored; turn
+  on `redrawChanges` instead.
 
 ## 0.20.0
 

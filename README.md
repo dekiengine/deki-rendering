@@ -28,22 +28,30 @@ shows more at the sides. Perspective, it shows a vertical `fieldOfView` for 3D
 meshes. `pixelPerfect` scales by whole numbers for pixel art. Every screen
 renders at its own resolution.
 
-## Partial present (dirty rectangles)
+## Redrawing only what changed (`redrawChanges`)
 
-Off by default. Turn on the project's Rendering setting `dirtyTileTracking`
-and the render system tracks what each frame actually touched:
+Off by default. Turn on the project's Rendering setting `redrawChanges` and
+each frame draws and sends only the parts of the screen that changed:
 
-- It records every rectangle drawn. QuadBlit reports each clipped blit; a pass
-  writing the framebuffer directly calls `QuadBlit::MarkDirty`.
-- It clears only last frame's rectangles instead of the whole framebuffer.
-- It sends the display this frame's and last frame's rectangles, aligned to
-  `dirtyTileSize`, through `Deki::IDisplay::PresentRegions`.
+- Before drawing, the renderer walks the scene once without drawing
+  (`DekiRenderer::FindChanges`) and compares where each object draws, and
+  with what, with the last frame. An object that moved, changed, appeared or
+  went away marks its old and its new place.
+- Those parts, rounded out to 8 pixels, are cleared and drawn again, and no
+  blit writes outside them. The display gets them through
+  `Deki::IDisplay::PresentRegions`. In strips, a strip with no change is
+  neither drawn nor sent.
+- When the parts cover most of the screen (a scrolling camera, a full-screen
+  animation), the frame is drawn whole as usual.
 
-Displays that cannot do partial frames keep getting whole ones. Double
-buffering works: history is kept per buffer pointer. A first frame, a resize,
-a clear-colour change, a swapped display or
-`DekiRendering::DekiRenderSystem::MarkAllDirty()` fall back to a full clear and
-a full present.
+A render pass says where it draws with `RenderPass::ReportsChanges`; one that
+does not makes every frame whole, as do a camera that does not clear, a first
+frame, a resize, a clear-colour change, a swapped display and
+`DekiRendering::DekiRenderSystem::MarkAllDirty()`. A component whose pixels
+change in place says when with `RendererComponent::GetContentVersion`; one
+that does not is drawn again every frame. With double buffering, each buffer
+keeps what it still owes. Displays that cannot do partial frames keep getting
+whole ones.
 
 Editor and SDL3 displays present partial frames. The LovyanGFX display's
 partial present (row bands through a small DMA staging buffer, which also

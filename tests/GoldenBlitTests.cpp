@@ -255,6 +255,13 @@ const Case kCases[] = {
     { "rot -2 dither", 30, 24, 0, 0, 255, 255, 255, 120, true, false, false, false, false, -2.0f, 0, false },
     { "rot 0.7 flipH clip", 30, 24, 0, 0, 255, 255, 255, 255, false, true, true, false, false, 0.7f, 0, false },
     { "rot 2.5 chroma", 30, 24, 0, 0, 255, 255, 255, 255, false, false, false, false, false, 2.5f, 0, true },
+    { "rot 0.785 tint", 30, 24, 0, 0, 200, 255, 120, 255, false, false, false, false, false, 0.785f, 0, false },
+    { "rot 3.0 alpha", 30, 24, 0, 0, 255, 255, 255, 200, false, false, false, false, false, 3.0f, 0, false },
+    { "rot -0.4 off-edge", 2, 3, 0, 0, 255, 255, 255, 255, false, false, false, false, false, -0.4f, 0, false },
+    { "rot 1.571 clip tint", 30, 24, 0, 0, 90, 200, 255, 170, false, true, false, false, false, 1.5708f, 0, false },
+    { "rot 0.05 stride", 30, 24, 0, 0, 255, 255, 255, 255, false, false, false, false, false, 0.05f, 6, false },
+    { "down 0.3x tint", 7, 9, 7, 5, 255, 180, 90, 255, false, false, false, false, false, 0.0f, 0, false },
+    { "down 0.5x alpha", 50, 40, 12, 9, 255, 255, 255, 120, false, false, false, false, false, 0.0f, 0, false },
 };
 
 const SrcFmt kSrcFmts[] = { SrcFmt::RGB565,   SrcFmt::RGB565A8, SrcFmt::RGB565A8NoAlpha,
@@ -338,10 +345,10 @@ struct Expected
     uint64_t hash;
 };
 const Expected kExpected[] = {
-    { Deki::ColorFormat::RGB565, "RGB565", 0xdb12edc2ab0dc2d5ULL },
-    { Deki::ColorFormat::RGB888, "RGB888", 0x31464040e0b65d95ULL },
-    { Deki::ColorFormat::ARGB8888, "ARGB8888", 0xa2e25ce151f2e52bULL },
-    { Deki::ColorFormat::RGB565A8, "RGB565A8", 0x53ebc2f65bbecaddULL },
+    { Deki::ColorFormat::RGB565, "RGB565", 0x79c6614a3e8aacdcULL },
+    { Deki::ColorFormat::RGB888, "RGB888", 0x12fb24a6f3313de8ULL },
+    { Deki::ColorFormat::ARGB8888, "ARGB8888", 0x16a807f5f8def5afULL },
+    { Deki::ColorFormat::RGB565A8, "RGB565A8", 0xd96445b85fc8f3a6ULL },
 };
 
 }  // namespace
@@ -404,3 +411,90 @@ TEST(ChromaSpans, HoleRowsMatchPerPixelPath)
         EXPECT_EQ(fast, slow) << "destX " << destX;
     }
 }
+
+// Many random blits through Blit, rotated or not, small or large, tinted,
+// faded, clipped, off the edges: what particles, spinning sprites and
+// everything else drawn at an angle or a size go through. Hashed per target
+// format, as above.
+namespace
+{
+uint64_t RunRandomBlits(Deki::ColorFormat dst)
+{
+    constexpr SrcFmt kFmts[] = { SrcFmt::RGB565,   SrcFmt::RGB565A8, SrcFmt::RGB565A8NoAlpha,
+                                 SrcFmt::RGBA8888, SrcFmt::RGB888,   SrcFmt::ALPHA8 };
+    const int tbpp = TargetBpp(dst);
+    const bool target565 = dst == Deki::ColorFormat::RGB565 || dst == Deki::ColorFormat::RGB565A8;
+    Lcg rng(0xB117u);
+    auto unit = [&] { return static_cast<float>(rng.Next() % 10001u) / 10000.0f; };
+    uint64_t hash = 0xcbf29ce484222325ULL;
+    for (SrcFmt sf : kFmts)
+    {
+        std::vector<uint8_t> target(static_cast<size_t>(kTW) * kTH * tbpp);
+        Lcg noise(0x55u + static_cast<uint32_t>(dst));
+        for (uint8_t& b : target)
+        {
+            b = noise.Byte();
+        }
+        if (target565)
+        {
+            DekiPixel::FileToMemory565(target.data(), static_cast<size_t>(kTW) * kTH, tbpp);
+        }
+        for (int i = 0; i < 120; ++i)
+        {
+            const int w = 3 + static_cast<int>(rng.Next() % 28u);
+            const int h = 3 + static_cast<int>(rng.Next() % 28u);
+            const int pad = rng.Next() % 4u == 0 ? 5 : 0;
+            SrcBuf s = MakeSrc(sf, w, h, rng.Next(), pad, false);
+            const float rotation = rng.Next() % 5u == 0 ? 0.0f : (unit() - 0.5f) * 6.6f;
+            const bool small = rng.Next() % 2u == 0;
+            const float scaleX = small ? 0.08f + unit() * 0.6f : 0.3f + unit() * 2.2f;
+            const float scaleY = rng.Next() % 3u == 0 ? scaleX : (small ? 0.08f + unit() * 0.6f : 0.3f + unit() * 2.2f);
+            const int x = static_cast<int>(rng.Next() % (kTW + 20u)) - 10;
+            const int y = static_cast<int>(rng.Next() % (kTH + 20u)) - 10;
+            const uint8_t tr = rng.Next() % 3u == 0 ? 255 : rng.Byte();
+            const uint8_t tg = rng.Next() % 3u == 0 ? 255 : rng.Byte();
+            const uint8_t tb = rng.Next() % 3u == 0 ? 255 : rng.Byte();
+            const uint8_t ta = rng.Next() % 2u == 0 ? 255 : static_cast<uint8_t>(1 + rng.Next() % 255u);
+            const bool dither = rng.Next() % 8u == 0;
+            QuadBlit::ClearClipStack();
+            if (rng.Next() % 4u == 0)
+            {
+                const int l = static_cast<int>(rng.Next() % 30u), t = static_cast<int>(rng.Next() % 20u);
+                QuadBlit::PushClipRect(l, t, l + 8 + static_cast<int>(rng.Next() % 30u),
+                                       t + 6 + static_cast<int>(rng.Next() % 24u));
+            }
+            QuadBlit::Blit(s.src, target.data(), kTW, kTH, dst, x, y, scaleX, scaleY, rotation, unit(), unit(), tr, tg,
+                           tb, ta, dither);
+        }
+        QuadBlit::ClearClipStack();
+        if (target565)
+        {
+            DekiPixel::FileToMemory565(target.data(), static_cast<size_t>(kTW) * kTH, tbpp);
+        }
+        hash = (hash ^ Fnv(target, 0xcbf29ce484222325ULL)) * 0x100000001b3ULL;
+    }
+    return hash;
+}
+
+const Expected kRandomExpected[] = {
+    { Deki::ColorFormat::RGB565, "RGB565", 0x49c0c3271d20da1cULL },
+    { Deki::ColorFormat::RGB888, "RGB888", 0x25d4de1180107d25ULL },
+    { Deki::ColorFormat::ARGB8888, "ARGB8888", 0x8ee2ca046f60e290ULL },
+    { Deki::ColorFormat::RGB565A8, "RGB565A8", 0xcf06214e98df65e8ULL },
+};
+}  // namespace
+
+class RandomBlitTest : public ::testing::TestWithParam<int>
+{
+};
+
+TEST_P(RandomBlitTest, TargetFormatMatchesGolden)
+{
+    const Expected& e = kRandomExpected[GetParam()];
+    const uint64_t actual = RunRandomBlits(e.fmt);
+    std::printf("RANDOM %s = 0x%016llxULL\n", e.name, static_cast<unsigned long long>(actual));
+    EXPECT_EQ(actual, e.hash) << "QuadBlit output changed for target " << e.name
+                              << ". If intended, update kRandomExpected and say so in the commit.";
+}
+
+INSTANTIATE_TEST_SUITE_P(Formats, RandomBlitTest, ::testing::Values(0, 1, 2, 3));

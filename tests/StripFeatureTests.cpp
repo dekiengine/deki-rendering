@@ -2,8 +2,8 @@
 // same scene, frame after frame, through a render system drawing whole
 // frames and one drawing in strips, and the display fed by the strips must
 // show exactly the whole frame every time:
-// - dirty-rect tracking: only changed rows are sent, a strip with nothing
-//   changed is not sent at all;
+// - redrawing only what changed: only changed parts are drawn and sent, a
+//   strip with nothing changed is not drawn or sent at all;
 // - screenshots: a whole frame on request;
 // - a camera that does not clear: the last frame is kept;
 // - a renderer or pass that cannot draw in strips: whole frames instead.
@@ -207,7 +207,6 @@ public:
         const size_t bpp = Deki::FrameBufferBytes(ctx.format, 1, 1);
         const int32_t row = ctx.height / 2;
         std::memset(ctx.buffer + static_cast<size_t>(row) * ctx.width * bpp, 0, static_cast<size_t>(ctx.width) * bpp);
-        QuadBlit::MarkDirty(0, row, ctx.width, row + 1);
     }
 };
 
@@ -242,7 +241,7 @@ struct Fixture
     Deki::ColorFormat format;
 
     // `scan` true: the display offers `order`, and strips run along it.
-    explicit Fixture(Deki::ColorFormat f = Deki::ColorFormat::RGB565, int rows = 8, bool tracking = false,
+    explicit Fixture(Deki::ColorFormat f = Deki::ColorFormat::RGB565, int rows = 8, bool redraw = false,
                      bool scan = false, ScanOrder order = ScanOrder::RowsDown)
         : format(f)
     {
@@ -266,11 +265,10 @@ struct Fixture
 
         EXPECT_TRUE(whole.Setup(kW, kH, f));
         whole.SetRenderer(&wholeRenderer);
-        whole.SetDirtyTracking(false, 1);
         EXPECT_TRUE(strips.Setup(kW, kH, f));
         strips.SetRenderer(&stripRenderer);
         EXPECT_TRUE(strips.SetBandRows(rows));
-        strips.SetDirtyTracking(tracking, 8);
+        strips.SetRedrawChanges(redraw);
     }
     ~Fixture()
     {
@@ -316,16 +314,16 @@ struct Fixture
 
 }  // namespace
 
-// Dirty rectangles in strips: what reaches the display equals the whole
+// Redrawing only what changed, in strips: what reaches the display equals the whole
 // frame every frame, while only the rows that changed are sent, and a frame
 // where nothing moved sends nothing.
-TEST(StripFeatures, DirtyTrackingSendsOnlyChangedRowsAndMatchesWholeFrames)
+TEST(StripFeatures, RedrawingChangesSendsOnlyChangedRowsAndMatchesWholeFrames)
 {
     for (Deki::ColorFormat fmt : kFormats)
     {
         for (int rows : { 2, 8, 14 })
         {
-            Fixture f(fmt, rows, /*tracking=*/true);
+            Fixture f(fmt, rows, /*redraw=*/true);
             f.Frame();
             EXPECT_EQ(f.display.pixelsSent, kW * kH) << "the first frame is sent whole";
             EXPECT_EQ(f.display.frame, f.WholeFrame());
@@ -373,9 +371,9 @@ TEST(StripFeatures, DirtyTrackingSendsOnlyChangedRowsAndMatchesWholeFrames)
 }
 
 // Tracking on or off, strips draw the same pixels.
-TEST(StripFeatures, TrackingOffSendsEverything)
+TEST(StripFeatures, RedrawingChangesOffSendsEverything)
 {
-    Fixture f(Deki::ColorFormat::RGB565, 8, /*tracking=*/false);
+    Fixture f(Deki::ColorFormat::RGB565, 8, /*redraw=*/false);
     for (int i = 0; i < 3; ++i)
     {
         f.Frame();
@@ -391,9 +389,9 @@ TEST(StripFeatures, ScreenshotGetsTheNextFrameWhole)
 {
     for (Deki::ColorFormat fmt : kFormats)
     {
-        for (bool tracking : { false, true })
+        for (bool redraw : { false, true })
         {
-            Fixture f(fmt, 8, tracking);
+            Fixture f(fmt, 8, redraw);
             f.Frame();
             EXPECT_EQ(f.strips.GetFrameBuffer(), nullptr);
 
@@ -404,12 +402,6 @@ TEST(StripFeatures, ScreenshotGetsTheNextFrameWhole)
             const uint8_t* shot = f.strips.GetFrameBuffer();
             EXPECT_EQ(std::vector<uint8_t>(shot, shot + Deki::FrameBufferBytes(fmt, kW, kH)), f.WholeFrame());
             EXPECT_EQ(f.display.frame, f.WholeFrame());
-
-            // The whole frame is a copy only: the strips still went out.
-            if (tracking)
-            {
-                EXPECT_LT(f.display.pixelsSent, kW * kH);
-            }
 
             f.Frame();
             EXPECT_EQ(f.strips.GetFrameBuffer(), nullptr) << "the screenshot frame is freed again";
@@ -423,11 +415,11 @@ TEST(StripFeatures, CameraThatDoesNotClearKeepsTheLastFrame)
 {
     for (Deki::ColorFormat fmt : kFormats)
     {
-        for (bool tracking : { false, true })
+        for (bool redraw : { false, true })
         {
             for (int rows : { 2, 10 })
             {
-                Fixture f(fmt, rows, tracking);
+                Fixture f(fmt, rows, redraw);
                 f.camera->clearEveryFrame = false;
                 // The whole frame starts from the clear colour, as a kept
                 // strip frame does.
@@ -438,7 +430,7 @@ TEST(StripFeatures, CameraThatDoesNotClearKeepsTheLastFrame)
                     f.mover->SetX(-1.5f + 0.31f * i);
                     f.Frame();
                     EXPECT_EQ(f.display.frame, f.WholeFrame())
-                        << "frame " << i << ", strips of " << rows << ", tracking " << tracking;
+                        << "frame " << i << ", strips of " << rows << ", redraw " << redraw;
                 }
                 // What is kept is also what a screenshot reads.
                 ASSERT_NE(f.strips.GetFrameBuffer(), nullptr);
@@ -460,9 +452,9 @@ TEST(StripFeatures, CameraThatDoesNotClearKeepsTheLastFrame)
 // that says it can is drawn in strips.
 TEST(StripFeatures, PassThatNeedsWholeFramesGetsThem)
 {
-    for (bool tracking : { false, true })
+    for (bool redraw : { false, true })
     {
-        Fixture f(Deki::ColorFormat::RGB565, 8, tracking);
+        Fixture f(Deki::ColorFormat::RGB565, 8, redraw);
         MiddleRowPass wholePass, stripPass;
         f.wholeRenderer.AddPass(&wholePass);
         f.stripRenderer.AddPass(&stripPass);
@@ -548,29 +540,30 @@ TEST(StripFeatures, DefaultPassAnswers)
 }
 
 // Under a full-screen opaque background the first strip of a frame finds it,
-// and the later strips are not cleared: it covers them. The display still
+// and the later strips are not cleared: it covers them. Redrawing only what
+// changed finds it before the first strip, so that one is not cleared either. The display still
 // shows the whole frame every frame, also once the background no longer
 // covers the view, and once it is gone.
 TEST(StripFeatures, StripsUnderAFullScreenBackgroundAreNotCleared)
 {
     for (Deki::ColorFormat fmt : kFormats)
     {
-        for (bool tracking : { false, true })
+        for (bool redraw : { false, true })
         {
-            Fixture f(fmt, 8, tracking);
+            Fixture f(fmt, 8, redraw);
             Deki::Object* back = f.Sprite("back", 0.0f, 0.0f, 0x001F);
             auto* sprite = back->GetComponent<StripSprite>();
             sprite->sourcePpm = 1.0f;   // 4 m: 64 x 64 px over the 64 x 48 view
             sprite->sortingOrder = -1;  // under the other sprites
-            const std::vector<bool> covered{ false, true, true, true, true, true };
+            const std::vector<bool> covered{ redraw, true, true, true, true, true };
             const std::vector<bool> cleared(6, false);
 
             auto frame = [&](const std::vector<bool>& expected, const char* what)
             {
                 f.stripRenderer.covers.clear();
                 f.Frame();
-                EXPECT_EQ(f.stripRenderer.covers, expected) << what << ", tracking " << tracking;
-                EXPECT_EQ(f.display.frame, f.WholeFrame()) << what << ", tracking " << tracking;
+                EXPECT_EQ(f.stripRenderer.covers, expected) << what << ", redraw " << redraw;
+                EXPECT_EQ(f.display.frame, f.WholeFrame()) << what << ", redraw " << redraw;
             };
 
             for (int i = 0; i < 4; ++i)
@@ -637,9 +630,9 @@ TEST(StripFeatures, WholeFramesUnderAFullScreenBackgroundAreNotCleared)
 {
     for (Deki::ColorFormat fmt : kFormats)
     {
-        for (bool tracking : { false, true })
+        for (bool redraw : { false, true })
         {
-            Fixture f(fmt, 8, tracking);
+            Fixture f(fmt, 8, redraw);
             CountedClears lazy;
             EagerClears eager;
             DekiRenderSystem lazySystem;
@@ -648,8 +641,8 @@ TEST(StripFeatures, WholeFramesUnderAFullScreenBackgroundAreNotCleared)
             ASSERT_TRUE(eagerSystem.Setup(kW, kH, fmt));
             lazySystem.SetRenderer(&lazy);
             eagerSystem.SetRenderer(&eager);
-            lazySystem.SetDirtyTracking(tracking, 8);
-            eagerSystem.SetDirtyTracking(tracking, 8);
+            lazySystem.SetRedrawChanges(redraw);
+            eagerSystem.SetRedrawChanges(redraw);
 
             Deki::Object* back = f.Sprite("back", 0.0f, 0.0f, 0x001F);
             auto* sprite = back->GetComponent<StripSprite>();
@@ -661,10 +654,10 @@ TEST(StripFeatures, WholeFramesUnderAFullScreenBackgroundAreNotCleared)
                 lazy.clears = 0;
                 lazySystem.Render(&f.scene);
                 eagerSystem.Render(&f.scene);
-                EXPECT_EQ(lazy.clears, clears) << what << ", tracking " << tracking;
+                EXPECT_EQ(lazy.clears, clears) << what << ", redraw " << redraw;
                 EXPECT_EQ(0, std::memcmp(lazySystem.GetFrameBuffer(), eagerSystem.GetFrameBuffer(),
                                          Deki::FrameBufferBytes(fmt, kW, kH)))
-                    << what << ", tracking " << tracking;
+                    << what << ", redraw " << redraw;
             };
 
             for (int i = 0; i < 4; ++i)
@@ -686,7 +679,7 @@ TEST(StripFeatures, WholeFramesUnderAFullScreenBackgroundAreNotCleared)
             frame(1, "gone");
             f.mover->SetActive(false);
             f.still->SetActive(false);
-            frame(1, "nothing drawn");
+            frame(redraw ? 2 : 1, "nothing drawn");  // redrawn: where each sprite was
             f.mover->SetActive(true);
             f.still->SetActive(true);
             back->SetActive(true);
@@ -724,7 +717,7 @@ const char* Name(ScanOrder o)
 }
 }  // namespace
 
-TEST(StripFeatures, DirtyTrackingAlongTheScanOrderMatchesWholeFrames)
+TEST(StripFeatures, RedrawingChangesAlongTheScanOrderMatchesWholeFrames)
 {
     for (ScanOrder order : kScanOrders)
     {
@@ -732,7 +725,7 @@ TEST(StripFeatures, DirtyTrackingAlongTheScanOrderMatchesWholeFrames)
         {
             for (int size : { 8, 16 })
             {
-                Fixture f(fmt, size, /*tracking=*/true, /*scan=*/true, order);
+                Fixture f(fmt, size, /*redraw=*/true, /*scan=*/true, order);
                 EXPECT_EQ(f.strips.IsBandColumns(), order != ScanOrder::RowsUp);
                 f.Frame();
                 EXPECT_EQ(f.display.pixelsSent, kW * kH) << Name(order) << ": the first frame is sent whole";
@@ -745,7 +738,8 @@ TEST(StripFeatures, DirtyTrackingAlongTheScanOrderMatchesWholeFrames)
                     f.Frame();
                     EXPECT_EQ(f.display.frame, f.WholeFrame())
                         << Name(order) << ", frame " << i << ", strips of " << size;
-                    EXPECT_LT(f.display.pixelsSent, kW * kH / 2) << Name(order) << ", frame " << i;
+                    // Strips of columns are redrawn their whole height.
+                    EXPECT_LT(f.display.pixelsSent, kW * kH) << Name(order) << ", frame " << i;
                     EXPECT_GT(f.display.pixelsSent, 0);
                 }
 
@@ -769,9 +763,9 @@ TEST(StripFeatures, ScreenshotAlongTheScanOrderGetsTheNextFrameWhole)
 {
     for (ScanOrder order : kScanOrders)
     {
-        for (bool tracking : { false, true })
+        for (bool redraw : { false, true })
         {
-            Fixture f(Deki::ColorFormat::RGB565, 8, tracking, /*scan=*/true, order);
+            Fixture f(Deki::ColorFormat::RGB565, 8, redraw, /*scan=*/true, order);
             f.Frame();
             DekiRenderSystem::RequestFrameCapture();
             f.mover->SetX(0.3f);
@@ -793,9 +787,9 @@ TEST(StripFeatures, CameraThatDoesNotClearKeepsTheLastFrameAlongTheScanOrder)
     {
         for (Deki::ColorFormat fmt : kFormats)
         {
-            for (bool tracking : { false, true })
+            for (bool redraw : { false, true })
             {
-                Fixture f(fmt, 8, tracking, /*scan=*/true, order);
+                Fixture f(fmt, 8, redraw, /*scan=*/true, order);
                 f.camera->clearEveryFrame = false;
                 f.whole.ClearBuffer(f.camera->clearColor);
                 for (int i = 0; i < 10; ++i)
@@ -816,9 +810,9 @@ TEST(StripFeatures, StripsAlongTheScanOrderUnderAFullScreenBackgroundAreNotClear
 {
     for (ScanOrder order : kScanOrders)
     {
-        for (bool tracking : { false, true })
+        for (bool redraw : { false, true })
         {
-            Fixture f(Deki::ColorFormat::RGB565, 8, tracking, /*scan=*/true, order);
+            Fixture f(Deki::ColorFormat::RGB565, 8, redraw, /*scan=*/true, order);
             Deki::Object* back = f.Sprite("back", 0.0f, 0.0f, 0x001F);
             auto* sprite = back->GetComponent<StripSprite>();
             sprite->sourcePpm = 1.0f;   // 4 m: 64 x 64 px over the 64 x 48 view
@@ -828,14 +822,14 @@ TEST(StripFeatures, StripsAlongTheScanOrderUnderAFullScreenBackgroundAreNotClear
             const size_t strips = static_cast<size_t>(((f.strips.IsBandColumns() ? kW : kH) + size - 1) / size);
             ASSERT_GT(strips, 1u) << Name(order);
             std::vector<bool> covered(strips, true);
-            covered[0] = false;
+            covered[0] = redraw;
             for (int i = 0; i < 3; ++i)
             {
                 f.mover->SetX(-1.5f + 0.4f * i);
                 f.stripRenderer.covers.clear();
                 f.Frame();
-                EXPECT_EQ(f.stripRenderer.covers, covered) << Name(order) << ", tracking " << tracking;
-                EXPECT_EQ(f.display.frame, f.WholeFrame()) << Name(order) << ", tracking " << tracking;
+                EXPECT_EQ(f.stripRenderer.covers, covered) << Name(order) << ", redraw " << redraw;
+                EXPECT_EQ(f.display.frame, f.WholeFrame()) << Name(order) << ", redraw " << redraw;
             }
             back->SetX(1.0f / 16.0f);
             f.stripRenderer.covers.clear();
@@ -852,7 +846,7 @@ TEST(StripFeatures, StripsShrinkToWhatTheDisplayCanSend)
 {
     for (ScanOrder order : { ScanOrder::ColumnsRight, ScanOrder::RowsDown })
     {
-        Fixture f(Deki::ColorFormat::RGB565, 16, /*tracking=*/true, /*scan=*/true, order);
+        Fixture f(Deki::ColorFormat::RGB565, 16, /*redraw=*/true, /*scan=*/true, order);
         f.Frame();
         const bool columns = order == ScanOrder::ColumnsRight;
         const int32_t along = columns ? kH : kW;
@@ -879,17 +873,16 @@ TEST(StripFeatures, StripsDrawnInLentBuffersMatchWholeFrames)
 {
     for (ScanOrder order : { ScanOrder::ColumnsRight, ScanOrder::RowsDown })
     {
-        for (bool tracking : { false, true })
+        for (bool redraw : { false, true })
         {
-            Fixture f(Deki::ColorFormat::RGB565, 16, tracking, /*scan=*/true, order);
+            Fixture f(Deki::ColorFormat::RGB565, 16, redraw, /*scan=*/true, order);
             f.display.lend = true;
             for (int i = 0; i < 10; ++i)
             {
                 f.mover->SetX(-1.5f + 0.31f * i);
                 f.mover->SetY(0.6f - 0.07f * i);
                 f.Frame();
-                EXPECT_EQ(f.display.frame, f.WholeFrame())
-                    << Name(order) << ", tracking " << tracking << ", frame " << i;
+                EXPECT_EQ(f.display.frame, f.WholeFrame()) << Name(order) << ", redraw " << redraw << ", frame " << i;
                 EXPECT_EQ(f.display.lentOut, -1) << "every buffer back";
             }
             f.mover->SetActive(false);

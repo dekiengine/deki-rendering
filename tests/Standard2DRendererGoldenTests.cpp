@@ -66,6 +66,13 @@ public:
         return true;
     }
 
+    // The pixels follow these fields only.
+    bool GetContentVersion(uint32_t& outVersion) const override
+    {
+        outVersion = colour | (static_cast<uint32_t>(alpha) << 16) | (static_cast<uint32_t>(withAlpha) << 24);
+        return true;
+    }
+
     int contentCalls = 0;
 
     bool RenderContent(const Deki::Object*, QuadBlit::Source& outSource, float& outPivotX, float& outPivotY,
@@ -536,9 +543,9 @@ TEST(RendererGoldenTest, AdapterRegisteredAfterFirstFrameTakesEffect)
     EXPECT_EQ(DekiPixel::Load565(&target[centre]), 0xF800);
 }
 
-// With dirty tracking on, every case renders the same pixels, and every pixel
-// that differs from the background lies inside the reported region.
-TEST(RendererGoldenTest, DirtyTrackingIsPixelIdenticalAndCoversEveryDrawnPixel)
+// FindChanges' walk, then the frame drawn by replaying it, gives every case's
+// pixels exactly; and a second look, with nothing changed, finds nothing.
+TEST(RendererGoldenTest, AFrameDrawnFromFindChangesIsPixelIdentical)
 {
     RegisterTestAdapters();
     for (const Case& c : kCases)
@@ -546,37 +553,26 @@ TEST(RendererGoldenTest, DirtyTrackingIsPixelIdenticalAndCoversEveryDrawnPixel)
         SceneBuilder b;
         c.build(b);
         std::vector<uint8_t> plain(static_cast<size_t>(kW) * kH * 2, 0);
-        std::vector<uint8_t> tracked(static_cast<size_t>(kW) * kH * 2, 0);
+        std::vector<uint8_t> replayed(static_cast<size_t>(kW) * kH * 2, 0);
 
         Standard2DRenderer r1;
         RenderContext c1{ b.camera, plain.data(), kW, kH, Deki::ColorFormat::RGB565 };
         r1.Render(&b.scene, c1);
         QuadBlit::ClearClipStack();
-        EXPECT_EQ(r1.GetLastFrameDirty(), nullptr) << c.name << ": untracked render reports nothing";
 
         Standard2DRenderer r2;
-        RenderContext c2{ b.camera, tracked.data(), kW, kH, Deki::ColorFormat::RGB565 };
-        c2.trackDirty = true;
+        RenderContext c2{ b.camera, replayed.data(), kW, kH, Deki::ColorFormat::RGB565 };
+        c2.contentFrame = 1;
+        DirtyRegion changed;
+        ASSERT_TRUE(r2.FindChanges(&b.scene, c2, changed)) << c.name;
+        EXPECT_TRUE(changed.IsFull()) << c.name << ": the first look compares with nothing";
         r2.Render(&b.scene, c2);
         QuadBlit::ClearClipStack();
-        EXPECT_EQ(plain, tracked) << c.name;
-        EXPECT_EQ(QuadBlit::GetDirtyTrackedTarget(), nullptr) << "tracking left on after the frame";
+        EXPECT_EQ(plain, replayed) << c.name;
 
-        const DirtyRegion* d = r2.GetLastFrameDirty();
-        ASSERT_NE(d, nullptr) << c.name;
-        int uncovered = 0;
-        for (int y = 0; y < kH; ++y)
-        {
-            for (int x = 0; x < kW; ++x)
-            {
-                const size_t i = (static_cast<size_t>(y) * kW + x) * 2;
-                if ((tracked[i] | tracked[i + 1]) != 0 && !d->Contains(x, y))
-                {
-                    ++uncovered;
-                }
-            }
-        }
-        EXPECT_EQ(uncovered, 0) << c.name << ": drawn pixels outside the dirty region";
+        c2.contentFrame = 2;
+        ASSERT_TRUE(r2.FindChanges(&b.scene, c2, changed)) << c.name;
+        EXPECT_TRUE(changed.IsEmpty()) << c.name << ": nothing moved";
     }
 }
 

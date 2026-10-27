@@ -1,4 +1,5 @@
 #include "Standard2DRenderer.h"
+#include "Fingerprint.h"
 #include "RenderProfiler.h"
 #include "DekiRendererRegistry.h"
 #include <deki/IClipProvider.h>
@@ -15,6 +16,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 
 namespace DekiRendering
 {
@@ -229,20 +231,33 @@ void Standard2DRenderer::ExecuteBuiltins(const SortItem& item, RenderContext& ct
         QuadBlit::PushClipRect(left, top, left + g.clipWidth, top + g.clipHeight);
     }
 
-    // Renderer (a sprite, say): blit its content.
+    // Renderer (a sprite, say): blit its content. FindChanges' walk
+    // (measuring) works out what the blit would be and notes it instead.
     RendererComponent* renderer = item.renderer;
     if (renderer)
     {
+        const bool measuring = m_PlanMode == PlanMode::Measuring;
+        const uint32_t drawIndex = measuring ? m_DrawIndex++ : 0;
         const bool useOrderedDither = (renderer->alphaMode == AlphaMode::OrderedDither);
 
         float fScreenX = g.screenX, fScreenY = g.screenY;
 
-        // A strip outside the rows an earlier strip found the blit writes:
-        // nothing to draw here.
-        if (g.areaKnown && (g.areaBottom <= viewTop || g.areaTop >= viewTop + ctx.height || g.areaRight <= viewLeft ||
-                            g.areaLeft >= viewLeft + ctx.width))
+        // A strip, or a part redrawn, outside the pixels an earlier strip (or
+        // FindChanges) found the blit writes: nothing to draw here.
+        if (g.areaKnown)
         {
-            return;
+            int32_t left = viewLeft, top = viewTop, right = viewLeft + ctx.width, bottom = viewTop + ctx.height;
+            if (!ctx.redraw.Empty())
+            {
+                left = viewLeft + ctx.redraw.left;
+                top = viewTop + ctx.redraw.top;
+                right = viewLeft + ctx.redraw.right;
+                bottom = viewTop + ctx.redraw.bottom;
+            }
+            if (g.areaBottom <= top || g.areaTop >= bottom || g.areaRight <= left || g.areaLeft >= right)
+            {
+                return;
+            }
         }
 
         // Cull before RenderContent, which may rasterise text, bake a gradient
@@ -263,6 +278,11 @@ void Standard2DRenderer::ExecuteBuiltins(const SortItem& item, RenderContext& ct
             }
             if (cx + reach < left || cx - reach > right || cy + reach < top || cy - reach > bottom)
             {
+                if (measuring)
+                {
+                    g.areaKnown = true;  // nothing, in every part drawn
+                    NoteDraw(renderer, 0, Deki::Rect{});
+                }
                 return;
             }
         }
@@ -277,15 +297,7 @@ void Standard2DRenderer::ExecuteBuiltins(const SortItem& item, RenderContext& ct
         // content once (a particle composite, a text bake) and every strip
         // blits that. Content handed over with ownsPixels is freed after its
         // blit, so it is produced again for each strip.
-        CachedContent* cached = nullptr;
-        if (ctx.contentFrame != 0)
-        {
-            auto it = m_ContentCache.find(renderer);
-            if (it != m_ContentCache.end())
-            {
-                cached = &it->second;
-            }
-        }
+        const CachedContent* cached = geo && ctx.contentFrame != 0 && g.contentKnown ? &g.content : nullptr;
         if (cached)
         {
             hasContent = cached->hasContent;
@@ -307,11 +319,29 @@ void Standard2DRenderer::ExecuteBuiltins(const SortItem& item, RenderContext& ct
                 RenderProfiler::AddContent(renderer->GetType(), RenderProfiler::Now() - contentStart,
                                            info ? info->shortName : nullptr);
             }
-            if (ctx.contentFrame != 0 && !(hasContent && source.ownsPixels))
+            if (geo && ctx.contentFrame != 0 && !(hasContent && source.ownsPixels))
             {
-                m_ContentCache[renderer] =
-                    CachedContent{ hasContent, source, pivotX, pivotY, tintR, tintG, tintB, tintA };
+                g.content = CachedContent{ hasContent, source, pivotX, pivotY, tintR, tintG, tintB, tintA };
+                g.contentKnown = true;
             }
+        }
+        if (measuring && !hasContent)
+        {
+            g.areaKnown = true;  // nothing
+            NoteDraw(renderer, 0, Deki::Rect{});
+            return;
+        }
+        if (measuring && source.ownsPixels)
+        {
+            // Made again when the frame is drawn, and maybe not the same:
+            // where it lands then is unknown, so the whole view is redrawn.
+            if (source.pixels)
+            {
+                Deki::Memory::Free(const_cast<uint8_t*>(source.pixels));
+            }
+            m_Changes->SetFull();
+            NoteDraw(renderer, 0, Deki::Rect{});
+            return;
         }
         if (hasContent)
         {
@@ -357,7 +387,7 @@ void Standard2DRenderer::ExecuteBuiltins(const SortItem& item, RenderContext& ct
             // Recording a frame's first strip: does this draw cover the whole
             // view? (Content handed over with ownsPixels is produced again in
             // each strip, so it may not be the same there.)
-            if (m_PlanMode == PlanMode::Recording && !m_PlanCovers && ctx.buffer == m_FrameBuffer && !source.ownsPixels)
+            if (BuildingPlan() && !m_PlanCovers && ctx.buffer == m_FrameBuffer && !source.ownsPixels)
             {
                 const int32_t viewWidth = ctx.viewWidth > 0 ? ctx.viewWidth : ctx.width;
                 const int32_t viewHeight = ctx.viewHeight > 0 ? ctx.viewHeight : ctx.height;
@@ -383,13 +413,77 @@ void Standard2DRenderer::ExecuteBuiltins(const SortItem& item, RenderContext& ct
                 g.areaKnown = true;
             }
 
-            // The frame's first draw: when it covers the view opaquely, the
-            // clear would only be drawn over.
+            if (measuring)
+            {
+                // The pixels it writes: within its clip, if it keeps to it,
+                // and within the view.
+                Deki::Rect area{ g.areaLeft, g.areaTop, g.areaRight, g.areaBottom };
+                if (QuadBlit::IsClipEnabled())
+                {
+                    const QuadBlit::ClipRect clip = QuadBlit::GetCurrentClipRect();
+                    area.left = std::max(area.left, clip.left);
+                    area.top = std::max(area.top, clip.top);
+                    area.right = std::min(area.right, clip.right);
+                    area.bottom = std::min(area.bottom, clip.bottom);
+                }
+                area.left = std::max<int32_t>(area.left, 0);
+                area.top = std::max<int32_t>(area.top, 0);
+                area.right = std::min(area.right, ctx.width);
+                area.bottom = std::min(area.bottom, ctx.height);
+                if (area.Empty())
+                {
+                    area = Deki::Rect{};
+                }
+
+                // Everything that decides the pixels, field by field (no
+                // padding bytes). A component that cannot say when its pixels
+                // change in place gets a signature no other frame repeats.
+                uint32_t version = 0;
+                if (!renderer->GetContentVersion(version))
+                {
+                    version = ++m_AlwaysChanged;
+                }
+                Fingerprint sig;
+                sig.Add(source.pixels);
+                sig.Add(source.width);
+                sig.Add(source.height);
+                sig.Add(source.stride);
+                sig.Add(source.bytesPerPixel);
+                sig.Add(static_cast<uint32_t>(source.hasAlpha) | (static_cast<uint32_t>(source.isRGB565) << 1) |
+                        (static_cast<uint32_t>(source.hasChromaKey) << 2) | (static_cast<uint32_t>(source.flipH) << 3) |
+                        (static_cast<uint32_t>(source.flipV) << 4) | (static_cast<uint32_t>(source.flipD) << 5) |
+                        (static_cast<uint32_t>(useOrderedDither) << 6));
+                sig.Add(static_cast<uint32_t>(source.keyR) | (static_cast<uint32_t>(source.keyG) << 8) |
+                        (static_cast<uint32_t>(source.keyB) << 16));
+                sig.Add(source.stretchWidth);
+                sig.Add(source.stretchHeight);
+                sig.Add(pivotX);
+                sig.Add(pivotY);
+                sig.Add(static_cast<uint32_t>(tintR) | (static_cast<uint32_t>(tintG) << 8) |
+                        (static_cast<uint32_t>(tintB) << 16) | (static_cast<uint32_t>(tintA) << 24));
+                sig.Add(intScreenX);
+                sig.Add(intScreenY);
+                sig.Add(drawScaleX);
+                sig.Add(drawScaleY);
+                sig.Add(wt.rotation);
+                sig.Add(version);
+                sig.Add(drawIndex);
+                NoteDraw(renderer, sig.Value(), area);
+                if (renderer->ignoreClip)
+                {
+                    QuadBlit::SetClipEnabled(wasClipEnabled);
+                }
+                return;
+            }
+
+            // The frame's first draw: when it covers what is drawn opaquely,
+            // the clear would only be drawn over.
             if (m_Clear)
             {
+                const Deki::Rect cover = ctx.redraw.Empty() ? Deki::Rect{ 0, 0, ctx.width, ctx.height } : ctx.redraw;
                 if (ctx.buffer == m_FrameBuffer &&
                     QuadBlit::CoversRect(source, intScreenX, intScreenY, drawScaleX, drawScaleY, wt.rotation, pivotX,
-                                         pivotY, tintA, 0, 0, ctx.width, ctx.height))
+                                         pivotY, tintA, cover.left, cover.top, cover.right, cover.bottom))
                 {
                     m_Clear = nullptr;
                 }
@@ -529,6 +623,11 @@ void Standard2DRenderer::Render(Deki::Scene* scene, const RenderContext& ctx)
 
     QuadBlit::ClearClipStack();
     m_FrameBuffer = ctx.buffer;
+    // Drawing only part of the buffer (FindChanges): nothing writes outside it.
+    if (!ctx.redraw.Empty())
+    {
+        QuadBlit::SetTargetLimit(ctx.redraw.left, ctx.redraw.top, ctx.redraw.right, ctx.redraw.bottom);
+    }
 
     // A package that loaded (or reloaded) since the last frame may have
     // registered adapters for types already classified: start over.
@@ -567,28 +666,6 @@ void Standard2DRenderer::Render(Deki::Scene* scene, const RenderContext& ctx)
     frameCtx.cam.halfW -= static_cast<float>(frameCtx.viewLeft);
     frameCtx.cam.halfH -= static_cast<float>(frameCtx.viewTop);
     SetCurrentDrawView({ frameCtx.cam.ppm, viewWidth, viewHeight });
-
-    // Content kept from earlier strips belongs to another frame now.
-    if (ctx.contentFrame == 0 || ctx.contentFrame != m_ContentCacheFrame)
-    {
-        m_ContentCache.clear();
-        m_ContentCacheFrame = ctx.contentFrame;
-    }
-
-    // Dirty-rect tracking: QuadBlit records every blit into the caller's
-    // buffer. A pass that installed its own frame target composites back into
-    // the caller's buffer itself, without QuadBlit, so that frame is fully
-    // dirty.
-    m_FrameDirtyValid = ctx.trackDirty;
-    if (ctx.trackDirty)
-    {
-        m_FrameDirty.Reset(ctx.width, ctx.height);
-        if (frameCtx.buffer != ctx.buffer || frameCtx.width != ctx.width || frameCtx.height != ctx.height)
-        {
-            m_FrameDirty.SetFull();
-        }
-        QuadBlit::SetDirtyTracking(&m_FrameDirty, ctx.buffer);
-    }
 
     m_SortDepth = 0;
     if (ctx.contentFrame != 0 && ctx.contentFrame == m_PlanFrame)
@@ -661,10 +738,156 @@ void Standard2DRenderer::Render(Deki::Scene* scene, const RenderContext& ctx)
     }
     SetCurrentDrawView({});
 
-    if (ctx.trackDirty)
+    QuadBlit::ClearTargetLimit();
+}
+
+bool Standard2DRenderer::FindChanges(Deki::Scene* scene, const RenderContext& ctx, DirtyRegion& changed)
+{
+    // The frames it is asked about are drawn by replaying its walk, which
+    // needs a frame id; and a pass with hooks other than Execute may draw
+    // anywhere, into anything.
+    if (!scene || !ctx.camera || ctx.contentFrame == 0)
     {
-        QuadBlit::SetDirtyTracking(nullptr, nullptr);
+        ForgetRecords();
+        return false;
     }
+    const uint32_t adapterVersion = Deki::ComponentInterfaceAdapters::Version();
+    if (adapterVersion != m_TraitsVersion)
+    {
+        m_TypeTraits.clear();
+        m_TraitsVersion = adapterVersion;
+    }
+    RebuildHookLists();
+    if (!m_BeginPasses.empty() || !m_PrePasses.empty() || !m_PostPasses.empty() || !m_EndPasses.empty())
+    {
+        ForgetRecords();
+        return false;
+    }
+
+    // The whole view, whatever part of it ctx describes.
+    const int32_t viewWidth = ctx.viewWidth > 0 ? ctx.viewWidth : ctx.width;
+    const int32_t viewHeight = ctx.viewHeight > 0 ? ctx.viewHeight : ctx.height;
+    RenderContext frameCtx = ctx;
+    frameCtx.width = viewWidth;
+    frameCtx.height = viewHeight;
+    frameCtx.viewTop = 0;
+    frameCtx.viewLeft = 0;
+    frameCtx.viewWidth = viewWidth;
+    frameCtx.viewHeight = viewHeight;
+    frameCtx.clear = nullptr;
+    frameCtx.redraw = Deki::Rect{};
+    frameCtx.cam = frameCtx.camera->CaptureFrameCamera(viewWidth, viewHeight);
+    SetCurrentDrawView({ frameCtx.cam.ppm, viewWidth, viewHeight });
+
+    // Another camera, view or scene moves everything: nothing compares.
+    changed.Reset(viewWidth, viewHeight);
+    const uint32_t sceneSerial = Deki::Engine::GetInstance().GetSceneSystem().GetRootSceneSerial();
+    const FrameCamera& cam = frameCtx.cam;
+    const FrameCamera& was = m_RecordCam;
+    if (!m_HaveRecords || viewWidth != m_RecordViewWidth || viewHeight != m_RecordViewHeight ||
+        sceneSerial != m_RecordScene || cam.camX != was.camX || cam.camY != was.camY || cam.ppm != was.ppm ||
+        cam.halfW != was.halfW || cam.halfH != was.halfH || cam.snapStep != was.snapStep)
+    {
+        m_Records.clear();
+        changed.SetFull();
+    }
+
+    QuadBlit::ClearClipStack();
+    m_Clear = nullptr;
+    m_FrameBuffer = ctx.buffer;
+    m_Changes = &changed;
+    m_DrawIndex = 0;
+    if (++m_RecordCall == 0)
+    {
+        m_RecordCall = 1;  // 0 marks a record never seen
+    }
+
+    // The walk Render() makes, recorded as for a frame's first strip, but
+    // measuring instead of drawing. Render() calls with this frame id replay it.
+    m_SortDepth = 0;
+    std::vector<SortItem>& roots = SortListForDepth(0);
+    for (Deki::Object* obj : scene->GetObjects())
+    {
+        CollectSortableItems(obj, roots);
+    }
+    for (Deki::Object* obj : Deki::Engine::GetInstance().GetSceneSystem().GetPersistentObjects())
+    {
+        CollectSortableItems(obj, roots);
+    }
+    SortItems(roots);
+    m_PlanMode = PlanMode::Measuring;
+    m_Plan.clear();
+    m_PlanCovers = false;
+    for (const SortItem& item : roots)
+    {
+        PlanEntry entry;
+        entry.item = item;
+        m_Plan.push_back(entry);
+    }
+    m_PlanRoots = static_cast<uint32_t>(roots.size());
+    for (size_t i = 0; i < roots.size(); i++)
+    {
+        RenderObject(roots[i], frameCtx, static_cast<int32_t>(i));
+    }
+    m_PlanMode = PlanMode::Off;
+    m_PlanFrame = ctx.contentFrame;
+
+    for (RenderPass* pass : m_ExecPasses)
+    {
+        if (pass->ReportsChanges())
+        {
+            pass->FinishChanges(frameCtx, changed);
+        }
+    }
+
+    // Renderers not met this time (destroyed, inactive) leave their pixels.
+    for (auto it = m_Records.begin(); it != m_Records.end();)
+    {
+        if (it->second.seen != m_RecordCall)
+        {
+            changed.Add(it->second.area);
+            it = m_Records.erase(it);
+        }
+        else
+        {
+            ++it;
+        }
+    }
+
+    m_Changes = nullptr;
+    m_HaveRecords = true;
+    m_RecordCam = cam;
+    m_RecordViewWidth = viewWidth;
+    m_RecordViewHeight = viewHeight;
+    m_RecordScene = sceneSerial;
+    QuadBlit::ClearClipStack();
+    SetCurrentDrawView({});
+    return true;
+}
+
+void Standard2DRenderer::NoteDraw(const RendererComponent* renderer, uint64_t signature, const Deki::Rect& area)
+{
+    DrawRecord& record = m_Records[renderer];
+    const bool met = record.seen != 0;
+    const Deki::Rect& old = record.area;
+    if (!met || record.signature != signature || old.left != area.left || old.top != area.top ||
+        old.right != area.right || old.bottom != area.bottom)
+    {
+        if (met)
+        {
+            m_Changes->Add(old);
+        }
+        m_Changes->Add(area);
+    }
+    record.signature = signature;
+    record.area = area;
+    record.seen = m_RecordCall;
+}
+
+void Standard2DRenderer::ForgetRecords()
+{
+    m_Records.clear();
+    m_HaveRecords = false;
 }
 
 void Standard2DRenderer::RenderObject(const SortItem& item, const RenderContext& ctx, int32_t planIndex)
@@ -699,11 +922,28 @@ void Standard2DRenderer::RenderObject(const SortItem& item, const RenderContext&
             {
                 continue;
             }
-            if (m_PlanMode == PlanMode::Recording && !pass->WantsObject(obj))
+            if (BuildingPlan() && !pass->WantsObject(obj))
             {
                 m_Plan[planIndex].execPasses &= ~bit;
                 continue;
             }
+        }
+        if (m_PlanMode == PlanMode::Measuring)
+        {
+            // Where the pass's drawing changed, if it can say; otherwise
+            // anywhere.
+            if (i < 32 || pass->WantsObject(obj))
+            {
+                if (pass->ReportsChanges())
+                {
+                    pass->AddChanges(obj, objCtx, *m_Changes);
+                }
+                else
+                {
+                    m_Changes->SetFull();
+                }
+            }
+            continue;
         }
         if (m_Clear && pass->WantsObject(obj))
         {
@@ -739,7 +979,7 @@ void Standard2DRenderer::RenderObject(const SortItem& item, const RenderContext&
         // records its own children after it. Indices, not references: the
         // plan grows as the recursion goes.
         uint32_t first = 0;
-        if (m_PlanMode == PlanMode::Recording)
+        if (BuildingPlan())
         {
             first = static_cast<uint32_t>(m_Plan.size());
             for (const SortItem& child : childItems)
@@ -754,8 +994,7 @@ void Standard2DRenderer::RenderObject(const SortItem& item, const RenderContext&
 
         for (size_t i = 0; i < childItems.size(); i++)
         {
-            RenderObject(childItems[i], objCtx,
-                         m_PlanMode == PlanMode::Recording ? static_cast<int32_t>(first + i) : -1);
+            RenderObject(childItems[i], objCtx, BuildingPlan() ? static_cast<int32_t>(first + i) : -1);
         }
         --m_SortDepth;
     }

@@ -33,10 +33,20 @@ void PushClipRect(int32_t left, int32_t top, int32_t right, int32_t bottom);
 
 void PopClipRect();
 
+/// The clip blits use now: the top of the stack while clipping is on, within
+/// the target limit when there is one.
 ClipRect GetCurrentClipRect();
 
-/// Empties the clip stack. Call at frame start.
+/// Empties the clip stack and drops the target limit. Call at frame start.
 void ClearClipStack();
+
+/// A rect every blit stays inside, on top of the clip stack, even while the
+/// stack is off (SetClipEnabled, a renderer's ignoreClip): a frame redrawn
+/// only where it changed writes nothing else. Until ClearTargetLimit or
+/// ClearClipStack.
+void SetTargetLimit(int32_t left, int32_t top, int32_t right, int32_t bottom);
+
+void ClearTargetLimit();
 
 /// While false, blits ignore the clip stack.
 void SetClipEnabled(bool enabled);
@@ -45,23 +55,6 @@ bool IsClipEnabled();
 
 /// Current clip stack depth, for diagnostics.
 int GetClipStackDepth();
-
-/// Dirty-rect tracking. While set, every blit into `trackedTarget` adds its
-/// clipped destination rectangle to `region`; blits into any other buffer (a
-/// particle composite, a pass's scratch target) are ignored.
-/// Standard2DRenderer sets it for the frame when RenderContext::trackDirty is
-/// on and clears it afterwards. Pass nullptr to stop.
-void SetDirtyTracking(DekiRendering::DirtyRegion* region, const uint8_t* trackedTarget);
-
-/// Adds a rectangle to the tracked region, for code that writes the tracked
-/// target without a blit. Does nothing when nothing is tracked.
-void MarkDirty(int32_t left, int32_t top, int32_t right, int32_t bottom);
-
-/// Marks the whole target changed (a whole-frame composite written directly).
-void MarkAllDirty();
-
-/// The buffer currently tracked, or nullptr.
-const uint8_t* GetDirtyTrackedTarget();
 
 /// How a source buffer stores one pixel.
 ///

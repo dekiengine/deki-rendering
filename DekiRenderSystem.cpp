@@ -225,30 +225,20 @@ bool DekiRenderSystem::Setup(int32_t width, int32_t height, Deki::ColorFormat fo
     // Project-wide rendering settings. In the editor the registry holds the
     // loaded instance; on device there is no registry, so the values come
     // straight from project_data.bin.
-    m_TrackDirty = false;
-    m_DirtyAlign = 32;
+    m_RedrawChanges = false;
     int32_t bandRows = 40;
     FrameMode frameMode = FrameMode::Auto;
     if (auto* rs = Deki::SettingsRegistry::Instance().Get<RenderingProjectSettings>())
     {
-        m_TrackDirty = rs->dirtyTileTracking;
-        m_DirtyAlign = rs->dirtyTileSize;
         bandRows = rs->bandRows;
         frameMode = rs->frameMode;
+        m_RedrawChanges = rs->redrawChanges;
     }
     else
     {
         // "Rendering" is RenderingProjectSettings' DEKI_PROJECT_SETTINGS_SECTION.
         bool b = false;
         int32_t a = 0;
-        if (Deki::ProjectSettings::ReadPackageSettingBool("Rendering", "dirtyTileTracking", b))
-        {
-            m_TrackDirty = b;
-        }
-        if (Deki::ProjectSettings::ReadPackageSettingInt32("Rendering", "dirtyTileSize", a))
-        {
-            m_DirtyAlign = a;
-        }
         if (Deki::ProjectSettings::ReadPackageSettingInt32("Rendering", "bandRows", a))
         {
             bandRows = a;
@@ -257,16 +247,16 @@ bool DekiRenderSystem::Setup(int32_t width, int32_t height, Deki::ColorFormat fo
         {
             frameMode = static_cast<FrameMode>(a);
         }
+        if (Deki::ProjectSettings::ReadPackageSettingBool("Rendering", "redrawChanges", b))
+        {
+            m_RedrawChanges = b;
+        }
     }
-    if (m_DirtyAlign < 1)
+    if (m_RedrawChanges)
     {
-        m_DirtyAlign = 1;
+        DEKI_LOG_INFO("[Rendering] redrawing only what changed");
     }
-    if (m_TrackDirty)
-    {
-        DEKI_LOG_INTERNAL("[Rendering] dirty-rect tracking on, alignment %d px", m_DirtyAlign);
-    }
-    ResetDirtyHistory();
+    ResetHistory();
 
     if (width <= 0 || height <= 0)
     {
@@ -454,7 +444,7 @@ void DekiRenderSystem::Render(Deki::Scene* currentScene)
                 m_WholeFrames = false;
                 m_RenderBuffer = nullptr;
                 m_OwnsBuffer = true;
-                ResetDirtyHistory();
+                ResetHistory();
             }
             RenderBands(currentScene, camera, capture);
             return;
@@ -477,31 +467,22 @@ void DekiRenderSystem::Render(Deki::Scene* currentScene)
             m_WholeFrames = true;
             m_RenderBuffer = whole;
             m_OwnsBuffer = false;
-            ResetDirtyHistory();
+            ResetHistory();
         }
         m_WholeFrameHolds = true;
     }
 
-    // ---- dirty-rect present -------------------------------------------------
-    // Whenever the bookkeeping is unsure (first use of a buffer, a size or
-    // format change, a change of the camera's clear colour or clearEveryFrame,
-    // a frame the renderer could not describe, MarkAllDirty), the frame is a
-    // full clear and a full present, the same as with tracking off.
-    const bool tracking = m_TrackDirty;
-    BufferHistory* hist = tracking ? &HistoryFor(m_RenderBuffer) : nullptr;
-    bool full = !tracking || m_ForceFull || !hist->valid;
-    const Deki::Color clear = camera->clearColor;
-    if (ClearChanged(*camera))
+    if (RenderChanges(currentScene, camera))
     {
-        full = true;
+        return;
     }
 
-    // Clear before rendering, unless the camera says the scene paints every
-    // pixel itself. With tracking, only what the last frame on this buffer
-    // drew needs clearing. A renderer that can tell its first draw covers the
-    // frame clears lazily: then often never.
-    m_ClearColor = clear;
-    m_ClearRects = (full || hist->lastDrawn.IsFull()) ? nullptr : &hist->lastDrawn;
+    // The whole frame. A renderer that can tell its first draw covers it
+    // clears lazily: then often never. A camera that does not clear keeps
+    // the last frame and draws over it.
+    ClearChanged(*camera);
+    m_ClearColor = camera->clearColor;
+    m_ClearRects = nullptr;
     const DeferredClear deferred{ &DekiRenderSystem::ClearFrame, this };
     const bool lazily = camera->clearEveryFrame && m_Renderer->ClearsLazily();
     if (camera->clearEveryFrame && !lazily)
@@ -512,61 +493,164 @@ void DekiRenderSystem::Render(Deki::Scene* currentScene)
     RenderProfiler::CountFrame();
     QuadBlit::NextFrame();
     RenderContext ctx{ camera, m_RenderBuffer, m_ScreenWidth, m_ScreenHeight, m_ColorFormat };
-    ctx.trackDirty = tracking;
     ctx.clear = lazily ? &deferred : nullptr;
     m_Renderer->Render(currentScene, ctx);
-
-    if (!tracking)
-    {
-        m_PresentCount = -1;
-        return;
-    }
-
-    // What this frame drew, aligned so a small movement reuses its rectangle.
-    const DirtyRegion* drawn = m_Renderer->GetLastFrameDirty();
-    DirtyRegion& frame = m_DrawnScratch;
-    if (drawn)
-    {
-        frame = *drawn;
-        frame.Align(m_DirtyAlign);
-    }
-    else
-    {
-        frame.Reset(m_ScreenWidth, m_ScreenHeight);
-        frame.SetFull();
-        full = true;
-    }
-
-    // Present set: this frame's draws plus the previous frame's, whatever
-    // buffer that was rendered into.
-    if (full || frame.IsFull() || (m_HaveLastDrawn && m_LastDrawn.IsFull()))
-    {
-        m_PresentCount = -1;
-    }
-    else
-    {
-        m_PresentScratch = frame;
-        if (m_HaveLastDrawn)
-        {
-            m_PresentScratch.Union(m_LastDrawn);
-        }
-        if (m_PresentScratch.IsFull())
-        {
-            m_PresentCount = -1;
-        }
-        else
-        {
-            m_PresentRects = m_PresentScratch.Rects();
-            m_PresentCount = static_cast<int32_t>(m_PresentRects.size());
-        }
-    }
-
-    // History: what this buffer holds now, and what the screen is about to show.
-    hist->lastDrawn = frame;
-    hist->valid = true;
-    m_LastDrawn = frame;
-    m_HaveLastDrawn = true;
+    m_PresentCount = -1;
     m_ForceFull = false;
+}
+
+const DirtyRegion* DekiRenderSystem::FindFrameChanges(Deki::Scene* scene, CameraComponent* camera, bool clearChanged)
+{
+    // A camera that does not clear draws each frame over the last, so what
+    // did not change is drawn again on purpose.
+    RenderContext whole{ camera, nullptr, m_ScreenWidth, m_ScreenHeight, m_ColorFormat };
+    whole.contentFrame = m_ContentFrame;
+    if (!m_RedrawChanges || !camera->clearEveryFrame)
+    {
+        m_Owed.clear();
+        return nullptr;
+    }
+    const uint64_t start = RenderProfiler::IsEnabled() ? RenderProfiler::Now() : 0;
+    const bool known = m_Renderer->FindChanges(scene, whole, m_Changed);
+    if (RenderProfiler::IsEnabled())
+    {
+        RenderProfiler::AddContent(RenderProfiler::kChanges, RenderProfiler::Now() - start, "Changes");
+    }
+    if (!known)
+    {
+        m_Owed.clear();
+        return nullptr;
+    }
+    if (clearChanged || m_ForceFull)
+    {
+        m_Changed.SetFull();
+    }
+    m_ForceFull = false;
+    m_Changed.Align(kRedrawAlign);
+    return &m_Changed;
+}
+
+bool DekiRenderSystem::MostOfScreen(const DirtyRegion& region) const
+{
+    return region.IsFull() ||
+           region.CoveredArea() * 100 > static_cast<int64_t>(m_ScreenWidth) * m_ScreenHeight * kRedrawWholeAbove;
+}
+
+bool DekiRenderSystem::RenderChanges(Deki::Scene* scene, CameraComponent* camera)
+{
+    if (!m_RedrawChanges)
+    {
+        return false;
+    }
+    if (++m_ContentFrame == 0)
+    {
+        m_ContentFrame = 1;  // 0 means "no frame to replay"
+    }
+    // Checked first, so the usual path still sees a change of clear colour
+    // when there is nothing to compare.
+    if (!camera->clearEveryFrame)
+    {
+        m_Owed.clear();
+        return false;
+    }
+    const DirtyRegion* changed = FindFrameChanges(scene, camera, false);
+    if (!changed)
+    {
+        return false;
+    }
+    if (ClearChanged(*camera))
+    {
+        m_Changed.SetFull();
+    }
+
+    // Every buffer is owed this frame's changes; the one drawn now is brought
+    // up to date. One never drawn into is drawn whole.
+    OwedBuffer* mine = nullptr;
+    for (OwedBuffer& o : m_Owed)
+    {
+        o.owed.Union(*changed);
+        if (o.buffer == m_RenderBuffer)
+        {
+            mine = &o;
+        }
+    }
+    DirtyRegion& redraw = m_RedrawScratch;
+    if (mine)
+    {
+        redraw = mine->owed;
+    }
+    else
+    {
+        redraw.Reset(m_ScreenWidth, m_ScreenHeight);
+        redraw.SetFull();
+    }
+    const bool whole = MostOfScreen(redraw);
+
+    RenderProfiler::CountFrame();
+    if (!whole && redraw.IsEmpty())
+    {
+        // Nothing moved: nothing to draw or send.
+        m_PresentCount = 0;
+        return true;
+    }
+    QuadBlit::NextFrame();
+    m_ClearColor = camera->clearColor;
+    const DeferredClear deferred{ &DekiRenderSystem::ClearFrame, this };
+    const bool lazily = m_Renderer->ClearsLazily();
+    RenderContext ctx{ camera, m_RenderBuffer, m_ScreenWidth, m_ScreenHeight, m_ColorFormat };
+    ctx.contentFrame = m_ContentFrame;
+    if (whole)
+    {
+        m_ClearRects = nullptr;
+        if (!lazily)
+        {
+            ClearFrame();
+        }
+        ctx.clear = lazily ? &deferred : nullptr;
+        m_Renderer->Render(scene, ctx);
+    }
+    else
+    {
+        // Each part cleared and drawn on its own. Parts may overlap; the
+        // overlap is drawn twice, the same both times.
+        for (const Deki::Rect& part : redraw.Rects())
+        {
+            m_ClearPart.Reset(m_ScreenWidth, m_ScreenHeight);
+            m_ClearPart.Add(part);
+            m_ClearRects = &m_ClearPart;
+            if (!lazily)
+            {
+                ClearFrame();
+            }
+            ctx.redraw = part;
+            ctx.clear = lazily ? &deferred : nullptr;
+            m_Renderer->Render(scene, ctx);
+        }
+    }
+
+    // Sent: what this frame changed. The screen shows the rest already.
+    if (MostOfScreen(*changed))
+    {
+        m_PresentCount = -1;
+    }
+    else
+    {
+        m_PresentRects = changed->Rects();
+        m_PresentCount = static_cast<int32_t>(m_PresentRects.size());
+    }
+
+    if (mine)
+    {
+        mine->owed.Reset(m_ScreenWidth, m_ScreenHeight);
+    }
+    else
+    {
+        OwedBuffer fresh;
+        fresh.buffer = m_RenderBuffer;
+        fresh.owed.Reset(m_ScreenWidth, m_ScreenHeight);
+        m_Owed.push_back(fresh);
+    }
+    return true;
 }
 
 void DekiRenderSystem::RenderBands(Deki::Scene* scene, CameraComponent* camera, bool capture)
@@ -626,18 +710,15 @@ void DekiRenderSystem::RenderBands(Deki::Scene* scene, CameraComponent* camera, 
         m_WholeFrameWarned = true;
     }
 
-    // Dirty rectangles: send only the rows of a strip that this frame or the
-    // last drew in. Whenever that is unknown, the whole strip goes.
-    const bool tracking = m_TrackDirty;
-    const bool sendAll = !tracking || m_ForceFull || clearChanged || !m_HaveLastDrawn || m_LastDrawn.IsFull();
-    if (tracking)
+    // Redrawing only what changed: strips with changes are drawn and sent
+    // only across them, the others not at all; past most of the screen, every
+    // strip whole. Not while the frame is also kept or captured whole.
+    const DirtyRegion* changes = (!keepWanted && !capture) ? FindFrameChanges(scene, camera, clearChanged) : nullptr;
+    if (keepWanted || capture)
     {
-        m_BandFrameDrawn.Reset(m_ScreenWidth, m_ScreenHeight);
+        m_Owed.clear();
     }
-    if (clearChanged || keep)
-    {
-        ForgetHeld();
-    }
+    const bool partial = changes && !MostOfScreen(*changes);
 
     // Strips run along the scan order, in the order the panel refreshes
     // them. A strip's buffer is its own width: the screen's for rows, the
@@ -653,6 +734,40 @@ void DekiRenderSystem::RenderBands(Deki::Scene* scene, CameraComponent* camera, 
         const int32_t size = std::min(m_BandRows, across - start);
         const Deki::Rect strip = m_BandColumns ? Deki::Rect{ start, 0, start + size, m_ScreenHeight }
                                                : Deki::Rect{ 0, start, m_ScreenWidth, start + size };
+        // The part of the strip to draw and send: all of it, or what changed.
+        Deki::Rect part = strip;
+        if (partial)
+        {
+            part = Deki::Rect{ strip.right, strip.bottom, strip.left, strip.top };
+            for (const Deki::Rect& r : changes->Rects())
+            {
+                const int32_t l = std::max(r.left, strip.left), t = std::max(r.top, strip.top);
+                const int32_t rr = std::min(r.right, strip.right), b = std::min(r.bottom, strip.bottom);
+                if (rr > l && b > t)
+                {
+                    part.left = std::min(part.left, l);
+                    part.top = std::min(part.top, t);
+                    part.right = std::max(part.right, rr);
+                    part.bottom = std::max(part.bottom, b);
+                }
+            }
+            if (part.Empty())
+            {
+                continue;
+            }
+            // The strip's whole length: a display may send more of a strip
+            // than it is told (a turned panel sends whole panel rows).
+            if (scan && m_BandColumns)
+            {
+                part.top = strip.top;
+                part.bottom = strip.bottom;
+            }
+            else if (scan)
+            {
+                part.left = strip.left;
+                part.right = strip.right;
+            }
+        }
         const int32_t sw = strip.Width();
         const int32_t sh = strip.Height();
         const size_t stripPitch = static_cast<size_t>(sw) * bpp;
@@ -671,26 +786,21 @@ void DekiRenderSystem::RenderBands(Deki::Scene* scene, CameraComponent* camera, 
             }
             buffer = m_BandBuffer;
         }
-        // What the strip drawn in it before drew is in that buffer's
-        // coordinates: a strip of another width cannot clear by it.
-        HeldStrip& held = HeldFor(buffer);
-        if (held.width != sw)
-        {
-            held.valid = false;
-        }
-
         RenderContext ctx{ camera, buffer, sw, sh, m_ColorFormat };
         ctx.viewTop = strip.top;
         ctx.viewHeight = m_ScreenHeight;
         ctx.viewLeft = strip.left;
         ctx.viewWidth = m_ScreenWidth;
         ctx.contentFrame = m_ContentFrame;
-        ctx.trackDirty = tracking;
+        if (partial)
+        {
+            ctx.redraw = Deki::Rect{ part.left - strip.left, part.top - strip.top, part.right - strip.left,
+                                     part.bottom - strip.top };
+        }
 
-        // The strip's starting pixels: the kept frame's, or the clear colour.
-        // The strip buffer still holds the strip drawn before, so with
-        // tracking only what that one drew is cleared, and nothing when the
-        // renderer will cover all of it (a full-screen background).
+        // The strip's starting pixels: the kept frame's, or the clear colour
+        // across what is drawn, and nothing when the renderer will cover all
+        // of it (a full-screen background).
         const uint64_t clearStart = RenderProfiler::IsEnabled() ? RenderProfiler::Now() : 0;
         if (keep)
         {
@@ -700,13 +810,10 @@ void DekiRenderSystem::RenderBands(Deki::Scene* scene, CameraComponent* camera, 
         {
             // Nothing: every pixel is drawn over.
         }
-        else if (held.valid && !held.held.IsFull())
+        else if (partial)
         {
-            for (const Deki::Rect& r : held.held.Rects())
-            {
-                FillRect(buffer, sw, sh, m_ColorFormat, r.left, r.top, r.Width(), r.Height(), clear.r, clear.g,
-                         clear.b);
-            }
+            FillRect(buffer, sw, sh, m_ColorFormat, ctx.redraw.left, ctx.redraw.top, ctx.redraw.Width(),
+                     ctx.redraw.Height(), clear.r, clear.g, clear.b);
         }
         else
         {
@@ -719,85 +826,12 @@ void DekiRenderSystem::RenderBands(Deki::Scene* scene, CameraComponent* camera, 
 
         m_Renderer->Render(scene, ctx);
 
-        // What this strip drew, in its own rows. Null: unknown, so all of it.
-        const DirtyRegion* drawn = tracking ? m_Renderer->GetLastFrameDirty() : nullptr;
-        const bool drawnKnown = drawn && !drawn->IsFull();
-        if (drawn && !keep)
-        {
-            held.held = *drawn;
-            held.valid = true;
-        }
-        else
-        {
-            held.valid = false;
-        }
-        held.width = sw;
-
         if (whole)
         {
             CopyPixels(wholeAt, pitch, buffer, stripPitch, stripPitch, sh);
         }
 
-        Deki::Rect send = strip;
-        if (tracking)
-        {
-            if (drawnKnown)
-            {
-                for (const Deki::Rect& r : drawn->Rects())
-                {
-                    m_BandFrameDrawn.Add(r.left + strip.left, r.top + strip.top, r.right + strip.left,
-                                         r.bottom + strip.top);
-                }
-            }
-            else
-            {
-                m_BandFrameDrawn.Add(strip);
-            }
-        }
-        if (!sendAll && drawnKnown)
-        {
-            // The bounds of this frame's draws and last frame's, in the strip.
-            send = Deki::Rect{ strip.right, strip.bottom, strip.left, strip.top };
-            auto grow = [&send, &strip](int32_t l, int32_t t, int32_t r, int32_t b)
-            {
-                l = std::max(l, strip.left);
-                r = std::min(r, strip.right);
-                t = std::max(t, strip.top);
-                b = std::min(b, strip.bottom);
-                if (r <= l || b <= t)
-                {
-                    return;
-                }
-                send.left = std::min(send.left, l);
-                send.top = std::min(send.top, t);
-                send.right = std::max(send.right, r);
-                send.bottom = std::max(send.bottom, b);
-            };
-            for (const Deki::Rect& r : drawn->Rects())
-            {
-                grow(r.left + strip.left, r.top + strip.top, r.right + strip.left, r.bottom + strip.top);
-            }
-            for (const Deki::Rect& r : m_LastDrawn.Rects())
-            {
-                grow(r.left, r.top, r.right, r.bottom);
-            }
-        }
-
-        if (send.Empty())
-        {
-            if (lent)
-            {
-                // Nothing to send: the buffer goes back all the same.
-                ScanStrip back;
-                back.pixels = buffer;
-                back.stride = sw;
-                back.strip = strip;
-                back.changed = Deki::Rect{ strip.left, strip.top, strip.left, strip.top };  // nothing
-                back.format = m_ColorFormat;
-                scan->PresentStrip(back);
-            }
-            continue;
-        }
+        const Deki::Rect send = part;
         const uint64_t presentStart = RenderProfiler::IsEnabled() ? RenderProfiler::Now() : 0;
         if (scan)
         {
@@ -827,16 +861,7 @@ void DekiRenderSystem::RenderBands(Deki::Scene* scene, CameraComponent* camera, 
         }
     }
 
-    if (tracking)
-    {
-        std::swap(m_LastDrawn, m_BandFrameDrawn);
-        m_HaveLastDrawn = true;
-        m_ForceFull = false;
-    }
-    else
-    {
-        m_HaveLastDrawn = false;
-    }
+    m_ForceFull = false;
 
     // Kept for the next frame or read by a screenshot; otherwise nothing
     // needs it any more.
@@ -997,60 +1022,21 @@ void DekiRenderSystem::FreeBand()
         m_BandBuffer = nullptr;
     }
     m_BandRows = 0;
-    ForgetHeld();
     FreeWholeFrame();
 }
 
-DekiRenderSystem::HeldStrip& DekiRenderSystem::HeldFor(const uint8_t* buffer)
+void DekiRenderSystem::ResetHistory()
 {
-    for (HeldStrip& h : m_Held)
-    {
-        if (h.buffer == buffer)
-        {
-            return h;
-        }
-    }
-    HeldStrip& h = m_Held[m_HeldNext++ % 3];
-    h.buffer = buffer;
-    h.valid = false;
-    return h;
-}
-
-void DekiRenderSystem::ForgetHeld()
-{
-    for (HeldStrip& h : m_Held)
-    {
-        h.valid = false;
-    }
-}
-
-DekiRenderSystem::BufferHistory& DekiRenderSystem::HistoryFor(const uint8_t* buffer)
-{
-    for (BufferHistory& h : m_History)
-    {
-        if (h.buffer == buffer)
-        {
-            return h;
-        }
-    }
-    m_History.push_back(BufferHistory{ buffer, DirtyRegion{}, false });
-    return m_History.back();
-}
-
-void DekiRenderSystem::ResetDirtyHistory()
-{
-    m_History.clear();
-    m_HaveLastDrawn = false;
+    m_Owed.clear();
     m_HaveClearColor = false;
     m_ForceFull = true;
     m_PresentCount = -1;
 }
 
-void DekiRenderSystem::SetDirtyTracking(bool enabled, int32_t alignment)
+void DekiRenderSystem::SetRedrawChanges(bool enabled)
 {
-    m_TrackDirty = enabled;
-    m_DirtyAlign = alignment < 1 ? 1 : alignment;
-    ResetDirtyHistory();
+    m_RedrawChanges = enabled;
+    ResetHistory();
 }
 
 const Deki::Rect* DekiRenderSystem::GetPresentRects(int32_t* count) const

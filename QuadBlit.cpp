@@ -106,13 +106,15 @@ enum class BlitPath : uint32_t
     GenericRotated,
     AlphaRows,
     StretchRows,
+    TintRotatedRows,
     None
 };
 
 // One word each, so a report line splits on spaces.
 constexpr const char* kBlitPathNames[] = {
-    "CopyRows",  "ChromaSpans",        "BlendSpans",    "TintRows",       "TintScaledRows", "ExpandRows",
-    "Rows565A8", "GenericScaledPlain", "GenericScaled", "GenericRotated", "AlphaRows",      "StretchRows",
+    "CopyRows",   "ChromaSpans", "BlendSpans",         "TintRows",      "TintScaledRows",
+    "ExpandRows", "Rows565A8",   "GenericScaledPlain", "GenericScaled", "GenericRotated",
+    "AlphaRows",  "StretchRows", "TintRotatedRows",
 };
 
 struct PathScope
@@ -180,19 +182,36 @@ void PopClipRect()
     }
 }
 
+static ClipRect s_Limit;  // SetTargetLimit; not set (IsSet false) when none
+
 ClipRect GetCurrentClipRect()
 {
-    if (!s_ClipEnabled || s_ClipStack.empty())
+    ClipRect clip = (!s_ClipEnabled || s_ClipStack.empty()) ? ClipRect{} : s_ClipStack.back();
+    if (s_Limit.IsSet())
     {
-        return ClipRect{};
+        clip.left = std::max(clip.left, s_Limit.left);
+        clip.top = std::max(clip.top, s_Limit.top);
+        clip.right = std::min(clip.right, s_Limit.right);
+        clip.bottom = std::min(clip.bottom, s_Limit.bottom);
     }
-    return s_ClipStack.back();
+    return clip;
 }
 
 void ClearClipStack()
 {
     s_ClipStack.clear();
     s_ClipEnabled = true;
+    s_Limit = ClipRect{};
+}
+
+void SetTargetLimit(int32_t left, int32_t top, int32_t right, int32_t bottom)
+{
+    s_Limit = ClipRect{ left, top, right, bottom };
+}
+
+void ClearTargetLimit()
+{
+    s_Limit = ClipRect{};
 }
 
 void SetClipEnabled(bool enabled)
@@ -208,50 +227,6 @@ bool IsClipEnabled()
 int GetClipStackDepth()
 {
     return static_cast<int>(s_ClipStack.size());
-}
-
-// ============================================================================
-// Dirty-rect tracking
-// ============================================================================
-
-static DekiRendering::DirtyRegion* s_DirtyRegion = nullptr;
-static const uint8_t* s_DirtyTarget = nullptr;
-
-void SetDirtyTracking(DekiRendering::DirtyRegion* region, const uint8_t* trackedTarget)
-{
-    s_DirtyRegion = region;
-    s_DirtyTarget = region ? trackedTarget : nullptr;
-}
-
-void MarkDirty(int32_t left, int32_t top, int32_t right, int32_t bottom)
-{
-    if (s_DirtyRegion)
-    {
-        s_DirtyRegion->Add(left, top, right, bottom);
-    }
-}
-
-void MarkAllDirty()
-{
-    if (s_DirtyRegion)
-    {
-        s_DirtyRegion->SetFull();
-    }
-}
-
-const uint8_t* GetDirtyTrackedTarget()
-{
-    return s_DirtyTarget;
-}
-
-// The rectangle a blit is about to write, once clipped, is exactly what the
-// frame changed there.
-static inline void NoteBlitRect(const uint8_t* target, int32_t startX, int32_t startY, int32_t endX, int32_t endY)
-{
-    if (s_DirtyRegion && target == s_DirtyTarget)
-    {
-        s_DirtyRegion->Add(startX, startY, endX, endY);
-    }
 }
 
 // ============================================================================
@@ -894,15 +869,16 @@ static DEKI_FAST_ATTR void TintScaledRows_RGB565A8(const Source& source, uint8_t
 // RGB565 or RGB565A8 -> RGB565, at any scale, any tint and alpha tint; no key,
 // dither or flips. The scaled pipeline's stepping and TintRows' arithmetic in
 // one tight loop per row: particles drawn straight into the frame take it,
-// dozens a frame, where the per-pixel pipeline cost half again as much.
-template <bool SourceAlpha>
+// dozens a frame, where the per-pixel pipeline cost half again as much. The
+// source's bytes per pixel is a constant, so finding a pixel is a shift and
+// an add.
+template <bool SourceAlpha, int32_t Bpp>
 static DEKI_FAST_ATTR void TintScaledRows_RGB565(const Source& source, uint16_t* target16, int32_t targetWidth,
                                                  int32_t destX, int32_t destY, int32_t destWidth, int32_t destHeight,
                                                  const BlitBounds& b, const BlitParams& p)
 {
     const TintTables& t = TintTablesFor(p.tintR, p.tintG, p.tintB);
     const int32_t stride = SourceStride(source);
-    const int32_t bpp = source.bytesPerPixel;
     const bool alphaTint = p.hasAlphaTint;
     const uint32_t tintA = p.tintA;
     const uint32_t xStep = ((uint32_t)source.width << 16) / (uint32_t)destWidth;
@@ -916,7 +892,7 @@ static DEKI_FAST_ATTR void TintScaledRows_RGB565(const Source& source, uint16_t*
         uint32_t acc = (uint32_t)(b.startX - destX) * xStep;
         for (int32_t px = b.startX; px < b.endX; px++, dp++)
         {
-            const uint8_t* sp = srcRow + (int32_t)(acc >> 16) * bpp;
+            const uint8_t* sp = srcRow + (int32_t)(acc >> 16) * Bpp;
             acc += xStep;
             uint32_t a = 255;
             if constexpr (SourceAlpha)
@@ -1664,8 +1640,6 @@ void BlitScaled(const Source& source, uint8_t* target, int32_t targetWidth, int3
             return;
         }
     }
-
-    NoteBlitRect(target, bounds.startX, bounds.startY, bounds.endX, bounds.endY);
     PathScope scope(static_cast<uint64_t>(bounds.endX - bounds.startX) *
                     static_cast<uint64_t>(bounds.endY - bounds.startY));
 
@@ -1773,11 +1747,18 @@ void BlitScaled(const Source& source, uint8_t* target, int32_t targetWidth, int3
         uint16_t* target16 = (uint16_t*)target;
         if (kind == SrcKind::RGB565A8 && source.hasAlpha)
         {
-            TintScaledRows_RGB565<true>(source, target16, targetWidth, destX, destY, destWidth, destHeight, bounds, p);
+            TintScaledRows_RGB565<true, 3>(source, target16, targetWidth, destX, destY, destWidth, destHeight, bounds,
+                                           p);
+        }
+        else if (kind == SrcKind::RGB565A8)
+        {
+            TintScaledRows_RGB565<false, 3>(source, target16, targetWidth, destX, destY, destWidth, destHeight, bounds,
+                                            p);
         }
         else
         {
-            TintScaledRows_RGB565<false>(source, target16, targetWidth, destX, destY, destWidth, destHeight, bounds, p);
+            TintScaledRows_RGB565<false, 2>(source, target16, targetWidth, destX, destY, destWidth, destHeight, bounds,
+                                            p);
         }
         return;
     }
@@ -1841,9 +1822,11 @@ void BlitScaled(const Source& source, uint8_t* target, int32_t targetWidth, int3
 // ============================================================================
 // Rotated blit
 // ============================================================================
-// Inverse-maps every destination pixel of the rotated quad's bounding box back
-// into the source with a 16.16 fixed-point DDA: two adds per pixel, then the
-// same pipeline as the scaled path.
+// Inverse-maps the destination pixels of the rotated quad back into the source
+// with a 16.16 fixed-point DDA: two adds per pixel, then the same pipeline as
+// the scaled path. Each row of the quad's bounding box visits only its run of
+// pixels that land inside the source, found once per row: the corners outside
+// a turned sprite can be half the box.
 
 struct RotatedBlitArgs
 {
@@ -1853,9 +1836,67 @@ struct RotatedBlitArgs
     int32_t dSxDy, dSyDy;                // per-row source step
 };
 
+// a / b rounded toward minus infinity, and toward plus infinity, for b > 0
+// and a of either sign.
+static inline int64_t FloorDiv(int64_t a, int64_t b)
+{
+    return a >= 0 ? a / b : -((-a + b - 1) / b);
+}
+
+static inline int64_t CeilDiv(int64_t a, int64_t b)
+{
+    return a >= 0 ? (a + b - 1) / b : -(-a / b);
+}
+
+// Narrows the steps [k0, k1) to those at which the walk s + k * d (16.16)
+// lands in [0, size) as a whole pixel: s >> 16 is in [0, size) exactly when s
+// is in [0, size << 16). A straight walk enters and leaves that range once,
+// so what is left is one run, empty when the walk misses it.
+static inline void NarrowToInside(int32_t s, int32_t d, uint32_t size, int32_t& k0, int32_t& k1)
+{
+    const int64_t hi = static_cast<int64_t>(size) << 16;
+    int64_t first = k0, end = k1;
+    if (d > 0)
+    {
+        first = CeilDiv(-static_cast<int64_t>(s), d);
+        end = CeilDiv(hi - s, d);
+    }
+    else if (d < 0)
+    {
+        first = FloorDiv(static_cast<int64_t>(s) - hi, -static_cast<int64_t>(d)) + 1;
+        end = FloorDiv(s, -static_cast<int64_t>(d)) + 1;
+    }
+    else if (s < 0 || s >= hi)
+    {
+        end = first;
+    }
+    k0 = static_cast<int32_t>(std::max<int64_t>(k0, first));
+    k1 = static_cast<int32_t>(std::max<int64_t>(k0, std::min<int64_t>(k1, end)));
+}
+
+// The run of a row's walk, starting at source coords (sx, sy), that lands
+// inside a source of srcW x srcH pixels: the steps [k0, k1) from a.startX.
+// False when there is none. Out of line, once, in IRAM: it runs once a row,
+// and its 64-bit divisions would make every loop it was inlined into larger.
+[[gnu::noinline]] static DEKI_FAST_ATTR bool InsideRun(int32_t sx, int32_t sy, const RotatedBlitArgs& a, uint32_t srcW,
+                                                       uint32_t srcH, int32_t& k0, int32_t& k1)
+{
+    k0 = 0;
+    k1 = a.endX - a.startX;
+    NarrowToInside(sx, a.dSxDx, srcW, k0, k1);
+    NarrowToInside(sy, a.dSyDx, srcH, k0, k1);
+    return k0 < k1;
+}
+
+// Where a walk from s is after k steps of d: what k additions give.
+static inline int32_t StepsAlong(int32_t s, int32_t d, int32_t k)
+{
+    return static_cast<int32_t>(static_cast<uint32_t>(s) + static_cast<uint32_t>(k) * static_cast<uint32_t>(d));
+}
+
 template <SrcKind SK, Deki::ColorFormat F>
-static DEKI_FAST_ATTR void RotatedBlitT(const Source& source, uint8_t* target, int32_t targetWidth,
-                                        const RotatedBlitArgs& a, const BlitParams& P)
+static void RotatedBlitT(const Source& source, uint8_t* target, int32_t targetWidth, const RotatedBlitArgs& a,
+                         const BlitParams& P)
 {
     const int32_t stride = SourceStride(source);
     const int32_t bpp = source.bytesPerPixel;
@@ -1867,19 +1908,17 @@ static DEKI_FAST_ATTR void RotatedBlitT(const Source& source, uint8_t* target, i
     int32_t rowSx = a.rowSx, rowSy = a.rowSy;
     for (int32_t py = a.startY; py < a.endY; py++, rowSx += a.dSxDy, rowSy += a.dSyDy)
     {
-        int32_t sx = rowSx, sy = rowSy;
-        const size_t rowIdx = (size_t)py * (size_t)targetWidth;
-        for (int32_t px = a.startX; px < a.endX; px++, sx += a.dSxDx, sy += a.dSyDx)
+        int32_t k0, k1;
+        if (!InsideRun(rowSx, rowSy, a, srcW, srcH, k0, k1))
         {
-            // Arithmetic shift keeps negatives negative; the unsigned compare
-            // then rejects them together with the far edge in one test.
-            int32_t ix = sx >> 16, iy = sy >> 16;
-            if ((uint32_t)ix >= srcW || (uint32_t)iy >= srcH)
-            {
-                continue;
-            }
-            ix &= keepX;
-            iy &= keepY;
+            continue;
+        }
+        int32_t sx = StepsAlong(rowSx, a.dSxDx, k0), sy = StepsAlong(rowSy, a.dSyDx, k0);
+        const size_t rowIdx = (size_t)py * (size_t)targetWidth;
+        for (int32_t px = a.startX + k0; px < a.startX + k1; px++, sx += a.dSxDx, sy += a.dSyDx)
+        {
+            int32_t ix = (sx >> 16) & keepX;
+            int32_t iy = (sy >> 16) & keepY;
             if (P.flips)
             {
                 ApplyFlips(source, ix, iy);
@@ -1890,34 +1929,64 @@ static DEKI_FAST_ATTR void RotatedBlitT(const Source& source, uint8_t* target, i
     }
 }
 
-// A rotated sprite onto the frame, kept out of line in IRAM: inlined into the
-// dispatch below it would run from flash. Only these two, the common ones:
-// each instance is internal memory.
-template <SrcKind SK>
-[[gnu::noinline]] static DEKI_FAST_ATTR void RotatedBlitIntoRGB565(const Source& source, uint8_t* target,
-                                                                   int32_t targetWidth, const RotatedBlitArgs& a,
-                                                                   const BlitParams& p)
+// RGB565 or RGB565A8 -> RGB565, rotated, any tint and alpha tint; no key,
+// dither, flips or stretch: a turned sprite onto the frame. TintRows'
+// arithmetic over each row's run inside the source, where CompositePixel per
+// pixel cost several times as much. Out of line in IRAM: inlined into the
+// dispatch it would run from flash. Every other rotated blit runs
+// RotatedBlitT from flash: an instance in IRAM for each source and target
+// format took internal memory a board has little of, for blits it rarely
+// draws.
+template <bool SourceAlpha, int32_t Bpp>
+[[gnu::noinline]] static DEKI_FAST_ATTR void TintRotatedRows_RGB565(const Source& source, uint16_t* target16,
+                                                                    int32_t targetWidth, const RotatedBlitArgs& a,
+                                                                    const BlitParams& p)
 {
-    RotatedBlitT<SK, Deki::ColorFormat::RGB565>(source, target, targetWidth, a, p);
+    const TintTables& t = TintTablesFor(p.tintR, p.tintG, p.tintB);
+    const int32_t stride = SourceStride(source);
+    const uint32_t srcW = (uint32_t)source.width, srcH = (uint32_t)source.height;
+    const bool alphaTint = p.hasAlphaTint;
+    const uint32_t tintA = p.tintA;
+
+    int32_t rowSx = a.rowSx, rowSy = a.rowSy;
+    for (int32_t py = a.startY; py < a.endY; py++, rowSx += a.dSxDy, rowSy += a.dSyDy)
+    {
+        int32_t k0, k1;
+        if (!InsideRun(rowSx, rowSy, a, srcW, srcH, k0, k1))
+        {
+            continue;
+        }
+        int32_t sx = StepsAlong(rowSx, a.dSxDx, k0), sy = StepsAlong(rowSy, a.dSyDx, k0);
+        uint16_t* dp = target16 + (size_t)py * (size_t)targetWidth + a.startX + k0;
+        for (int32_t k = k0; k < k1; k++, dp++, sx += a.dSxDx, sy += a.dSyDx)
+        {
+            const uint8_t* sp = source.pixels + (sy >> 16) * stride + (sx >> 16) * Bpp;
+            uint32_t alpha = 255;
+            if constexpr (SourceAlpha)
+            {
+                alpha = sp[2];
+                if (alpha == 0)
+                {
+                    continue;
+                }
+            }
+            if (alphaTint)
+            {
+                alpha = Div255(alpha * tintA);
+                if (alpha == 0)
+                {
+                    continue;
+                }
+            }
+            TintPixel565(t, Load565(sp), alpha, dp);
+        }
+    }
 }
 
 template <Deki::ColorFormat F>
 static void RotatedBlitForTarget(SrcKind kind, const Source& source, uint8_t* target, int32_t targetWidth,
                                  const RotatedBlitArgs& a, const BlitParams& p)
 {
-    if constexpr (F == Deki::ColorFormat::RGB565)
-    {
-        if (kind == SrcKind::RGB565)
-        {
-            RotatedBlitIntoRGB565<SrcKind::RGB565>(source, target, targetWidth, a, p);
-            return;
-        }
-        if (kind == SrcKind::RGB565A8)
-        {
-            RotatedBlitIntoRGB565<SrcKind::RGB565A8>(source, target, targetWidth, a, p);
-            return;
-        }
-    }
     switch (kind)
     {
         case SrcKind::RGB565: RotatedBlitT<SrcKind::RGB565, F>(source, target, targetWidth, a, p); break;
@@ -2076,9 +2145,7 @@ void Blit(const Source& source, uint8_t* target, int32_t targetWidth, int32_t ta
     {
         return;
     }
-    NoteBlitRect(target, startX, startY, endX, endY);
     PathScope scope(static_cast<uint64_t>(endX - startX) * static_cast<uint64_t>(endY - startY));
-    scope.path = BlitPath::GenericRotated;
 
     BlitParams p;
     p.hasTint = (tintR != 255 || tintG != 255 || tintB != 255);
@@ -2122,6 +2189,26 @@ void Blit(const Source& source, uint8_t* target, int32_t targetWidth, int32_t ta
     args.dSyDy = static_cast<int32_t>(std::lround(cosR * syScale * 65536.0f));
 
     const SrcKind kind = KindOf(source);
+    if (targetFormat == Deki::ColorFormat::RGB565 && (kind == SrcKind::RGB565 || kind == SrcKind::RGB565A8) &&
+        !p.hasKey && !p.dither && !p.flips && source.stretchWidth == 0 && source.stretchHeight == 0)
+    {
+        scope.path = BlitPath::TintRotatedRows;
+        uint16_t* target16 = (uint16_t*)target;
+        if (kind == SrcKind::RGB565A8 && source.hasAlpha)
+        {
+            TintRotatedRows_RGB565<true, 3>(source, target16, targetWidth, args, p);
+        }
+        else if (kind == SrcKind::RGB565A8)
+        {
+            TintRotatedRows_RGB565<false, 3>(source, target16, targetWidth, args, p);
+        }
+        else
+        {
+            TintRotatedRows_RGB565<false, 2>(source, target16, targetWidth, args, p);
+        }
+        return;
+    }
+    scope.path = BlitPath::GenericRotated;
     switch (targetFormat)
     {
         case Deki::ColorFormat::RGB565:

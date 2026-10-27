@@ -9,6 +9,7 @@ class Scene;
 
 namespace DekiRendering
 {
+class DirtyRegion;
 struct RenderContext;
 
 // The hooks a RenderPass can implement, as bits for RenderPass::HookMask().
@@ -47,11 +48,8 @@ enum : uint32_t
 /// - ctx.cam is the frame's world-to-screen snapshot (see FrameCamera), taken
 ///   once after every BeginFrame. Map through it in Execute/PreExecute rather
 ///   than calling ctx.camera per object or per tile.
-/// - Dirty-rect tracking (ctx.trackDirty): QuadBlit blits into ctx.buffer are
-///   recorded automatically. A pass that writes ctx.buffer any other way must
-///   call QuadBlit::MarkDirty (or MarkAllDirty) for the pixels it touched. A
-///   pass that swaps ctx.buffer in BeginFrame needs nothing: the renderer then
-///   treats the whole frame as changed.
+/// - Redrawing only what changed: a pass draws a frame whole unless it says
+///   where it draws (ReportsChanges, below).
 class RenderPass
 {
 public:
@@ -111,6 +109,37 @@ public:
     {
         (void)scene;
         return (HookMask() & (RenderPassHooks::BeginFrame | RenderPassHooks::EndFrame)) == 0;
+    }
+
+    /// Redrawing only what changed (RenderingProjectSettings::redrawChanges):
+    /// whether this pass says where its drawing changed, with AddChanges and
+    /// FinishChanges. The default is no: while a pass that cannot say wants
+    /// any object, every frame is drawn whole, which is always right, only
+    /// slower. Say yes only for a pass with Execute as its one hook whose
+    /// Execute draws through QuadBlit (or keeps to its clip): a frame drawn in
+    /// parts sets the clip to each part, and the pass's Execute must not write
+    /// outside it.
+    virtual bool ReportsChanges() const { return false; }
+
+    /// Adds to `changed` the pixels where this pass draws `obj` differently
+    /// from the last frame: where it drew then and where it draws now, in
+    /// pixels of the whole view (ctx is the whole view; ctx.buffer may be
+    /// null). Called once a frame, before anything is drawn, for each object
+    /// WantsObject says yes to, when ReportsChanges() is true.
+    virtual void AddChanges(Deki::Object* obj, const RenderContext& ctx, DirtyRegion& changed)
+    {
+        (void)obj;
+        (void)ctx;
+        (void)changed;
+    }
+
+    /// After every AddChanges of the frame: adds where the pass drew last
+    /// frame for objects it was not asked about this time (destroyed, made
+    /// inactive, no longer wanted), which are left as they were otherwise.
+    virtual void FinishChanges(const RenderContext& ctx, DirtyRegion& changed)
+    {
+        (void)ctx;
+        (void)changed;
     }
 };
 
