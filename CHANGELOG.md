@@ -8,9 +8,11 @@ breaking change bumps the minor across the editor, the engine and every
 package together, so a package with no changes of its own is still released
 alongside one that has them.
 
-## Unreleased
+## 0.21.0
 
 ### Changed
+- `minEngine` 0.21.0: built against engine 0.21.0. A build of this package
+  from before does not load and is rebuilt.
 - **Redraw only what changed** (project setting `redrawChanges`, off by
   default; `DekiRenderSystem::SetRedrawChanges`). Before drawing, the
   renderer compares each object with the last frame: where it lands and what
