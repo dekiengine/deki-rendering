@@ -57,7 +57,7 @@
  <tbody>
  <tr id="projectrow">
   <td id="projectalign">
-   <div id="projectname">deki-rendering<span id="projectnumber">&#160;0.20.2</span>
+   <div id="projectname">deki-rendering<span id="projectnumber">&#160;0.21.0</span>
    </div>
    <div id="projectbrief">Deki 패키지 레퍼런스</div>
   </td>
@@ -115,7 +115,7 @@ document.addEventListener('DOMContentLoaded',() => { initNavTree('index.html',''
 <img src="deki-rendering.png" alt=""/>
 </div>
     <p>핵심 렌더링 파이프라인: 카메라, 렌더 시스템, 표준 2D 렌더러, QuadBlit, 렌더 패스, 정렬.</p>
-<p>저장소: <a href="https://github.com/dekiengine/deki-rendering">github.com/dekiengine/deki-rendering</a> · 최신 릴리스: 0.20.0 · 엔진 0.20.0 이상 필요</p>
+<p>저장소: <a href="https://github.com/dekiengine/deki-rendering">github.com/dekiengine/deki-rendering</a> · 최신 릴리스: 0.21.0 · 엔진 0.21.0 이상 필요</p>
 <p><span class="tt">DekiEditor --packages-add deki-rendering &lt;project&gt;</span> 또는 패키지 관리자로 설치합니다. 엔진 자체의 컴포넌트와 C++ API는 <a href="https://dekiengine.github.io/docs/ko/">Deki 문서</a>에 있습니다.</p>
 <p>에디터에는 <b>Rendering</b>(으)로 표시됩니다.</p>
 <h1 class="doxsection"><a class="anchor" id="components"></a>
@@ -162,53 +162,68 @@ CameraComponent</h2>
 <tr class="markdownTableHead">
 <th class="markdownTableHeadNone">속성  </th><th class="markdownTableHeadNone">유형  </th><th class="markdownTableHeadNone">기본값  </th><th class="markdownTableHeadNone">제약  </th><th class="markdownTableHeadNone">설명  </th></tr>
 <tr class="markdownTableRowOdd">
-<td class="markdownTableBodyNone"><span class="tt">dirtyTileTracking</span>  </td><td class="markdownTableBodyNone">bool  </td><td class="markdownTableBodyNone"><span class="tt">false</span>  </td><td class="markdownTableBodyNone"></td><td class="markdownTableBodyNone">변경 영역 추적: 각 프레임이 그린 사각형을 기록하고, 다음 프레임에서는 그 부분만 클리어하며, 바뀐 부분(이번 프레임과 지난 프레임의 사각형)만 디스플레이로 보냅니다. 대부분 정적인 씬에서 효과가 크고, 전체가 움직이는 씬에서는 관리 비용이 조금 듭니다. 부분 프레임을 표시할 수 없는 디스플레이에는 여전히 전체 프레임을 보냅니다.  </td></tr>
-<tr class="markdownTableRowEven">
-<td class="markdownTableBodyNone"><span class="tt">dirtyTileSize</span>  </td><td class="markdownTableBodyNone">int32  </td><td class="markdownTableBodyNone"><span class="tt">32</span>  </td><td class="markdownTableBodyNone">1~256; <span class="tt">dirtyTileTracking</span>이(가) 허용할 때 표시  </td><td class="markdownTableBodyNone">변경 사각형의 정렬 단위(픽셀)입니다. 각 사각형은 이 값의 배수로 넓혀집니다. 크면 더 적고 큰 전송이 되며 작은 움직임은 같은 사각형을 재사용합니다. 작으면 사각형이 더 촘촘해집니다.  </td></tr>
-<tr class="markdownTableRowOdd">
 <td class="markdownTableBodyNone"><span class="tt">frameMode</span>  </td><td class="markdownTableBodyNone">enum  </td><td class="markdownTableBodyNone"><span class="tt">"Auto"</span>  </td><td class="markdownTableBodyNone"><span class="tt">Auto</span>, <span class="tt">WholeFrames</span>, <span class="tt">Strips</span>  </td><td class="markdownTableBodyNone">각 프레임을 화면에 보내는 방식입니다. Auto(기본값)는 게임이 시작될 때 장치에서 고릅니다. 프레임 버퍼가 내부 RAM에 여유 있게 들어가면 전체 프레임, 들어가지 않으면 스트립입니다(픽셀당 2바이트인 536x240 화면은 257 KB로, ESP32-S3의 내부 RAM 여유 공간보다 큽니다). 전체 프레임은 각 프레임을 버퍼 하나에 한 번 그리며, 그 버퍼가 내부 RAM에 있으면 더 빠릅니다. 스트립은 내부 RAM의 작은 버퍼에 몇 행씩 그리고, 다음 스트립을 그리는 동안 각 스트립을 보냅니다. PSRAM에 전체 프레임을 그리는 것보다 훨씬 빠릅니다. 둘 다 같은 픽셀을 만들고 모든 기능을 유지합니다. 어느 쪽을 쓰는지와 그 이유는 부팅 로그와 DEKI:STATS에 표시됩니다. 에디터는 항상 전체 프레임을 그립니다.  </td></tr>
 <tr class="markdownTableRowEven">
 <td class="markdownTableBodyNone"><span class="tt">bandRows</span>  </td><td class="markdownTableBodyNone">int32  </td><td class="markdownTableBodyNone"><span class="tt">40</span>  </td><td class="markdownTableBodyNone">2~256  </td><td class="markdownTableBodyNone">프레임을 스트립으로 그릴 때 각 스트립의 행 수입니다. 대부분의 화면에는 40이 맞습니다. 스트립이 높을수록 한 프레임에 장면을 도는 횟수가 줄지만 내부 RAM을 더 씁니다: 스트립 하나와 전송용 복사본 두 개, 각각 화면 너비 × 이 행 수 × 픽셀당 2바이트입니다.  </td></tr>
+<tr class="markdownTableRowOdd">
+<td class="markdownTableBodyNone"><span class="tt">redrawChanges</span>  </td><td class="markdownTableBodyNone">bool  </td><td class="markdownTableBodyNone"><span class="tt">false</span>  </td><td class="markdownTableBodyNone"></td><td class="markdownTableBodyNone">바뀐 부분만 다시 그립니다. 각 프레임에서 모든 오브젝트가 그리는 것을 지난 프레임과 비교해, 다른 부분만 그려서 디스플레이로 보냅니다. 아무것도 움직이지 않은 프레임은 거의 시간이 들지 않습니다. 화면 대부분이 바뀌는 프레임(스크롤하는 카메라, 화면 전체 애니메이션)은 평소처럼 전체를 그립니다. 어디에 그리는지 알려 줄 수 없는 렌더 패스나 클리어하지 않는 카메라가 있으면 매 프레임 전체를 그립니다.  </td></tr>
 </table>
 <h1 class="doxsection"><a class="anchor" id="changelog"></a>
 변경 내역</h1>
 <p>변경 내역은 영어로 되어 있습니다.</p>
 <h2 class="doxsection"><a class="anchor" id="autotoc_md0"></a>
-0.20.0</h2>
+0.21.0</h2>
 <h2 class="doxsection"><a class="anchor" id="autotoc_md1"></a>
+Changed</h2>
+<ul>
+<li><span class="tt">minEngine</span> 0.21.0: built against engine 0.21.0. A build of this package from before does not load and is rebuilt.</li>
+<li><b>Redraw only what changed</b> (project setting <span class="tt">redrawChanges</span>, off by default; <span class="tt">DekiRenderSystem::SetRedrawChanges</span>). Before drawing, the renderer compares each object with the last frame: where it lands and what decides its pixels (content and its version, size, pivot, tint, scale, rotation, clip, place in the draw order). Only the parts that differ are cleared, drawn and sent; a frame where nothing moved costs only the comparison. Past 75% of the screen, or when something cannot say what it draws, the frame is drawn whole as before. Whole frames and strips both do it, and a display that alternates buffers gets every change since each was drawn. On a T-Deck Plus the demo's menu went from 7.6 ms render and 3.4 ms send to 2.0 ms and 0.1 ms; a fully animated scene costs what it did. The editor's Play view does it too.<ul>
+<li><span class="tt">DekiRenderer::FindChanges</span> and <span class="tt">RenderContext::redraw</span> (Standard2DRenderer implements them). <span class="tt">RendererComponent::GetContentVersion</span>: a component whose pixels change in place says so; one that does not counts as changed every frame it draws. <span class="tt">RenderPass::ReportsChanges</span>, <span class="tt">AddChanges</span> and <span class="tt">FinishChanges</span>: a pass that cannot say where it draws makes every frame whole, as does a pass with hooks other than Execute or a camera that does not clear.</li>
+<li><span class="tt">QuadBlit::SetTargetLimit</span>: a rect every blit stays inside, even with clipping off (<span class="tt">ignoreClip</span>), so nothing writes outside the part redrawn.</li>
+<li>The profiler's <span class="tt">Changes</span> entry times the comparison.</li>
+<li><b>Packages built against an older deki-rendering must be rebuilt</b>: <span class="tt">RendererComponent</span> and <span class="tt">RenderPass</span> have new virtual functions.</li>
+</ul>
+</li>
+<li>Drawing in strips keeps each object's content with its place in the frame's plan instead of in a map rebuilt every frame.</li>
+<li><b>No clear under a full-screen background.</b> A whole frame was cleared to the camera's colour and then drawn over. <span class="tt">Standard2DRenderer</span> now clears just before its first draw, and not at all when that draw is opaque and covers the screen: 0.49 ms a frame on a T-Deck Plus. Passes can write anywhere, so the clear comes before any of them runs (an Execute pass only for an object it <span class="tt">WantsObject</span>). A renderer takes this on with <span class="tt">DekiRenderer::ClearsLazily()</span> and <span class="tt">RenderContext::clear</span>.</li>
+<li><b>See-through sprite edges draw faster.</b> An untinted sprite with soft edges blended them through the general per-pixel pipeline; it now has its own loop, which also skips each row's transparent run without reading it. Its blits in the demo's meadow take 1.29 ms instead of 1.97 ms on a T-Deck Plus (render 5.9 to 5.1 ms), with the same pixels. Blends onto RGB565 mix red and blue in one word: two multiplies fewer a pixel, the same result.</li>
+<li><b>Turned sprites draw faster.</b> A rotated blit visits only the pixels of its box that land inside the sprite, worked out once a row, instead of testing every pixel of the box. An RGB565 or RGB565A8 sprite turned onto an RGB565 frame, tinted or faded, has its own loop (<span class="tt">TintRotatedRows</span> in the profiler) instead of the per-pixel pipeline: the demo's spinning gear takes 0.67 ms instead of 0.87 ms on a T-Display S3, with the same pixels. Other rotated blits (a colour key, dithering, flips, other formats) run from flash, so they take no internal RAM.</li>
+<li>Scaled sprites and particles onto RGB565 find each source pixel with a shift instead of a multiply (<span class="tt">TintScaledRows</span>): 5% faster.</li>
+</ul>
+<h2 class="doxsection"><a class="anchor" id="autotoc_md2"></a>
+Added</h2>
+<ul>
+<li><span class="tt">Fingerprint.h</span>: a 64-bit fingerprint over 32-bit words with 32-bit multiplies only, for telling whether something changed since the last frame. A 32-bit microcontroller has no 64-bit multiply.</li>
+<li><span class="tt">QuadBlit::Source::stretchWidth</span> / <span class="tt">stretchHeight</span>: one column or one row drawn as the whole picture it stands for, placed, scaled, clipped and rotated as that picture would be. A plain opaque one onto RGB565 is filled row by row (<span class="tt">StretchRows</span> in the profiler) instead of sampled pixel by pixel. <span class="tt">QuadBlit::DrawnWidth</span> / <span class="tt">DrawnHeight</span> give the size a source is drawn as.</li>
+</ul>
+<h2 class="doxsection"><a class="anchor" id="autotoc_md3"></a>
+Removed</h2>
+<ul>
+<li><b>Dirty-rect tracking</b> (project settings <span class="tt">dirtyTileTracking</span> and <span class="tt">dirtyTileSize</span>, <span class="tt">QuadBlit::MarkDirty</span>, <span class="tt">SetDirtyTracking</span>, <span class="tt">DekiRenderer::trackDirty</span>, <span class="tt">GetLastFrameDirty</span>). <span class="tt">redrawChanges</span> does the same job and also skips the drawing. A project's old keys are ignored; turn on <span class="tt">redrawChanges</span> instead.</li>
+</ul>
+<h2 class="doxsection"><a class="anchor" id="autotoc_md4"></a>
+0.20.0</h2>
+<h2 class="doxsection"><a class="anchor" id="autotoc_md5"></a>
 Added</h2>
 <ul>
 <li>Strips along a display's refresh. A display that wants it offers <span class="tt">IScanOrderedDisplay</span> (<span class="tt">RegisterScanOrderedDisplay</span>): the order its panel refreshes the screen in, rows down or up, or columns left to right or right to left. <span class="tt">DekiRenderSystem</span> then cuts strips along it, in that order, and sends each with <span class="tt">PresentStrip</span>: the whole strip, what changed in it, and whether it is the frame's first. A strip of columns is as many pixels as <span class="tt">bandRows</span> rows would be, in whole eights of columns so the ordered dither's tile stays where the whole frame has it. <span class="tt">RenderContext</span> gains <span class="tt">viewLeft</span> and <span class="tt">viewWidth</span>, the x twins of <span class="tt">viewTop</span> and <span class="tt">viewHeight</span>, and <span class="tt">DrawsInStrips</span> means strips of rows or of columns. Every whole-frame feature works in either: dirty rectangles, a camera that does not clear, screenshots. <span class="tt">Deki::IDisplay</span> does not change, so no package is rebuilt for it.</li>
 <li>Big-endian RGB565 (<span class="tt">DEKI_RGB565_BIG_ENDIAN</span>, see <span class="tt">Deki::kRGB565BigEndian</span>): <span class="tt">DekiPixel::Load565</span>, <span class="tt">Store565</span>, <span class="tt">ToMemory565</span>, <span class="tt">FromMemory565</span> and <span class="tt">FileToMemory565</span> read and write 565 values in memory's byte order. The blitter, its tint tables and chroma keys, clears and <span class="tt">GetPixel</span> use them. Copies of whole pixels are unchanged. The golden tests run in both byte orders and give the same hashes.</li>
 <li><span class="tt">RenderProfiler</span> times each of QuadBlit's paths (its fast loops and the generic scaled and rotated pipelines): blits, destination pixels and microseconds per frame (<span class="tt">AddPath</span>, <span class="tt">TakePaths</span>). Entries carry the component's short name, which a stripped build's registry cannot give.</li>
 </ul>
-<h2 class="doxsection"><a class="anchor" id="autotoc_md2"></a>
+<h2 class="doxsection"><a class="anchor" id="autotoc_md6"></a>
 Changed</h2>
 <ul>
 <li><span class="tt">minEngine</span> 0.20.0: built against engine 0.20.0. A build of this package from before does not load and is rebuilt.</li>
 <li>On the ESP32's Xtensa cores an RGB565 pixel is read and written with one 16-bit access, aligned or not (<span class="tt">DekiPixel::LoadU16</span> and <span class="tt">StoreU16</span>). The cores handle unaligned loads and stores in hardware; GCC assumes they fault, so the byte-by-byte read it replaced was four instructions. Other targets use <span class="tt">memcpy</span>.</li>
 </ul>
-<h2 class="doxsection"><a class="anchor" id="autotoc_md3"></a>
+<h2 class="doxsection"><a class="anchor" id="autotoc_md7"></a>
 Removed</h2>
 <ul>
 <li><span class="tt">halfWidthFramebuffer</span> and <span class="tt">interlaced60hz</span> from the Rendering settings: neither was ever built, though their tooltips described them as if they were. A project that still has them in its settings loads as before; they are left out when it is saved.</li>
 </ul>
-<h2 class="doxsection"><a class="anchor" id="autotoc_md4"></a>
-0.19.0</h2>
-<h2 class="doxsection"><a class="anchor" id="autotoc_md5"></a>
-Changed</h2>
-<ul>
-<li><span class="tt">minEngine</span> 0.19.0: built against engine 0.19.0, whose component metadata records the package each class is in. A build of this package from before does not load and is rebuilt.</li>
-</ul>
-<h2 class="doxsection"><a class="anchor" id="autotoc_md6"></a>
-Added</h2>
-<ul>
-<li>Japanese, Simplified Chinese and Korean: <span class="tt">editor/lang/ja.json</span>, <span class="tt">zh.json</span> and <span class="tt">ko.json</span> translate the names, tooltips and enum values this package's components show in the Inspector.</li>
-<li>The package's editor text goes through the editor's translation (<span class="tt">Tr</span>), so it shows in the editor's language. Needs the editor release that adds <span class="tt">Localization.h</span>; raise <span class="tt">minEngine</span> to it when releasing.</li>
-</ul>
 <p>이전 릴리스: <a href="https://github.com/dekiengine/deki-rendering/blob/master/CHANGELOG.md">CHANGELOG.md</a></p>
 <hr  />
-<p>패키지의 리플렉션 데이터에서 생성했습니다(엔진 0.20.2). 속성 이름은 씬 파일에서 쓰는 키입니다. 이름을 바꿔도 별칭이 유지됩니다(<a href="https://github.com/dekiengine/deki-editor/blob/master/COMPATIBILITY.md">호환성</a>). </p>
+<p>패키지의 리플렉션 데이터에서 생성했습니다(엔진 0.21.0). 속성 이름은 씬 파일에서 쓰는 키입니다. 이름을 바꿔도 별칭이 유지됩니다(<a href="https://github.com/dekiengine/deki-editor/blob/master/COMPATIBILITY.md">호환성</a>). </p>
 </div></div><!-- PageDoc -->
 <a href="doxygen_crawl.html"></a>
 </div><!-- contents -->
