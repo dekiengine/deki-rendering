@@ -104,6 +104,10 @@ fits in PSRAM. Strips keep every feature whole frames have:
 |---|---|
 | `deki-editor` | Deki editor DLL |
 
+## Community
+
+Questions, ideas and what you made with Deki: [the Deki Discord](https://dekiengine.com/discord/).
+
 ## License
 
 Apache 2.0. See [LICENSE](LICENSE).
