@@ -460,10 +460,17 @@ uint64_t RunRandomBlits(Deki::ColorFormat dst)
             if (rng.Next() % 4u == 0)
             {
                 const int l = static_cast<int>(rng.Next() % 30u), t = static_cast<int>(rng.Next() % 20u);
-                QuadBlit::PushClipRect(l, t, l + 8 + static_cast<int>(rng.Next() % 30u),
-                                       t + 6 + static_cast<int>(rng.Next() % 24u));
+                // Drawn bottom first, then right: the order GCC evaluated
+                // them as arguments on x86-64, which the goldens hold. As
+                // arguments the order is unspecified, and arm64 reverses it.
+                const int b = t + 6 + static_cast<int>(rng.Next() % 24u);
+                const int r = l + 8 + static_cast<int>(rng.Next() % 30u);
+                QuadBlit::PushClipRect(l, t, r, b);
             }
-            QuadBlit::Blit(s.src, target.data(), kTW, kTH, dst, x, y, scaleX, scaleY, rotation, unit(), unit(), tr, tg,
+            // pivotY before pivotX, for the same reason.
+            const float pivotY = unit();
+            const float pivotX = unit();
+            QuadBlit::Blit(s.src, target.data(), kTW, kTH, dst, x, y, scaleX, scaleY, rotation, pivotX, pivotY, tr, tg,
                            tb, ta, dither);
         }
         QuadBlit::ClearClipStack();
