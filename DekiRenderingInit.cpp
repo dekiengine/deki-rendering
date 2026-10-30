@@ -26,7 +26,15 @@ struct AttachedPass
     std::string name;
     RenderPass* pass;
 };
-static std::vector<AttachedPass> s_Passes;
+// A game exits without calling DekiRenderingShutdownSystem, and static
+// destruction runs in reverse init order, so a package's static registrar can
+// detach its pass after this list is gone. The list marks itself gone and
+// detaching then does nothing.
+static bool s_PassesGone = false;
+static struct AttachedPasses : std::vector<AttachedPass>
+{
+    ~AttachedPasses() { s_PassesGone = true; }
+} s_Passes;
 
 // Pass names that no package registers because the renderer performs the work
 // itself, and that a pipeline may still list.
@@ -62,7 +70,7 @@ static void AttachPass(const char* name, const RenderPassInfo& info)
 
 void DekiRenderingDetachPass(const char* name)
 {
-    if (!name)
+    if (!name || s_PassesGone)
     {
         return;
     }

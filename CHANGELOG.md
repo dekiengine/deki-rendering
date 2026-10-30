@@ -8,6 +8,13 @@ breaking change bumps the minor across the editor, the engine and every
 package together, so a package with no changes of its own is still released
 alongside one that has them.
 
+## Unreleased
+
+### Fixed
+- A Linux desktop game no longer crashes as it exits. A package's render pass
+  (deki-particles) was detached from a pass list that static destruction had
+  already freed.
+
 ## 0.21.0
 
 ### Changed
