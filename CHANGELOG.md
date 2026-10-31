@@ -8,7 +8,7 @@ breaking change bumps the minor across the editor, the engine and every
 package together, so a package with no changes of its own is still released
 alongside one that has them.
 
-## Unreleased
+## 0.22.0
 
 ### Changed
 - The frame buffer and the render strip are counted in the engine's memory
@@ -16,6 +16,8 @@ alongside one that has them.
   the largest buffer on a board was missing from every total and from the
   editor's Memory panel. They now come from `Memory::Allocate` in the Internal
   region, as before in internal RAM.
+- `minEngine` 0.22.0: built against engine 0.22.0. A build of this package
+  from before does not load and is rebuilt.
 
 ### Fixed
 - A Linux desktop game no longer crashes as it exits. A package's render pass
