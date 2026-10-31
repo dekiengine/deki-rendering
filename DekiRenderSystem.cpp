@@ -100,7 +100,7 @@ DekiRenderSystem::~DekiRenderSystem()
 {
     if (m_RenderBuffer && m_OwnsBuffer)
     {
-        Deki::Memory::FreeInternal(m_RenderBuffer);
+        Deki::Memory::Free(m_RenderBuffer);
     }
     m_RenderBuffer = nullptr;
     FreeBand();
@@ -266,7 +266,7 @@ bool DekiRenderSystem::Setup(int32_t width, int32_t height, Deki::ColorFormat fo
 
     if (m_RenderBuffer && m_OwnsBuffer)
     {
-        Deki::Memory::FreeInternal(m_RenderBuffer);
+        Deki::Memory::Free(m_RenderBuffer);
     }
     m_RenderBuffer = nullptr;
     m_OwnsBuffer = true;
@@ -324,7 +324,7 @@ bool DekiRenderSystem::Setup(int32_t width, int32_t height, Deki::ColorFormat fo
     // buffer would draw nothing and report no error.
     int bytesPerPixel = GetBytesPerPixel(format);
     size_t bufferSize = (size_t)width * (size_t)height * (size_t)bytesPerPixel;
-    m_RenderBuffer = (uint8_t*)Deki::Memory::AllocateInternal(bufferSize);
+    m_RenderBuffer = (uint8_t*)Deki::Memory::Allocate(bufferSize, Deki::Memory::Internal);
     if (!m_RenderBuffer)
     {
         DEKI_LOG_ERROR("DekiRenderSystem::Setup: failed to allocate %zu-byte framebuffer (%dx%d)", bufferSize, width,
@@ -352,7 +352,7 @@ bool DekiRenderSystem::TryAdoptDisplayBuffer()
 
     if (m_RenderBuffer && m_OwnsBuffer)
     {
-        Deki::Memory::FreeInternal(m_RenderBuffer);
+        Deki::Memory::Free(m_RenderBuffer);
     }
     m_RenderBuffer = directBuf;
     m_OwnsBuffer = false;
@@ -1010,7 +1010,7 @@ bool DekiRenderSystem::AllocateBand()
     const size_t pixels = m_BandColumns ? static_cast<size_t>(m_ScreenHeight) * static_cast<size_t>(m_BandRows)
                                         : static_cast<size_t>(m_ScreenWidth) * static_cast<size_t>(m_BandRows);
     const size_t bytes = pixels * static_cast<size_t>(GetBytesPerPixel(m_ColorFormat));
-    m_BandBuffer = static_cast<uint8_t*>(Deki::Memory::AllocateInternal(bytes));
+    m_BandBuffer = static_cast<uint8_t*>(Deki::Memory::Allocate(bytes, Deki::Memory::Internal));
     return m_BandBuffer != nullptr;
 }
 
@@ -1018,7 +1018,7 @@ void DekiRenderSystem::FreeBand()
 {
     if (m_BandBuffer)
     {
-        Deki::Memory::FreeInternal(m_BandBuffer);
+        Deki::Memory::Free(m_BandBuffer);
         m_BandBuffer = nullptr;
     }
     m_BandRows = 0;

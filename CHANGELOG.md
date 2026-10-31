@@ -10,6 +10,13 @@ alongside one that has them.
 
 ## Unreleased
 
+### Changed
+- The frame buffer and the render strip are counted in the engine's memory
+  figures. They came from `Memory::AllocateInternal`, which counts nothing, so
+  the largest buffer on a board was missing from every total and from the
+  editor's Memory panel. They now come from `Memory::Allocate` in the Internal
+  region, as before in internal RAM.
+
 ### Fixed
 - A Linux desktop game no longer crashes as it exits. A package's render pass
   (deki-particles) was detached from a pass list that static destruction had
