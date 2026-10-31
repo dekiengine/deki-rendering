@@ -33,14 +33,13 @@ var NAVTREE =
       [ "렌더링 설정", "index.html#s-rendering-settings", null ]
     ] ],
     [ "변경 내역", "index.html#changelog", [
-      [ "0.21.0", "index.html#autotoc_md0", null ],
+      [ "0.22.0", "index.html#autotoc_md0", null ],
       [ "Changed", "index.html#autotoc_md1", null ],
-      [ "Added", "index.html#autotoc_md2", null ],
-      [ "Removed", "index.html#autotoc_md3", null ],
-      [ "0.20.0", "index.html#autotoc_md4", null ],
+      [ "Fixed", "index.html#autotoc_md2", null ],
+      [ "0.21.0", "index.html#autotoc_md3", null ],
+      [ "Changed", "index.html#autotoc_md4", null ],
       [ "Added", "index.html#autotoc_md5", null ],
-      [ "Changed", "index.html#autotoc_md6", null ],
-      [ "Removed", "index.html#autotoc_md7", null ]
+      [ "Removed", "index.html#autotoc_md6", null ]
     ] ]
   ] ]
 ];
