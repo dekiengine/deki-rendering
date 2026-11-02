@@ -321,7 +321,7 @@ void BlitScaled(const Source& source, uint8_t* target, int32_t targetWidth, int3
 // Blit sink: the frame's blits drawn by something else, a GPU
 // ============================================================================
 //
-// A display that builds its frames on a GPU (deki-gl's presenter) can draw
+// A display that builds its frames on a GPU (GLPresenter) can draw
 // the 2D there too. The render system asks the registered sink to take a
 // frame (BeginSinkFrame); while it does, every Blit and BlitScaled into that
 // frame's buffer goes to the sink, in call order, placed and clipped exactly

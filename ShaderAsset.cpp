@@ -35,10 +35,16 @@ bool ShaderAsset::Parse(const char* text, size_t size)
     {
         return false;
     }
-    const std::string all(text, size);
     m_Common.clear();
     m_Vertex.clear();
     m_Fragment.clear();
+#ifndef DEKI_CAPABILITY_OPENGL
+    // Nothing on this platform compiles a shader, so its source is not kept:
+    // a mesh that names one costs a board this object, not the text.
+    m_Revision = 1;
+    return true;
+#else
+    const std::string all(text, size);
 
     // Each part runs to the next marker or the end. A part keeps its marker
     // line, a comment, so a compiler's line numbers count from the file.
@@ -68,6 +74,7 @@ bool ShaderAsset::Parse(const char* text, size_t size)
         m_Revision = s_Revision.fetch_add(1) + 1;
     }
     return true;
+#endif
 }
 
 }  // namespace DekiRendering

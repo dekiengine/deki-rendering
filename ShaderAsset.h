@@ -9,13 +9,14 @@
 //   // @vertex                          what the vertex stage adds
 //   // @fragment                        what the fragment stage adds
 //
-// What each part must define is up to what draws with it: deki-3d-gl's
+// What each part must define is up to what draws with it: deki-3d's GPU
 // meshes call Shade() and, if the file has one, Displace(); a screen effect
 // calls Effect(). The backend wraps the parts in its own shaders, so a file
 // holds only the interesting part.
 //
-// Loaded as text everywhere, compiled only by a GPU backend when it first
-// draws with it. A board without a GPU loads it and draws without it.
+// Compiled by a GPU backend when it first draws with it. A platform without
+// OpenGL (DEKI_CAPABILITY_OPENGL) loads it but keeps none of its source, and
+// draws without it.
 
 #include "DekiRenderingPackage.h"
 

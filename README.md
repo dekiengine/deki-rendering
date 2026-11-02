@@ -100,7 +100,7 @@ fits in PSRAM. Strips keep every feature whole frames have:
 
 ## 2D on a GPU (`QuadBlit::BlitSink`)
 
-Where the display builds its frames on a GPU (`deki-gl`'s presenter, in a
+Where the display builds its frames on a GPU (the GL presenter, below, in a
 desktop build), the 2D can be drawn there too. The package that has a GPU
 registers a sink; `DekiRenderSystem` asks it to take each whole frame of a
 camera that clears, and while it does, QuadBlit hands it every blit into the
@@ -122,15 +122,145 @@ the sink composes in its place in the draw order:
   every blit, which is right, only slow.
 
 A screenshot of the buffer (`GetFrameBuffer`) misses what the sink drew; the
-sink's frame has it (`deki-gl`'s `GLPresenter::ReadFrame`). So does a pass
+sink's frame has it (`GLPresenter::ReadFrame`). So does a pass
 that reads the buffer back to work on the picture.
+
+## OpenGL
+
+Where the platform provides `opengl` (the desktop; a Linux handheld once its
+platform exists), the build defines `DEKI_CAPABILITY_OPENGL` and this package
+carries Deki's OpenGL code: the context the program draws in, a presenter
+that builds each frame on the GPU, 2D included, and `ScreenEffect`. On a
+board without OpenGL the flag is never defined and none of it is compiled.
+deki-3d draws its meshes with it, and `deki-sdl3-integration` presents
+through it. Its types live in `DekiGL`.
+
+> **Experimental.** Run on Windows (desktop OpenGL 3.3, NVIDIA) in the editor
+> and a desktop simulator build, and on Linux (OpenGL ES 3.0 through EGL,
+> Mesa) in its tests. Not yet run on a handheld.
+
+### The context
+
+OpenGL is loaded at run time, not linked, so nothing needs GL headers or
+libraries to build, and a machine without a driver still runs the game on the
+CPU. One context serves the whole program (`SharedContext()`), because what is
+made in one context cannot be used in another:
+
+- a **window's**, when a display presents through OpenGL: it makes the context
+  and hands it over (`GLContext::Adopt`);
+- otherwise an **off-screen** one made on first use: WGL on a hidden window on
+  Windows, EGL with a 1x1 pbuffer or no surface at all on Linux.
+
+The calls are the common ground of OpenGL ES 3.0 and desktop OpenGL 3.3 core,
+so one code path serves a handheld's Mali and a desktop.
+
+### The presenter
+
+The presenter builds each frame on the GPU and shows it:
+
+1. **2D**: the 2D renderer's blits are drawn straight into the frame (see
+   below), unless that is turned off; then the 2D is drawn on the CPU into
+   its frame buffer and arrives as a layer.
+2. **`PushLayer`**: what a frame buffer holds goes up as a texture and over
+   the frame being built: the 2D drawn on the CPU, or what code wrote into the
+   buffer directly. Only the rows that hold something are uploaded and drawn.
+3. **`BindFrame`**: GPU drawing goes straight into the frame between layers.
+   deki-3d does this at the start of each batch of meshes, then clears
+   the CPU buffer to transparent for the 2D that sorts after them.
+4. **`Present`**: the last layer, then the frame to the window, scaled by
+   whole pixels and centred, and the swap.
+
+With the 2D on the GPU, the CPU draws no pixels at all. With it on the CPU, a
+frame of 2D, then 3D, then 2D is two uploads and no readback, and with no 3D
+one upload, so the presenter is then simply the way the buffer reaches the
+screen.
+
+Layers need a buffer that keeps coverage, so a display that presents through
+here reports `RGB565A8`. The 2D blitter, drawing into a cleared RGB565A8
+buffer, leaves premultiplied colour and the union of coverage, which is
+exactly what the presenter blends. Any other format still presents, opaque.
+
+### 2D on the GPU
+
+The presenter is deki-rendering's blit sink (`QuadBlit::BlitSink`): for every
+whole frame of a camera that clears, QuadBlit hands it each blit into the
+frame buffer, placed and clipped as its CPU code would draw it, and the
+presenter draws it as a quad. The quad's shader takes the CPU's integer steps
+through the source and runs its pixel pipeline (tint, alpha tint, chroma key,
+ordered dither, flips, stretched strips), so it picks the same source pixels
+and blends them the same way; the picture differs from the CPU's only where
+the CPU rounds each write to 565. Quads are drawn in call order, in batches,
+one draw per run of quads from the same texture.
+
+Each source is uploaded as a texture and kept: until its `revision` changes,
+or for pixels marked `cacheScaled`, until `QuadBlit::ForgetScaled` says they
+go. deki-2d's components, particles and tilemaps set revisions. A source with
+neither is uploaded again at every blit, which is always right, only slower.
+A texture not drawn for two seconds goes, and past 64 MB the ones drawn
+longest ago.
+
+The frame starts from the camera's clear colour and the frame buffer from
+nothing, so it collects only what code writes into it directly. That is
+composed as a layer before the next quad, so it keeps its place in the draw
+order: a render pass that writes into the buffer says so
+(`RenderPass::WritesBuffer`), and the renderer tells the presenter after each
+of its hooks. Meshes (deki-3d) draw between the quads as they sort.
+
+`SetDraws2D(false)` draws the 2D on the CPU again; `SDL3DisplaySetup`'s
+`draw2DOnGpu` turns it off in a project. The log says which way the 2D goes:
+`OpenGL: drawing 2D straight into the presented frame`.
+
+The disabled test `GLBlitSink.DISABLED_BenchmarkAgainstTheCpu` times a frame
+at 640x480 both ways. On a desktop (RTX 2080, release build), with 20 texts
+and a background: 100 sprites, 1.9 ms on the CPU against 0.6 ms; 500, 2.6
+against 0.6; 2000, 5.6 against 0.8.
+
+### Screen effects
+
+A `ScreenEffect` component anywhere in the scene draws the finished frame into
+the window through a shader: scanlines, a vignette, colour grading. Its
+`.shader` defines, in its `// @fragment` part:
+
+```glsl
+// @fragment
+vec4 Effect(vec2 uv)
+{
+    vec3 colour = Frame(uv).rgb;
+    float scan = mod(floor(uv.y * uResolution.y * 2.0), 2.0) < 1.0 ? 1.0 : 1.0 - uParams.x;
+    return vec4(colour * scan, 1.0);
+}
+```
+
+`uv` runs 0 to 1 over the frame, bottom left to top right, at every window
+pixel the frame covers, so an effect can work finer than the game's pixels.
+`Frame(uv)` reads the frame; `uResolution` is its size in game pixels, `uDst`
+where it lands in the window, and `uTime`, `uParams`, `uColor` come from the
+component. A shader that does not compile is logged, and the frame shows as it
+is. Code can also present through an effect of its own
+(`GLPresenter::Present` with an `Effect`).
+
+### Limits
+
+- The CPU frame buffer no longer holds the whole picture: with the 2D on the
+  GPU it holds only what code wrote into it directly, and when 3D draws into
+  the presenter, only the 2D drawn after the last meshes. A pass that reads
+  the frame back (a full-screen effect done on the CPU) needs both off
+  (`SetDraws2D(false)`, `Mesh3DSettings.composeOnGpu`). Screenshots taken
+  from the CPU buffer miss the GPU part too; `GLPresenter::ReadFrame` has the
+  whole frame.
+- The GPU frame keeps 8 bits a channel, so gradients and blends are a little
+  smoother than a device's 565 screen shows them.
+- The editor shows its views its own way, so it never presents through here:
+  meshes there are drawn off-screen and read back, and screen effects show
+  only in a build.
 
 ## Shaders
 
 `ShaderAsset` is a `.shader` file: GPU shader source in GLSL ES 3.00, split
 into a shared part and the parts after `// @vertex` and `// @fragment`
 markers. This package only loads it; what it must define depends on what
-draws with it. See deki-3d-gl for mesh shaders and deki-gl for screen effects.
+draws with it: deki-3d's meshes call `Shade()` and `Displace()`, a
+`ScreenEffect` calls `Effect()` (above).
 
 ## Dependencies
 

@@ -11,13 +11,19 @@ alongside one that has them.
 ## Unreleased
 
 ### Added
+- OpenGL, where the platform provides `opengl` (its build then defines
+  `DEKI_CAPABILITY_OPENGL`; a board never does and compiles none of it): the
+  GL loader and shared context (`GLApi.h`), a presenter that builds each frame
+  on the GPU (`GLPresenter`), the 2D drawn there too (`GLBlitSink`), and
+  `ScreenEffect`, a full-screen shader over the finished frame. Types live in
+  `DekiGL`.
 - `ShaderAsset` (`.shader`): GPU shader source, GLSL ES 3.00, in a shared
-  part and `// @vertex` and `// @fragment` parts. Loaded as text everywhere and
-  compiled by whatever GPU code draws with it (deki-3d-gl's meshes, deki-gl's
-  screen effects); a board without a GPU loads it and draws without it. The
+  part and `// @vertex` and `// @fragment` parts, compiled by whatever GPU
+  code draws with it (deki-3d's meshes, screen effects). A platform without
+  OpenGL loads it but keeps none of its source, and draws without it. The
   editor lists it as the Shader asset type and ships it with a build.
 - A blit sink (`QuadBlit::BlitSink`), so a GPU that builds the frame
-  (`deki-gl`'s presenter) can draw its 2D. While a sink frame is on
+  (`GLPresenter`) can draw its 2D. While a sink frame is on
   (`QuadBlit::BeginSinkFrame`), every `Blit` and `BlitScaled` into that
   frame's buffer goes to the sink, worked out as the CPU would draw it
   (`SinkBlit`: the clipped rectangle and the 16.16 steps it samples with), and
