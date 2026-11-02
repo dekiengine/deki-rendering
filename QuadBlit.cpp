@@ -4,6 +4,7 @@
 #include "RenderProfiler.h"
 #include <cmath>
 #include <algorithm>
+#include <atomic>
 #include <cstring>
 #include <vector>
 
@@ -227,6 +228,85 @@ bool IsClipEnabled()
 int GetClipStackDepth()
 {
     return static_cast<int>(s_ClipStack.size());
+}
+
+// ============================================================================
+// Blit sink
+// ============================================================================
+// s_SinkTarget is null outside a sink frame, and a blit's target never is, so
+// a blit tests one pointer and costs nothing more without a sink.
+
+static BlitSink* s_Sink = nullptr;
+static const uint8_t* s_SinkTarget = nullptr;
+static std::atomic<uint32_t> s_SourceRevision{ 0 };
+
+uint32_t NextRevision()
+{
+    uint32_t revision = s_SourceRevision.fetch_add(1) + 1;
+    // Zero means untracked. A wrap after four billion bakes is far away, but
+    // skip it rather than hand out the one value that disables caching.
+    if (revision == 0)
+    {
+        revision = s_SourceRevision.fetch_add(1) + 1;
+    }
+    return revision;
+}
+
+void SetBlitSink(BlitSink* sink)
+{
+    s_Sink = sink;
+    s_SinkTarget = nullptr;
+}
+
+BlitSink* GetBlitSink()
+{
+    return s_Sink;
+}
+
+bool BeginSinkFrame(uint8_t* target, int32_t width, int32_t height, Deki::ColorFormat format, uint8_t clearR,
+                    uint8_t clearG, uint8_t clearB)
+{
+    s_SinkTarget = nullptr;
+    if (!s_Sink || !target || !s_Sink->BeginFrame(target, width, height, format, clearR, clearG, clearB))
+    {
+        return false;
+    }
+    s_SinkTarget = target;
+    return true;
+}
+
+void EndSinkFrame()
+{
+    if (s_Sink && s_SinkTarget)
+    {
+        s_Sink->EndFrame();
+    }
+    s_SinkTarget = nullptr;
+}
+
+const uint8_t* SinkTarget()
+{
+    return s_SinkTarget;
+}
+
+void NoteWritten(const uint8_t* buffer)
+{
+    if (buffer && buffer == s_SinkTarget)
+    {
+        s_Sink->TargetWritten();
+    }
+}
+
+// Hands a blit to the sink; true when it drew it. When it cannot, the CPU
+// draws it into the target, so the sink is told the target was written.
+static bool DrawOnSink(const SinkBlit& blit)
+{
+    if (s_Sink->Draw(blit))
+    {
+        return true;
+    }
+    s_Sink->TargetWritten();
+    return false;
 }
 
 // ============================================================================
@@ -1574,6 +1654,10 @@ void NextFrame()
 
 void ForgetScaled(const uint8_t* begin, size_t bytes)
 {
+    if (s_Sink)
+    {
+        s_Sink->Forget(begin, bytes);
+    }
     const uint8_t* end = begin + bytes;
     for (size_t i = s_Scaled.size(); i-- > 0;)
     {
@@ -1623,6 +1707,42 @@ void BlitScaled(const Source& source, uint8_t* target, int32_t targetWidth, int3
     if (!ComputeClipBounds(destX, destY, destWidth, destHeight, targetWidth, targetHeight, bounds))
     {
         return;
+    }
+
+    // A frame drawn by the sink: the rect, and the 16.16 steps BlitRows
+    // samples with, from the rect's corner.
+    if (target == s_SinkTarget)
+    {
+        SinkBlit blit;
+        blit.source = &source;
+        blit.left = bounds.startX;
+        blit.top = bounds.startY;
+        blit.right = bounds.endX;
+        blit.bottom = bounds.endY;
+        blit.originX = destX;
+        blit.originY = destY;
+        blit.originSx = 0;
+        blit.originSy = 0;
+        blit.dSxDx =
+            static_cast<int32_t>((static_cast<uint32_t>(source.width) << 16) / static_cast<uint32_t>(destWidth));
+        blit.dSyDx = 0;
+        blit.dSxDy = 0;
+        blit.dSyDy =
+            static_cast<int32_t>((static_cast<uint32_t>(source.height) << 16) / static_cast<uint32_t>(destHeight));
+        blit.sampleWidth = source.width;
+        blit.sampleHeight = source.height;
+        blit.repeatColumn = false;
+        blit.repeatRow = false;
+        blit.tintR = tintR;
+        blit.tintG = tintG;
+        blit.tintB = tintB;
+        blit.tintA = tintA;
+        blit.orderedDither = useOrderedDither && source.hasAlpha;
+        blit.clip = GetCurrentClipRect();
+        if (DrawOnSink(blit))
+        {
+            return;
+        }
     }
 
     // What TintScaledRows_RGB565 below would sample every frame: drawn 1:1
@@ -2187,6 +2307,40 @@ void Blit(const Source& source, uint8_t* target, int32_t targetWidth, int32_t ta
     args.dSyDx = static_cast<int32_t>(std::lround(-sinR * syScale * 65536.0f));
     args.dSxDy = static_cast<int32_t>(std::lround(sinR * sxScale * 65536.0f));
     args.dSyDy = static_cast<int32_t>(std::lround(cosR * syScale * 65536.0f));
+
+    // A frame drawn by the sink: the walk RotatedBlitT makes, from the box's
+    // corner, over the drawn size.
+    if (target == s_SinkTarget)
+    {
+        SinkBlit blit;
+        blit.source = &source;
+        blit.left = startX;
+        blit.top = startY;
+        blit.right = endX;
+        blit.bottom = endY;
+        blit.originX = startX;
+        blit.originY = startY;
+        blit.originSx = args.rowSx;
+        blit.originSy = args.rowSy;
+        blit.dSxDx = args.dSxDx;
+        blit.dSyDx = args.dSyDx;
+        blit.dSxDy = args.dSxDy;
+        blit.dSyDy = args.dSyDy;
+        blit.sampleWidth = DrawnWidth(source);
+        blit.sampleHeight = DrawnHeight(source);
+        blit.repeatColumn = source.stretchWidth > 0;
+        blit.repeatRow = source.stretchHeight > 0;
+        blit.tintR = tintR;
+        blit.tintG = tintG;
+        blit.tintB = tintB;
+        blit.tintA = tintA;
+        blit.orderedDither = p.dither;
+        blit.clip = clip;
+        if (DrawOnSink(blit))
+        {
+            return;
+        }
+    }
 
     const SrcKind kind = KindOf(source);
     if (targetFormat == Deki::ColorFormat::RGB565 && (kind == SrcKind::RGB565 || kind == SrcKind::RGB565A8) &&

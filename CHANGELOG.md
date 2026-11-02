@@ -16,6 +16,26 @@ alongside one that has them.
   compiled by whatever GPU code draws with it (deki-3d-gl's meshes, deki-gl's
   screen effects); a board without a GPU loads it and draws without it. The
   editor lists it as the Shader asset type and ships it with a build.
+- A blit sink (`QuadBlit::BlitSink`), so a GPU that builds the frame
+  (`deki-gl`'s presenter) can draw its 2D. While a sink frame is on
+  (`QuadBlit::BeginSinkFrame`), every `Blit` and `BlitScaled` into that
+  frame's buffer goes to the sink, worked out as the CPU would draw it
+  (`SinkBlit`: the clipped rectangle and the 16.16 steps it samples with), and
+  nothing reaches the buffer. Without a sink a blit tests one pointer more and
+  nothing else changes.
+- `DekiRenderSystem` draws the whole frames of a camera that clears into a
+  sink that takes them: the clear is the sink's, and the buffer starts empty
+  (transparent) and collects only what code writes into it directly.
+  Redrawing only what changed is skipped then, as the sink's frame starts
+  over each time. Strips and a camera that keeps its frame stay on the CPU.
+- `RenderPass::WritesBuffer`: whether a pass writes into the buffer other than
+  through QuadBlit. On a sink frame the renderer tells the sink after each
+  hook of a pass that does (`QuadBlit::NoteWritten`), so what it wrote is
+  composed in its place in the draw order. Yes by default; a pass that draws
+  only through QuadBlit says no and saves a look through the buffer.
+- `QuadBlit::Source::revision` and `QuadBlit::NextRevision()`: a number for a
+  source's pixels, new whenever they are written, so a sink keeps its upload
+  until it changes. `ForgetScaled` tells the sink too.
 
 ## 0.22.0
 

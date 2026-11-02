@@ -472,6 +472,11 @@ void DekiRenderSystem::Render(Deki::Scene* currentScene)
         m_WholeFrameHolds = true;
     }
 
+    if (RenderOnSink(currentScene, camera))
+    {
+        return;
+    }
+
     if (RenderChanges(currentScene, camera))
     {
         return;
@@ -497,6 +502,34 @@ void DekiRenderSystem::Render(Deki::Scene* currentScene)
     m_Renderer->Render(currentScene, ctx);
     m_PresentCount = -1;
     m_ForceFull = false;
+}
+
+bool DekiRenderSystem::RenderOnSink(Deki::Scene* scene, CameraComponent* camera)
+{
+    // Whole frames of a camera that clears: the sink's frame starts from the
+    // clear and holds nothing of the last. Strips, and a frame kept to draw
+    // over, stay on the CPU.
+    if (m_BandRows > 0 || !camera->clearEveryFrame || !QuadBlit::GetBlitSink())
+    {
+        return false;
+    }
+    const Deki::Color clear = camera->clearColor;
+    if (!QuadBlit::BeginSinkFrame(m_RenderBuffer, m_ScreenWidth, m_ScreenHeight, m_ColorFormat, clear.r, clear.g,
+                                  clear.b))
+    {
+        return false;
+    }
+    // The buffer no longer holds the frame: a frame drawn on the CPU after
+    // this one is drawn and sent whole. Redrawing only what changed has
+    // nothing to gain here anyway, as the sink's frame starts over each time.
+    ResetHistory();
+    RenderProfiler::CountFrame();
+    QuadBlit::NextFrame();
+    // No clear: the sink's frame starts from it, and the buffer from nothing.
+    RenderContext ctx{ camera, m_RenderBuffer, m_ScreenWidth, m_ScreenHeight, m_ColorFormat };
+    m_Renderer->Render(scene, ctx);
+    QuadBlit::EndSinkFrame();
+    return true;
 }
 
 const DirtyRegion* DekiRenderSystem::FindFrameChanges(Deki::Scene* scene, CameraComponent* camera, bool clearChanged)

@@ -623,6 +623,7 @@ void Standard2DRenderer::Render(Deki::Scene* scene, const RenderContext& ctx)
 
     QuadBlit::ClearClipStack();
     m_FrameBuffer = ctx.buffer;
+    m_SinkFrame = QuadBlit::SinkTarget() == ctx.buffer;
     // Drawing only part of the buffer (FindChanges): nothing writes outside it.
     if (!ctx.redraw.Empty())
     {
@@ -655,6 +656,7 @@ void Standard2DRenderer::Render(Deki::Scene* scene, const RenderContext& ctx)
     for (RenderPass* pass : m_BeginPasses)
     {
         pass->BeginFrame(frameCtx);
+        AfterHook(pass);
     }
 
     // Capture the camera once for the frame, against the target the passes
@@ -735,10 +737,12 @@ void Standard2DRenderer::Render(Deki::Scene* scene, const RenderContext& ctx)
     for (auto it = m_EndPasses.rbegin(); it != m_EndPasses.rend(); ++it)
     {
         (*it)->EndFrame(frameCtx);
+        AfterHook(*it);
     }
     SetCurrentDrawView({});
 
     QuadBlit::ClearTargetLimit();
+    m_SinkFrame = false;
 }
 
 bool Standard2DRenderer::FindChanges(Deki::Scene* scene, const RenderContext& ctx, DirtyRegion& changed)
@@ -903,6 +907,7 @@ void Standard2DRenderer::RenderObject(const SortItem& item, const RenderContext&
     for (RenderPass* pass : m_PrePasses)
     {
         pass->PreExecute(obj, objCtx);
+        AfterHook(pass);
     }
 
     // Phase 2: built-ins (sprite blit), into any target PreExecute redirected
@@ -950,6 +955,7 @@ void Standard2DRenderer::RenderObject(const SortItem& item, const RenderContext&
             RunClear();
         }
         pass->Execute(obj, objCtx);
+        AfterHook(pass);
     }
 
     // Phase 4: the sorted children, with objCtx, so they inherit any buffer
@@ -1007,6 +1013,7 @@ void Standard2DRenderer::RenderObject(const SortItem& item, const RenderContext&
     for (auto it = m_PostPasses.rbegin(); it != m_PostPasses.rend(); ++it)
     {
         (*it)->PostExecute(obj, objCtx);
+        AfterHook(*it);
     }
 
     // Phase 6: built-ins again (clip pop).

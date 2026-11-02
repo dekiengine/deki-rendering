@@ -121,6 +121,18 @@ public:
     /// outside it.
     virtual bool ReportsChanges() const { return false; }
 
+    /// Whether this pass's hooks may write into ctx.buffer other than through
+    /// QuadBlit: pixels set by hand, a memcpy, a software rasteriser. Where
+    /// the frame's 2D is drawn on a GPU (QuadBlit::BlitSink), QuadBlit's
+    /// blits never reach the buffer, and what a pass writes there is composed
+    /// over the GPU's frame after its hook, before anything drawn later, so
+    /// it keeps its place in the draw order. That costs a look through the
+    /// whole buffer each time. Say no for a pass that draws only through
+    /// QuadBlit or straight into the GPU's frame; one that writes only now
+    /// and then can say no and call QuadBlit::NoteWritten(ctx.buffer) when it
+    /// does. The default is yes.
+    virtual bool WritesBuffer() const { return true; }
+
     /// Adds to `changed` the pixels where this pass draws `obj` differently
     /// from the last frame: where it drew then and where it draws now, in
     /// pixels of the whole view (ctx is the whole view; ctx.buffer may be

@@ -98,6 +98,33 @@ fits in PSRAM. Strips keep every feature whole frames have:
   3D mesh pass while the scene has a mesh) gets whole frames, drawn in PSRAM,
   for as long as it cannot, and the log says so.
 
+## 2D on a GPU (`QuadBlit::BlitSink`)
+
+Where the display builds its frames on a GPU (`deki-gl`'s presenter, in a
+desktop build), the 2D can be drawn there too. The package that has a GPU
+registers a sink; `DekiRenderSystem` asks it to take each whole frame of a
+camera that clears, and while it does, QuadBlit hands it every blit into the
+frame's buffer, placed and clipped exactly as the CPU would draw it, instead
+of drawing it. QuadBlit knows nothing of the GPU, and without a sink it
+changes nothing.
+
+The frame's buffer then holds only what code writes into it directly, which
+the sink composes in its place in the draw order:
+
+- a render pass that writes into `ctx.buffer` itself (pixels by hand, a
+  software rasteriser) is followed by `QuadBlit::NoteWritten` after each of
+  its hooks; a pass that draws only through QuadBlit says so
+  (`WritesBuffer()` false) and costs nothing;
+- what a component hands QuadBlit is uploaded once and kept: give its source a
+  `revision` (`QuadBlit::NextRevision()`, new each time the pixels are
+  written), or mark pixels that never change `cacheScaled` and call
+  `ForgetScaled` before freeing them. A source with neither is uploaded again
+  every blit, which is right, only slow.
+
+A screenshot of the buffer (`GetFrameBuffer`) misses what the sink drew; the
+sink's frame has it (`deki-gl`'s `GLPresenter::ReadFrame`). So does a pass
+that reads the buffer back to work on the picture.
+
 ## Shaders
 
 `ShaderAsset` is a `.shader` file: GPU shader source in GLSL ES 3.00, split

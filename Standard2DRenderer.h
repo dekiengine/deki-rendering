@@ -210,6 +210,16 @@ private:
     const uint8_t* m_FrameBuffer = nullptr;  // the buffer Render() was given
     // The frame's clear while nothing has been written yet (ctx.clear).
     const DeferredClear* m_Clear = nullptr;
+    // The frame's blits go to a GPU (QuadBlit::BeginSinkFrame): after a hook
+    // of a pass that writes into the buffer itself, the sink is told.
+    bool m_SinkFrame = false;
+    void AfterHook(const RenderPass* pass)
+    {
+        if (m_SinkFrame && pass->WritesBuffer())
+        {
+            QuadBlit::NoteWritten(m_FrameBuffer);
+        }
+    }
     // Runs the frame's clear, if still pending, before something is drawn.
     void RunClear();
 

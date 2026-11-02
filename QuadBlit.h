@@ -213,7 +213,22 @@ struct Source
     // NextFrame). Set it only for pixels that stay as they are at this
     // address (a sprite's own); call ForgetScaled before they are freed.
     bool cacheScaled = false;
+
+    // Optional: a number for these pixels that no other pixels share, taken
+    // from NextRevision() whenever they are written (one each bake). A GPU
+    // drawing the blits (BlitSink) keeps its upload of them until it
+    // changes. 0 (the default) says nothing: unless cacheScaled promises the
+    // pixels stay as they are, they are uploaded again every blit, which is
+    // right, only slow. A revision kept while the pixels change in place
+    // shows the old ones.
+    uint32_t revision = 0;
 };
+
+/// A fresh, never-zero Source::revision, for whoever writes pixels a source
+/// points at. Unique for the program's life (until it wraps after four
+/// billion), so pixels freed and others written at the same address are never
+/// mistaken for each other.
+uint32_t NextRevision();
 
 /// The size `source` is drawn as: its stretched size (Source::stretchWidth,
 /// stretchHeight) where it has one, else its own.
@@ -236,8 +251,9 @@ inline int32_t DrawnHeight(const Source& source)
 ///
 /// NextFrame starts a frame: the render system calls it once a frame.
 void NextFrame();
-/// Drops the copies made of pixels in [begin, begin + bytes): call it before
-/// freeing pixels a source marked cacheScaled.
+/// Drops the copies made of pixels in [begin, begin + bytes), and tells the
+/// blit sink (BlitSink::Forget): call it before freeing pixels a source marked
+/// cacheScaled.
 void ForgetScaled(const uint8_t* begin, size_t bytes);
 /// Drops every copy.
 void ClearScaledCache();
@@ -300,6 +316,105 @@ void BlitScaled(const Source& source, uint8_t* target, int32_t targetWidth, int3
                 Deki::ColorFormat targetFormat, int32_t destX, int32_t destY, int32_t destWidth, int32_t destHeight,
                 uint8_t tintR = 255, uint8_t tintG = 255, uint8_t tintB = 255, uint8_t tintA = 255,
                 bool useOrderedDither = false);
+
+// ============================================================================
+// Blit sink: the frame's blits drawn by something else, a GPU
+// ============================================================================
+//
+// A display that builds its frames on a GPU (deki-gl's presenter) can draw
+// the 2D there too. The render system asks the registered sink to take a
+// frame (BeginSinkFrame); while it does, every Blit and BlitScaled into that
+// frame's buffer goes to the sink, in call order, placed and clipped exactly
+// as the CPU code would draw it, and nothing of it is drawn into the buffer.
+// The buffer then only holds what code writes into it directly, which the
+// sink is told of (NoteWritten) so it can compose it in its place.
+//
+// Without a sink, or into any other buffer, nothing changes: a blit tests one
+// pointer. QuadBlit knows nothing of the GPU; the sink is an interface.
+
+/// One blit, worked out as far as the CPU code works it out. Destination
+/// pixel (px, py) of [left, right) x [top, bottom), already within the clip
+/// and the target, samples source pixel (x, y):
+///
+///   x = (originSx + (px - originX) * dSxDx + (py - originY) * dSxDy) >> 16
+///   y = (originSy + (px - originX) * dSyDx + (py - originY) * dSyDy) >> 16
+///
+/// in 32-bit integer arithmetic, shifted arithmetically. A pixel whose (x, y)
+/// falls outside [0, sampleWidth) x [0, sampleHeight) is not drawn. Then x is
+/// 0 where repeatColumn and y 0 where repeatRow (a stretched strip), the
+/// source's flips apply (Source::flipH, flipV, and flipD only to a square
+/// source), and the pixel goes through the pipeline: dropped at alpha 0 or the
+/// chroma key (compared before the tint), its colour times the tint and its
+/// alpha times tintA (each Div255 of the product), dropped at alpha 0, then
+/// with orderedDither drawn opaque where its alpha exceeds the Bayer threshold
+/// at (px, py) and dropped elsewhere, otherwise blended over the target.
+struct SinkBlit
+{
+    const Source* source;
+    int32_t left, top, right, bottom;
+    int32_t originX, originY;
+    int32_t originSx, originSy;          // 16.16
+    int32_t dSxDx, dSyDx, dSxDy, dSyDy;  // 16.16
+    int32_t sampleWidth, sampleHeight;
+    bool repeatColumn, repeatRow;
+    uint8_t tintR, tintG, tintB, tintA;
+    bool orderedDither;  // already false for a source without alpha, as the CPU draws it
+    ClipRect clip;       // the clip it was drawn under, which the rect is already within
+};
+
+/// What draws the blits of a frame instead of the CPU. Registered once
+/// (SetBlitSink) by the package that has one; QuadBlit and the render system
+/// call it.
+class BlitSink
+{
+public:
+    virtual ~BlitSink() = default;
+
+    /// Whether the sink takes the frame drawn into `target`, of `width` x
+    /// `height` pixels in `format`, which starts as the opaque colour (clearR,
+    /// clearG, clearB) a clear of the target would write. Taking it, the sink
+    /// starts its frame from that colour and leaves `target` holding nothing,
+    /// so that it collects only what is written into it directly.
+    virtual bool BeginFrame(uint8_t* target, int32_t width, int32_t height, Deki::ColorFormat format, uint8_t clearR,
+                            uint8_t clearG, uint8_t clearB) = 0;
+
+    /// Draws one blit into the frame, after everything before it. False when
+    /// it cannot (a source too big for it, say): the CPU then draws the blit
+    /// into the target, and TargetWritten follows.
+    virtual bool Draw(const SinkBlit& blit) = 0;
+
+    /// Something was written into the target directly. What it holds goes
+    /// over the frame before anything drawn after this, and the target is
+    /// left holding nothing again.
+    virtual void TargetWritten() = 0;
+
+    /// The frame's last blit has been drawn. What the target still holds is
+    /// the caller's to compose last (a display presenting the buffer).
+    virtual void EndFrame() = 0;
+
+    /// The pixels in [begin, begin + bytes) are going away (ForgetScaled):
+    /// nothing kept of them may be used for pixels later at those addresses.
+    virtual void Forget(const uint8_t* begin, size_t bytes) = 0;
+};
+
+/// Registers the sink, or removes it with null.
+void SetBlitSink(BlitSink* sink);
+BlitSink* GetBlitSink();
+
+/// Starts a frame into `target` on the registered sink, if it takes it: from
+/// then until EndSinkFrame, blits into `target` go to the sink. False, and the
+/// CPU draws as usual, when there is no sink or it declines.
+bool BeginSinkFrame(uint8_t* target, int32_t width, int32_t height, Deki::ColorFormat format, uint8_t clearR,
+                    uint8_t clearG, uint8_t clearB);
+void EndSinkFrame();
+
+/// The buffer whose blits go to the sink now, or null outside a sink frame.
+const uint8_t* SinkTarget();
+
+/// Tells the sink that code wrote into `buffer` directly, when it is the sink
+/// frame's target; nothing otherwise. The renderer calls it after the hooks
+/// of a render pass that writes into the buffer (RenderPass::WritesBuffer).
+void NoteWritten(const uint8_t* buffer);
 
 // ============================================================================
 // Per-row kernel dispatch

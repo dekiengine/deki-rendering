@@ -75,6 +75,14 @@ private:
     // Whole frames drawn only where they changed. False: draw it as usual.
     bool RenderChanges(Deki::Scene* scene, CameraComponent* camera);
 
+    // ---- 2D on a GPU (QuadBlit::BlitSink) ----
+    // Where a sink is registered and takes the frame, the whole frame is
+    // drawn into it: the clear is the sink's, the buffer starts empty
+    // (transparent) and collects only what is written into it directly, which
+    // the display composes over the sink's frame as it presents. False: draw
+    // it on the CPU as usual.
+    bool RenderOnSink(Deki::Scene* scene, CameraComponent* camera);
+
     // ---- strip rendering (RenderingProjectSettings::bandRows) ----
     // With bandRows set there is no framebuffer: each frame is drawn a strip
     // of rows at a time into m_BandBuffer, in internal RAM, and each strip is
