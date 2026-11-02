@@ -98,6 +98,13 @@ fits in PSRAM. Strips keep every feature whole frames have:
   3D mesh pass while the scene has a mesh) gets whole frames, drawn in PSRAM,
   for as long as it cannot, and the log says so.
 
+## Shaders
+
+`ShaderAsset` is a `.shader` file: GPU shader source in GLSL ES 3.00, split
+into a shared part and the parts after `// @vertex` and `// @fragment`
+markers. This package only loads it; what it must define depends on what
+draws with it. See deki-3d-gl for mesh shaders and deki-gl for screen effects.
+
 ## Dependencies
 
 | Dependency | Type |

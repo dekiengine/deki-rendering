@@ -8,6 +8,15 @@ breaking change bumps the minor across the editor, the engine and every
 package together, so a package with no changes of its own is still released
 alongside one that has them.
 
+## Unreleased
+
+### Added
+- `ShaderAsset` (`.shader`): GPU shader source, GLSL ES 3.00, in a shared
+  part and `// @vertex` and `// @fragment` parts. Loaded as text everywhere and
+  compiled by whatever GPU code draws with it (deki-3d-gl's meshes, deki-gl's
+  screen effects); a board without a GPU loads it and draws without it. The
+  editor lists it as the Shader asset type and ships it with a build.
+
 ## 0.22.0
 
 ### Changed

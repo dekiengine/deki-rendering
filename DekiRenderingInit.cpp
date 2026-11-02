@@ -3,6 +3,7 @@
 #include "DekiRendererRegistry.h"
 #include "DekiRenderPassRegistry.h"
 #include "DekiSortingCallbackRegistry.h"
+#include "ShaderAsset.h"
 #include "Standard2DRenderer.h"
 #include <deki/Engine.h>
 #include <deki/ProjectSettings.h>
@@ -103,6 +104,9 @@ void DekiRenderingInitSystem()
     {
         return;
     }
+
+    // Shaders load wherever the scene names one, GPU or not (ShaderAsset.h).
+    DekiRenderingRegisterShaderLoader();
 
     // 1. The render system: framebuffer and camera lookup.
     s_RenderSystem = new DekiRenderSystem();
