@@ -45,6 +45,16 @@ alongside one that has them.
   source's pixels, new whenever they are written, so a sink keeps its upload
   until it changes. `ForgetScaled` tells the sink too.
 
+### Changed
+- QuadBlit's row loops stay where they are meant to on an ESP32. Each one
+  `Blit` or `BlitScaled` calls is in IRAM and never inlined into those
+  callers, which run from flash; before, the compiler inlined some of them and
+  dropped their IRAM copy, and which ones changed with any edit nearby (the
+  1:1 alpha blend of RGB565A8 sprites ran from flash). The general per-pixel
+  path (`BlitRows`) is in flash, as it was in every build: in IRAM it took
+  12 KB and drew Wyrdmoor on a T-Deck no faster. IRAM on a T-Deck build:
+  2.4 KB more.
+
 ## 0.22.0
 
 ### Changed

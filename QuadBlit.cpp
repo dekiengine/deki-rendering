@@ -610,7 +610,14 @@ static const TintTables& TintTablesFor(uint8_t tintR, uint8_t tintG, uint8_t tin
     return s_Tables[i];
 }
 
-// Fills n RGB565 pixels with one stored value, two at a time.
+// The row loops below but BlitRows run from IRAM (DEKI_FAST_ATTR), and each
+// one Blit or BlitScaled calls is [[gnu::noinline]]: those run from flash,
+// and a loop inlined into one runs from flash with it, its IRAM copy dropped.
+// Which ones the compiler inlined changed with any edit near a caller, and
+// with it how fast a blit was and how much IRAM the build took.
+
+// Fills n RGB565 pixels with one stored value, two at a time. Inlined where
+// it may be: every caller is a row loop in IRAM.
 static DEKI_FAST_ATTR void FillRow565(uint16_t* dst, int32_t n, uint16_t value)
 {
     if (n <= 0)
@@ -739,8 +746,9 @@ template <bool SourceAlpha, bool AlphaTint, int32_t Bpp>
 // BlendRows_RGB565A8_to_RGB565 does, was measured slower here on an
 // ESP32-S3: 100 ns a pixel against 80.)
 template <bool SourceAlpha, bool AlphaTint, int32_t Bpp>
-static DEKI_FAST_ATTR void TintRows_RGB565(const Source& source, uint16_t* target16, int32_t targetWidth, int32_t destX,
-                                           int32_t destY, const BlitBounds& b, const BlitParams& p)
+[[gnu::noinline]] static DEKI_FAST_ATTR void TintRows_RGB565(const Source& source, uint16_t* target16,
+                                                             int32_t targetWidth, int32_t destX, int32_t destY,
+                                                             const BlitBounds& b, const BlitParams& p)
 {
     const TintTables& t = TintTablesFor(p.tintR, p.tintG, p.tintB);
     const int32_t stride = SourceStride(source);
@@ -883,9 +891,9 @@ static inline void TintRowsFor(const Source& source, uint16_t* target16, int32_t
 // tight loop per row: a particle emitter draws each particle this way into
 // its composite, dozens a frame.
 template <bool SourceAlpha>
-static DEKI_FAST_ATTR void TintScaledRows_RGB565A8(const Source& source, uint8_t* target, int32_t targetWidth,
-                                                   int32_t destX, int32_t destY, int32_t destWidth, int32_t destHeight,
-                                                   const BlitBounds& b, const BlitParams& p)
+[[gnu::noinline]] static DEKI_FAST_ATTR void
+TintScaledRows_RGB565A8(const Source& source, uint8_t* target, int32_t targetWidth, int32_t destX, int32_t destY,
+                        int32_t destWidth, int32_t destHeight, const BlitBounds& b, const BlitParams& p)
 {
     const TintTables& t = TintTablesFor(p.tintR, p.tintG, p.tintB);
     const int32_t stride = SourceStride(source);
@@ -953,9 +961,9 @@ static DEKI_FAST_ATTR void TintScaledRows_RGB565A8(const Source& source, uint8_t
 // source's bytes per pixel is a constant, so finding a pixel is a shift and
 // an add.
 template <bool SourceAlpha, int32_t Bpp>
-static DEKI_FAST_ATTR void TintScaledRows_RGB565(const Source& source, uint16_t* target16, int32_t targetWidth,
-                                                 int32_t destX, int32_t destY, int32_t destWidth, int32_t destHeight,
-                                                 const BlitBounds& b, const BlitParams& p)
+[[gnu::noinline]] static DEKI_FAST_ATTR void
+TintScaledRows_RGB565(const Source& source, uint16_t* target16, int32_t targetWidth, int32_t destX, int32_t destY,
+                      int32_t destWidth, int32_t destHeight, const BlitBounds& b, const BlitParams& p)
 {
     const TintTables& t = TintTablesFor(p.tintR, p.tintG, p.tintB);
     const int32_t stride = SourceStride(source);
@@ -999,8 +1007,9 @@ static DEKI_FAST_ATTR void TintScaledRows_RGB565(const Source& source, uint16_t*
 // RGB565 -> RGB565, no tint or key: row copy (the SIMD kernel when aligned).
 // A source whose rows are each one colour is filled instead, reading one
 // pixel a row; one whose rows all equal the first copies that row each time.
-static DEKI_FAST_ATTR bool CopyRows_RGB565(const Source& source, uint16_t* target16, int32_t targetWidth, int32_t destX,
-                                           int32_t destY, const BlitBounds& b)
+[[gnu::noinline]] static DEKI_FAST_ATTR bool CopyRows_RGB565(const Source& source, uint16_t* target16,
+                                                             int32_t targetWidth, int32_t destX, int32_t destY,
+                                                             const BlitBounds& b)
 {
     const int32_t stride = SourceStride(source);
     const int32_t rowPixels = b.endX - b.startX;
@@ -1036,9 +1045,10 @@ static DEKI_FAST_ATTR bool CopyRows_RGB565(const Source& source, uint16_t* targe
 // (Source::stretchWidth/stretchHeight), no tint: one column fills each row
 // with its pixel for that row; one row is sampled into the first row drawn,
 // as the scaled paths sample it, and that row copied down the rest.
-static DEKI_FAST_ATTR void StretchRows_RGB565(const Source& source, uint16_t* target16, int32_t targetWidth,
-                                              int32_t destX, int32_t destY, int32_t destWidth, int32_t destHeight,
-                                              const BlitBounds& b)
+[[gnu::noinline]] static DEKI_FAST_ATTR void StretchRows_RGB565(const Source& source, uint16_t* target16,
+                                                                int32_t targetWidth, int32_t destX, int32_t destY,
+                                                                int32_t destWidth, int32_t destHeight,
+                                                                const BlitBounds& b)
 {
     const int32_t stride = SourceStride(source);
     const int32_t rowPixels = b.endX - b.startX;
@@ -1069,8 +1079,9 @@ static DEKI_FAST_ATTR void StretchRows_RGB565(const Source& source, uint16_t* ta
 // Inside [start, end) no pixel is the key (straight copy); outside, every
 // pixel is the key (skipped without a read). A row stored as (-1, -1) has a
 // key pixel inside its run and is compared pixel by pixel.
-static DEKI_FAST_ATTR bool CopyRows_RGB565_ChromaSpans(const Source& source, uint16_t* target16, int32_t targetWidth,
-                                                       int32_t destX, int32_t destY, const BlitBounds& b)
+[[gnu::noinline]] static DEKI_FAST_ATTR bool CopyRows_RGB565_ChromaSpans(const Source& source, uint16_t* target16,
+                                                                         int32_t targetWidth, int32_t destX,
+                                                                         int32_t destY, const BlitBounds& b)
 {
     const int32_t stride = SourceStride(source);
     const int16_t* spans = source.chromaRowSpans;
@@ -1165,8 +1176,9 @@ static DEKI_FAST_ATTR bool CopyRows_RGB565_ChromaSpans(const Source& source, uin
 // (left blend | opaque copy | right blend) when spans are available,
 // otherwise a blend of the whole row. The blends skip the row's transparent
 // run (clearRowSpans) without reading it.
-static DEKI_FAST_ATTR bool BlendRows_RGB565A8_to_RGB565(const Source& source, uint16_t* target16, int32_t targetWidth,
-                                                        int32_t destX, int32_t destY, const BlitBounds& b)
+[[gnu::noinline]] static DEKI_FAST_ATTR bool BlendRows_RGB565A8_to_RGB565(const Source& source, uint16_t* target16,
+                                                                          int32_t targetWidth, int32_t destX,
+                                                                          int32_t destY, const BlitBounds& b)
 {
     const int32_t stride = SourceStride(source);
     const int32_t bpp = source.bytesPerPixel;
@@ -1249,8 +1261,9 @@ static DEKI_FAST_ATTR bool BlendRows_RGB565A8_to_RGB565(const Source& source, ui
 
 // RGB565A8 -> RGB565A8, no tint or key: opaque copy when the source declares
 // no alpha, otherwise the plain pipeline per pixel.
-static DEKI_FAST_ATTR bool Rows_RGB565A8_to_RGB565A8(const Source& source, uint8_t* target, int32_t targetWidth,
-                                                     int32_t destX, int32_t destY, const BlitBounds& b)
+[[gnu::noinline]] static DEKI_FAST_ATTR bool Rows_RGB565A8_to_RGB565A8(const Source& source, uint8_t* target,
+                                                                       int32_t targetWidth, int32_t destX,
+                                                                       int32_t destY, const BlitBounds& b)
 {
     const int32_t stride = SourceStride(source);
     const int32_t bpp = source.bytesPerPixel;
@@ -1289,10 +1302,12 @@ static DEKI_FAST_ATTR bool Rows_RGB565A8_to_RGB565A8(const Source& source, uint8
 // Scaled blit: 16.16 fixed-point stepping (1:1 is a step of 65536)
 // ============================================================================
 
+// The per-pixel pipeline at any scale, for whatever the row loops above do
+// not take. From flash, inlined into its callers: twenty instances in IRAM
+// would take 12 KB of it, and Wyrdmoor on a T-Deck drew no faster.
 template <SrcKind SK, Deki::ColorFormat F, bool Plain>
-static DEKI_FAST_ATTR void BlitRows(const Source& source, uint8_t* target, int32_t targetWidth, int32_t destX,
-                                    int32_t destY, int32_t destWidth, int32_t destHeight, const BlitBounds& b,
-                                    const BlitParams& P)
+static void BlitRows(const Source& source, uint8_t* target, int32_t targetWidth, int32_t destX, int32_t destY,
+                     int32_t destWidth, int32_t destHeight, const BlitBounds& b, const BlitParams& P)
 {
     const int32_t bpp = source.bytesPerPixel;
     const int32_t stride = SourceStride(source);
