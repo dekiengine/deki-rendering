@@ -11,6 +11,8 @@ alongside one that has them.
 ## Unreleased
 
 ### Added
+- `GL::GenerateMipmap` and `gl::LINEAR_MIPMAP_LINEAR`, for deki-3d's smooth
+  textures.
 - Lights: the `Light` component (Ambient, Directional, Point, Spot; colour,
   intensity, range, a spot's angle and softness, a sun's yaw and pitch, 2D
   bands, shadows). Every active Light in the scene lights deki-3d's meshes and

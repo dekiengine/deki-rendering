@@ -85,6 +85,7 @@ constexpr GLenum RENDERER = 0x1F01;
 constexpr GLenum VERSION = 0x1F02;
 constexpr GLenum NEAREST = 0x2600;
 constexpr GLenum LINEAR = 0x2601;
+constexpr GLenum LINEAR_MIPMAP_LINEAR = 0x2703;
 constexpr GLenum TEXTURE_MAG_FILTER = 0x2800;
 constexpr GLenum TEXTURE_MIN_FILTER = 0x2801;
 constexpr GLenum TEXTURE_WRAP_S = 0x2802;
@@ -195,7 +196,12 @@ struct GL
     X(void, UniformMatrix4fv, (GLint location, GLsizei count, GLboolean transpose, const GLfloat* value))         \
     X(void, DrawElements, (GLenum mode, GLsizei count, GLenum type, const void* offset))                         \
     X(void, DrawArrays, (GLenum mode, GLint first, GLsizei count))                                                \
-    X(void, BlendFunc, (GLenum src, GLenum dst))                                                                      X(void, ColorMask, (GLboolean r, GLboolean g, GLboolean b, GLboolean a))                                         X(void, PolygonOffset, (GLfloat factor, GLfloat units))                                                          X(void, DrawBuffers, (GLsizei n, const GLenum* buffers))                                                         X(void, ReadBuffer, (GLenum buffer))                                                                         \
+    X(void, BlendFunc, (GLenum src, GLenum dst))                                                                  \
+    X(void, ColorMask, (GLboolean r, GLboolean g, GLboolean b, GLboolean a))                                      \
+    X(void, PolygonOffset, (GLfloat factor, GLfloat units))                                                       \
+    X(void, DrawBuffers, (GLsizei n, const GLenum* buffers))                                                      \
+    X(void, ReadBuffer, (GLenum buffer))                                                                          \
+    X(void, GenerateMipmap, (GLenum target))                                                                      \
     X(void, TexSubImage2D,                                                                                        \
       (GLenum target, GLint level, GLint x, GLint y, GLsizei width, GLsizei height, GLenum format, GLenum type,   \
        const void* pixels))                                                                                       \
