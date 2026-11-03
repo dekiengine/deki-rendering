@@ -40,9 +40,10 @@ enum class LightType : uint8_t
 /// as well as reveal. A scene with no Light is not lit at all: everything
 /// draws in its own colours, as without this component.
 ///
-/// In 2D a light sits at its object's position and a spot points along its
-/// rotation; a directional light lights 2D evenly, as ambient does. What the
-/// camera draws above its litUpToSortOrder (the UI) is not lit.
+/// A light sits at its object's position, and a spot points along its
+/// object's X axis: in 2D, the way its rotation turns it. A directional light
+/// lights 2D evenly, as ambient does. What the camera draws above its
+/// litUpToSortOrder (the UI) is not lit.
 ///
 /// Shadows: directional and spot lights cast them where the display draws
 /// through OpenGL, at most two lights a frame. A board without OpenGL draws
@@ -56,7 +57,8 @@ public:
     ~Light() override;
 
     DEKI_TOOLTIP("Ambient lights everything the same. Directional lights from one far direction, like the sun. Point "
-                 "lights round the object, out to the range. Spot lights a cone along the object's facing.")
+                 "lights round the object, out to the range. Spot lights a cone along the object's X axis, the way "
+                 "its rotation turns it.")
     DEKI_EXPORT
     LightType type = LightType::Point;
 

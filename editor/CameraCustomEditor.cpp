@@ -45,6 +45,7 @@ public:
             ui.PropertyField("farPlane");
         }
         ui.PropertyField("clearEveryFrame");
+        ui.PropertyField("litUpToSortOrder");
     }
 
     // "x3" at the end of the Ortho Height field: the scale the previewed screen

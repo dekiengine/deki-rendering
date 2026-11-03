@@ -58,7 +58,10 @@ constexpr GLenum ONE = 1;
 constexpr GLenum ONE_MINUS_SRC_ALPHA = 0x0303;
 constexpr GLenum SRC_COLOR = 0x0300;
 constexpr GLenum DST_COLOR = 0x0306;
+constexpr GLenum NONE = 0;
 constexpr GLenum LESS = 0x0201;
+constexpr GLenum LEQUAL = 0x0203;
+constexpr GLenum FRONT = 0x0404;
 constexpr GLenum BACK = 0x0405;
 constexpr GLenum CCW = 0x0901;
 constexpr GLenum CULL_FACE = 0x0B44;
@@ -74,20 +77,29 @@ constexpr GLenum UNSIGNED_BYTE = 0x1401;
 constexpr GLenum SHORT = 0x1402;
 constexpr GLenum UNSIGNED_SHORT = 0x1403;
 constexpr GLenum INT = 0x1404;
+constexpr GLenum UNSIGNED_INT = 0x1405;
 constexpr GLenum FLOAT = 0x1406;
+constexpr GLenum DEPTH_COMPONENT = 0x1902;
 constexpr GLenum RGBA = 0x1908;
 constexpr GLenum RENDERER = 0x1F01;
 constexpr GLenum VERSION = 0x1F02;
 constexpr GLenum NEAREST = 0x2600;
+constexpr GLenum LINEAR = 0x2601;
 constexpr GLenum TEXTURE_MAG_FILTER = 0x2800;
 constexpr GLenum TEXTURE_MIN_FILTER = 0x2801;
 constexpr GLenum TEXTURE_WRAP_S = 0x2802;
 constexpr GLenum TEXTURE_WRAP_T = 0x2803;
 constexpr GLenum REPEAT = 0x2901;
+constexpr GLenum POLYGON_OFFSET_FILL = 0x8037;
 constexpr GLenum CLAMP_TO_EDGE = 0x812F;
 constexpr GLenum RGBA8 = 0x8058;
 constexpr GLenum DEPTH_COMPONENT24 = 0x81A6;
 constexpr GLenum TEXTURE0 = 0x84C0;
+constexpr GLenum TEXTURE1 = 0x84C1;
+constexpr GLenum TEXTURE2 = 0x84C2;
+constexpr GLenum TEXTURE_COMPARE_MODE = 0x884C;
+constexpr GLenum TEXTURE_COMPARE_FUNC = 0x884D;
+constexpr GLenum COMPARE_REF_TO_TEXTURE = 0x884E;
 constexpr GLenum ARRAY_BUFFER = 0x8892;
 constexpr GLenum ELEMENT_ARRAY_BUFFER = 0x8893;
 constexpr GLenum STREAM_DRAW = 0x88E0;
@@ -183,7 +195,7 @@ struct GL
     X(void, UniformMatrix4fv, (GLint location, GLsizei count, GLboolean transpose, const GLfloat* value))         \
     X(void, DrawElements, (GLenum mode, GLsizei count, GLenum type, const void* offset))                         \
     X(void, DrawArrays, (GLenum mode, GLint first, GLsizei count))                                                \
-    X(void, BlendFunc, (GLenum src, GLenum dst))                                                                  \
+    X(void, BlendFunc, (GLenum src, GLenum dst))                                                                      X(void, ColorMask, (GLboolean r, GLboolean g, GLboolean b, GLboolean a))                                         X(void, PolygonOffset, (GLfloat factor, GLfloat units))                                                          X(void, DrawBuffers, (GLsizei n, const GLenum* buffers))                                                         X(void, ReadBuffer, (GLenum buffer))                                                                         \
     X(void, TexSubImage2D,                                                                                        \
       (GLenum target, GLint level, GLint x, GLint y, GLsizei width, GLsizei height, GLenum format, GLenum type,   \
        const void* pixels))                                                                                       \

@@ -28,6 +28,37 @@ shows more at the sides. Perspective, it shows a vertical `fieldOfView` for 3D
 meshes. `pixelPerfect` scales by whole numbers for pixel art. Every screen
 renders at its own resolution.
 
+## Lights
+
+A `Light` lights what the camera draws: an Ambient light everywhere, a
+Directional one from far away (yaw and pitch), a Point one round its object,
+a Spot one in a cone along its object's facing, each in a colour and
+intensity, out to a range. Meshes (deki-3d) and the 2D world are lit by every
+active Light in the scene; a scene with none is not lit at all.
+
+A pixel becomes its colour times the light reaching it, up to twice the
+colour, so a lamp can brighten as well as reveal. In 2D a directional light
+lights everything evenly, like ambient light, and a Point or Spot light with
+`bands` lights in that many hard rings, for pixel art.
+
+- What draws above the camera's `litUpToSortOrder`, the UI, keeps its own
+  colours.
+- The 2D light is laid over the frame, so a renderer that lights itself (a
+  lit mesh, `RendererComponent::LightsItself`) has it laid before it draws.
+- On the CPU (`Lighting2D`), the light is worked out per 4x4 block of the
+  view and blended between blocks, dithered, where it changes. It is kept
+  from frame to frame while the lights stay put, and a device lights the
+  pixels on both cores. A strip or a redraw of part of the frame is lit
+  exactly as the whole frame, and a light that moves marks where it was and
+  where it is as changed. On a T-Deck, a night scene of six soft pools over
+  320x240 costs about 6 ms a frame; hard rings and flat ambient cost less.
+- On the GPU (`GLPresenter`), the light is a full-screen pass worked out at
+  each pixel, from the ambient and up to 16 point and spot lights. More are
+  said once.
+- Shadows are deki-3d's, from directional and spot lights, on the GPU only.
+  A build for a board without OpenGL lists each light that casts them, and
+  the board draws it without them.
+
 ## Redrawing only what changed (`redrawChanges`)
 
 Off by default. Turn on the project's Rendering setting `redrawChanges` and

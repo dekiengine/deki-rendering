@@ -11,6 +11,24 @@ alongside one that has them.
 ## Unreleased
 
 ### Added
+- Lights: the `Light` component (Ambient, Directional, Point, Spot; colour,
+  intensity, range, a spot's angle and softness, a sun's yaw and pitch, 2D
+  bands, shadows). Every active Light in the scene lights deki-3d's meshes and
+  the 2D world; a scene with none is lit as before, not at all.
+- The 2D light, `Lighting2D`: worked out per 4x4 block, blended and dithered
+  between blocks where it changes, up to twice a colour, laid over the frame
+  by `Standard2DRenderer` before the first object above the camera's
+  `litUpToSortOrder` (new; the default lights everything) or before a
+  renderer that `LightsItself()` (new, on `RendererComponent`). Strips and
+  redraws of part of the frame are lit as the whole frame, and a changed
+  light is a changed region. On a device both cores light the pixels.
+- On the GPU the 2D light is a full-screen pass, per pixel
+  (`QuadBlit::BlitSink::Light`, `QuadBlit::LightSinkFrame`, the presenter's
+  2D light program, HLSL in `editor/Light2DShader.cpp`, compiled into
+  `GLLight2DShader.inl`). A sink that cannot light says so, once.
+- In the editor: the Light inspector and its gizmos (a point's reach, a
+  spot's cone), and a check of the scenes a build ships that lists each
+  shadow-casting light a board without OpenGL draws without its shadows.
 - OpenGL, where the platform provides `opengl` (its build then defines
   `DEKI_CAPABILITY_OPENGL`; a board never does and compiles none of it): the
   GL loader and shared context (`GLApi.h`), a presenter that builds each frame
