@@ -71,7 +71,12 @@ public:
     bool On() const { return m_On; }
     int32_t LitUpToSortOrder() const { return m_LitUpTo; }
     const std::vector<Light2D>& Lights() const { return m_Lights; }
-    void Ambient(float& r, float& g, float& b) const;
+    void Ambient(float& r, float& g, float& b) const
+    {
+        r = m_AmbientR;
+        g = m_AmbientG;
+        b = m_AmbientB;
+    }
 
     /// Lights `area` of `buffer` (its own pixels; empty for all of it), a
     /// buffer holding the view's rows from viewTop and columns from viewLeft.

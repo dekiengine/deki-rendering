@@ -62,6 +62,7 @@ public:
     void TargetWritten() override;
     void EndFrame() override;
     void Forget(const uint8_t* begin, size_t bytes) override;
+    bool Light(const DekiRendering::Lighting2D& lighting) override;
 
     /// Draws the queued quads into the frame. The presenter calls it before
     /// anything else draws into the frame or reads it.

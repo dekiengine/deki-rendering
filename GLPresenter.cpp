@@ -7,6 +7,7 @@
 
 #include "GLBlitSink.h"
 #include "ScreenEffect.h"
+#include "deki-rendering/Lighting2D.h"
 #include "deki-rendering/PixelFormat.h"
 #include "deki-rendering/QuadBlit.h"
 #include "deki-rendering/ShaderAsset.h"
@@ -14,6 +15,7 @@
 #include <deki/LogSystem.h>
 
 #include <algorithm>
+#include <cstdio>
 #include <chrono>
 #include <string>
 
@@ -21,6 +23,8 @@ namespace DekiGL
 {
 namespace
 {
+
+#include "GLLight2DShader.inl"
 
 GLPresenter* s_Active = nullptr;
 
@@ -483,6 +487,111 @@ GLuint GLPresenter::Compile(GLenum type, const std::string& source, const char* 
         return 0;
     }
     return shader;
+}
+
+bool GLPresenter::BuildLight2D()
+{
+    m_Light2D.tried = true;
+    const GL& gl = m_Context->Functions();
+    const bool es = m_Context->IsES();
+    const GLuint vs = Compile(gl::VERTEX_SHADER, es ? kLight2DVertexES : kLight2DVertexGL, "the 2D light's shader");
+    const GLuint fs =
+        vs ? Compile(gl::FRAGMENT_SHADER, es ? kLight2DFragmentES : kLight2DFragmentGL, "the 2D light's shader") : 0;
+    if (!vs || !fs)
+    {
+        gl.DeleteShader(vs);
+        return false;
+    }
+    m_Light2D.id = gl.CreateProgram();
+    gl.AttachShader(m_Light2D.id, vs);
+    gl.AttachShader(m_Light2D.id, fs);
+    gl.LinkProgram(m_Light2D.id);
+    gl.DeleteShader(vs);
+    gl.DeleteShader(fs);
+    GLint linked = 0;
+    gl.GetProgramiv(m_Light2D.id, gl::LINK_STATUS, &linked);
+    if (!linked)
+    {
+        DEKI_LOG_ERROR("OpenGL: the 2D light's shader does not link");
+        gl.DeleteProgram(m_Light2D.id);
+        m_Light2D.id = 0;
+        return false;
+    }
+    // In the struct `u` the compiler keeps uniforms in, an array as a struct
+    // of its own whose `data` holds the elements (ShaderCompiler.h).
+    char name[32];
+    for (int i = 0; i < kMaxLights2D; i++)
+    {
+        std::snprintf(name, sizeof(name), "u.uLightA.data[%d]", i);
+        m_Light2D.a[i] = gl.GetUniformLocation(m_Light2D.id, name);
+        std::snprintf(name, sizeof(name), "u.uLightB.data[%d]", i);
+        m_Light2D.b[i] = gl.GetUniformLocation(m_Light2D.id, name);
+        std::snprintf(name, sizeof(name), "u.uLightC.data[%d]", i);
+        m_Light2D.c[i] = gl.GetUniformLocation(m_Light2D.id, name);
+    }
+    m_Light2D.count = gl.GetUniformLocation(m_Light2D.id, "u.uCount");
+    m_Light2D.ambient = gl.GetUniformLocation(m_Light2D.id, "u.uAmbient");
+    m_Light2D.height = gl.GetUniformLocation(m_Light2D.id, "u.uHeight");
+    return true;
+}
+
+bool GLPresenter::DrawLight2D(const DekiRendering::Lighting2D& lighting)
+{
+    if (!m_InFrame || !m_Context->MakeCurrent())
+    {
+        return false;
+    }
+    if (!m_Light2D.tried)
+    {
+        BuildLight2D();
+    }
+    if (!m_Light2D.id)
+    {
+        return false;
+    }
+    // What is queued lies under the light.
+    Flush2D();
+    const GL& gl = m_Context->Functions();
+    const auto& lights = lighting.Lights();
+    const int count = static_cast<int>(std::min<size_t>(lights.size(), kMaxLights2D));
+    if (lights.size() > static_cast<size_t>(kMaxLights2D) && !m_TooManyLightsReported)
+    {
+        m_TooManyLightsReported = true;
+        DEKI_LOG_WARNING("Lights: the frame has %d point and spot lights; the GPU draws the first %d",
+                         static_cast<int>(lights.size()), kMaxLights2D);
+    }
+    gl.UseProgram(m_Light2D.id);
+    for (int i = 0; i < count; i++)
+    {
+        const DekiRendering::Light2D& l = lights[static_cast<size_t>(i)];
+        gl.Uniform4f(m_Light2D.a[i], l.x, l.y, l.radius, static_cast<float>(l.bands));
+        gl.Uniform4f(m_Light2D.b[i], l.r, l.g, l.b, l.spot ? 1.0f : 0.0f);
+        gl.Uniform4f(m_Light2D.c[i], l.dirX, l.dirY, l.cosOuter, l.cosInner);
+    }
+    float ar, ag, ab;
+    lighting.Ambient(ar, ag, ab);
+    gl.Uniform1i(m_Light2D.count, count);
+    gl.Uniform3f(m_Light2D.ambient, ar, ag, ab);
+    gl.Uniform1f(m_Light2D.height, static_cast<float>(m_Height));
+
+    gl.BindFramebuffer(gl::FRAMEBUFFER, m_Framebuffer);
+    gl.Viewport(0, 0, m_Width, m_Height);
+    gl.Disable(gl::DEPTH_TEST);
+    gl.Disable(gl::CULL_FACE);
+    gl.Enable(gl::BLEND);
+    // Frame x 2 x (light / 2): the frame times the light, up to twice it.
+    gl.BlendFunc(gl::DST_COLOR, gl::SRC_COLOR);
+    gl.BindVertexArray(m_VertexArray);
+    gl.DrawArrays(gl::TRIANGLES, 0, 3);
+    gl.Disable(gl::BLEND);
+
+    const GLenum error = gl.GetError();
+    if (error != 0 && !m_ErrorReported)
+    {
+        m_ErrorReported = true;
+        DEKI_LOG_WARNING("OpenGL: OpenGL error 0x%04X lighting the frame", error);
+    }
+    return true;
 }
 
 GLPresenter::EffectProgram GLPresenter::LinkEffect(const DekiRendering::ShaderAsset& shader)

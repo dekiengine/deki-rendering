@@ -450,6 +450,11 @@ void GLBlitSink::LayerPushed(const uint8_t* buffer)
     }
 }
 
+bool GLBlitSink::Light(const DekiRendering::Lighting2D& lighting)
+{
+    return m_Presenter.DrawLight2D(lighting);
+}
+
 void GLBlitSink::Forget(const uint8_t* begin, size_t bytes)
 {
     // No OpenGL here (a sprite may go while no context is current): the

@@ -364,13 +364,6 @@ void Lighting2D::Build(const Deki::Scene* scene, const FrameCamera& cam, int32_t
     }
 }
 
-void Lighting2D::Ambient(float& r, float& g, float& b) const
-{
-    r = m_AmbientR;
-    g = m_AmbientG;
-    b = m_AmbientB;
-}
-
 void Lighting2D::KeepOrForgetGrid()
 {
     const int32_t nbx = (m_ViewWidth + kBlock - 1) / kBlock;

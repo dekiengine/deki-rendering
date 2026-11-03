@@ -46,6 +46,7 @@
 
 namespace DekiRendering
 {
+class Lighting2D;
 class ShaderAsset;
 }
 
@@ -159,6 +160,10 @@ private:
     void ClearFrame(int width, int height, uint8_t r, uint8_t g, uint8_t b);
     /// Draws the 2D queued so far: before anything else touches the frame.
     void Flush2D();
+    /// Lights the frame built so far with `lighting`, worked out per pixel
+    /// (GLLight2DShader.inl). False when its program does not build.
+    bool DrawLight2D(const DekiRendering::Lighting2D& lighting);
+    bool BuildLight2D();
 
     std::shared_ptr<GLContext> m_Context;
     Window m_Window;
@@ -184,6 +189,18 @@ private:
 
     // Draws the 2D renderer's blits; null where its shader does not build.
     std::unique_ptr<GLBlitSink> m_Blits;
+
+    // The 2D light's program, built the first time a frame is lit.
+    static constexpr int kMaxLights2D = 16;
+    struct Light2DProgram
+    {
+        GLuint id = 0;
+        GLint a[kMaxLights2D], b[kMaxLights2D], c[kMaxLights2D];
+        GLint count = -1, ambient = -1, height = -1;
+        bool tried = false;
+    };
+    Light2DProgram m_Light2D;
+    bool m_TooManyLightsReported = false;
 };
 
 }  // namespace DekiGL
