@@ -17,11 +17,11 @@ namespace
 const char* const kEffectHead = R"(
 Texture2D uFrame;
 SamplerState uFrameSampler;
-float4 uDst;         // where the frame lands in the window: x, y, width, height
-float2 uResolution;  // the frame's own size, in screen pixels
-float uTime;         // seconds
-float3 uParams;      // the ScreenEffect's parameters
-float4 uColor;       // the ScreenEffect's colour
+uniform float4 uDst;         // where the frame lands in the window: x, y, width, height
+uniform float2 uResolution;  // the frame's own size, in screen pixels
+uniform float uTime;         // seconds
+uniform float3 uParams;      // the ScreenEffect's parameters
+uniform float4 uColor;       // the ScreenEffect's colour
 
 float4 Frame(float2 uv)
 {
@@ -31,7 +31,9 @@ float4 Frame(float2 uv)
 
 const char* const kEffectTail = R"(
 // One triangle over the whole target, from the vertex id alone: no buffers.
-float4 VertexMain(uint id : SV_VertexID) : SV_Position
+// SV_VulkanVertexID, as SV_VertexID subtracts a base vertex OpenGL ES 3.0
+// does not have (gl_VertexID as it is).
+float4 VertexMain(uint id : SV_VulkanVertexID) : SV_Position
 {
     float2 p = float2(float((id & 1u) << 2) - 1.0, float((id & 2u) << 1) - 1.0);
     return float4(p, 0.0, 1.0);

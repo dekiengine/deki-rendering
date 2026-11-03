@@ -62,7 +62,7 @@ bool IsIdentifier(char c)
     return std::isalnum(static_cast<unsigned char>(c)) || c == '_';
 }
 
-/// The HLSL for `use` around the file, with #line so DXC counts the file's
+/// The HLSL for `use` around the file, with #line so the compiler counts the file's
 /// own lines in its messages.
 std::string Wrap(const ShaderUse& use, const std::string& source, const std::string& fileName)
 {
@@ -146,7 +146,8 @@ bool DefinesFunction(const std::string& source, const std::string& name)
 }
 
 bool CompileShaderUse(const ShaderUse& use, const std::string& source, const std::string& fileName,
-                      const std::vector<std::string>& hooks, ShaderProgram& program, std::string& errors)
+                      const std::vector<std::string>& hooks, ShaderProgram& program, std::string& errors,
+                      std::string* warnings)
 {
     DekiEditor::ShaderCompileRequest request;
     request.source = Wrap(use, source, fileName);
@@ -167,15 +168,25 @@ bool CompileShaderUse(const ShaderUse& use, const std::string& source, const std
     DekiEditor::ShaderStageText vertex, fragment;
     request.stage = DekiEditor::ShaderStage::Vertex;
     request.entry = use.vertexEntry;
-    if (!DekiEditor::ShaderCompiler::Compile(request, vertex, errors))
+    std::string vertexWarnings, fragmentWarnings;
+    if (!DekiEditor::ShaderCompiler::Compile(request, vertex, errors, &vertexWarnings))
     {
         return false;
     }
     request.stage = DekiEditor::ShaderStage::Fragment;
     request.entry = use.fragmentEntry;
-    if (!DekiEditor::ShaderCompiler::Compile(request, fragment, errors))
+    if (!DekiEditor::ShaderCompiler::Compile(request, fragment, errors, &fragmentWarnings))
     {
         return false;
+    }
+    if (warnings)
+    {
+        // Both stages read the same file, so mostly say the same.
+        *warnings = vertexWarnings;
+        if (!fragmentWarnings.empty() && fragmentWarnings != vertexWarnings)
+        {
+            *warnings += (warnings->empty() ? "" : "\n") + fragmentWarnings;
+        }
     }
     program.es = { vertex.es, fragment.es };
     program.gl = { vertex.gl, fragment.gl };
@@ -215,11 +226,15 @@ bool CompileShaderFile(const std::string& source, const std::string& fileName, S
             continue;
         }
         ShaderProgram program;
-        std::string errors;
-        if (!CompileShaderUse(use, source, fileName, defined, program, errors))
+        std::string errors, warnings;
+        if (!CompileShaderUse(use, source, fileName, defined, program, errors, &warnings))
         {
             result.errors += errors + "\n";
             continue;
+        }
+        if (!warnings.empty() && result.warnings.find(warnings) == std::string::npos)
+        {
+            result.warnings += (result.warnings.empty() ? "" : "\n") + warnings;
         }
         result.programs.push_back(std::move(program));
     }

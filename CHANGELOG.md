@@ -18,7 +18,7 @@ alongside one that has them.
   `ScreenEffect`, a full-screen shader over the finished frame. Types live in
   `DekiGL`.
 - `ShaderAsset` (`.shader`): a GPU shader, written in HLSL. The editor
-  compiles it (DXC, then SPIRV-Cross) to GLSL ES 3.00 and GLSL 3.30 for each
+  compiles it (Slang, then SPIRV-Cross) to GLSL ES 3.00 and GLSL 3.30 for each
   use whose hooks it defines (`editor/ShaderUses.h`: deki-3d's meshes, screen
   effects), and the asset is that GLSL. Errors name the file and line, in the
   Console and in a build's problems; a build for a target without OpenGL that

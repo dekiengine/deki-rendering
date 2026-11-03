@@ -60,13 +60,14 @@ DEKI_RENDERING_API bool DefinesFunction(const std::string& source, const std::st
 /// built-in program.
 DEKI_RENDERING_API bool CompileShaderUse(const ShaderUse& use, const std::string& source, const std::string& fileName,
                                          const std::vector<std::string>& hooks, ShaderProgram& program,
-                                         std::string& errors);
+                                         std::string& errors, std::string* warnings = nullptr);
 
 struct ShaderCompileResult
 {
     std::vector<ShaderProgram> programs;
     std::vector<std::string> hooks;  // the hooks the file defines, of every use
     std::string errors;              // empty when it compiled
+    std::string warnings;            // what the compiler warned about, when it compiled
 };
 
 /// Compiles a .shader for every use it defines hooks of. False with

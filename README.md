@@ -261,13 +261,15 @@ calls `Effect()` (above). What draws with it wraps the file in its own
 shader, with the uniforms and types it promises, so a file holds only the
 interesting part.
 
-Devices run GLSL, so the editor compiles each file. DXC, Microsoft's HLSL
-compiler, makes SPIR-V; SPIRV-Cross writes that as GLSL ES 3.00 (OpenGL ES
-3.0, WebGL 2) and GLSL 3.30 (desktop OpenGL). This is done once for each use
+Devices run GLSL, so the editor compiles each file. Slang, Khronos's shader
+compiler, takes the HLSL and makes SPIR-V; SPIRV-Cross writes that as GLSL ES
+3.00 (OpenGL ES 3.0, WebGL 2) and GLSL 3.30 (desktop OpenGL). This is done once for each use
 whose hooks the file defines (`editor/ShaderUses.h`: "mesh", "effect"), and
 `ShaderAsset` is the result: no compiler goes to a device. The Shader
 Model 6 language is there, but only what OpenGL ES 3.0 can run compiles; a
-wave operation, say, is an error.
+wave operation, say, is an error. A global without `static` is a uniform, as
+in HLSL, and reads as zero; the compiler warns about one, and so does the
+Console.
 
 Every problem is said, with the file and line, in the Console when the file
 changes and in the build's list of problems:

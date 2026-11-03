@@ -55,9 +55,10 @@ bool IsShader(const std::string& path)
 
 /// Compiles the .shader at `absolutePath` and writes the asset to `outPath`.
 /// False with the reason in `error`, and nothing written, when it does not
-/// compile. `name` is what errors call the file.
+/// compile. `name` is what errors call the file. What the compiler warned
+/// about goes to `warnings`, when given.
 bool CompileShaderAsset(const std::string& absolutePath, const std::string& name, const std::string& outPath,
-                        std::string& error)
+                        std::string& error, std::string* warnings = nullptr)
 {
     std::ifstream in(absolutePath, std::ios::binary);
     if (!in)
@@ -73,6 +74,10 @@ bool CompileShaderAsset(const std::string& absolutePath, const std::string& name
     {
         error = result.errors;
         return false;
+    }
+    if (warnings)
+    {
+        *warnings = result.warnings;
     }
     const std::vector<uint8_t> blob = DekiRendering::ShaderAsset::Encode(result.programs);
     std::error_code ec;
@@ -100,8 +105,9 @@ std::string DisplayName(const std::string& absolutePath, const std::string& proj
 void HandleShaderSync(const std::string& absolutePath, const std::string& guid, const std::string& projectPath)
 {
     const fs::path cachePath = fs::path(GetCacheDirectory(projectPath)) / guid;
-    std::string error;
-    if (!CompileShaderAsset(absolutePath, DisplayName(absolutePath, projectPath), cachePath.string(), error))
+    std::string error, warnings;
+    if (!CompileShaderAsset(absolutePath, DisplayName(absolutePath, projectPath), cachePath.string(), error,
+                            &warnings))
     {
         std::error_code ec;
         fs::remove(cachePath, ec);
@@ -109,6 +115,12 @@ void HandleShaderSync(const std::string& absolutePath, const std::string& guid, 
         // line, the caret, a note) belong together.
         DEKI_LOG_ERROR("Shader: %s", error.c_str());
         return;
+    }
+    // It compiled, but the compiler has something to say: a global that is a
+    // uniform without saying so, say, which reads as zero.
+    if (!warnings.empty())
+    {
+        DEKI_LOG_WARNING("Shader: %s", warnings.c_str());
     }
     if (auto* assets = Deki::AssetManager::Get())
     {

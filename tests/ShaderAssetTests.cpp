@@ -27,7 +27,7 @@ ShaderProgram MakeProgram(const char* use, const char* tag)
     return p;
 }
 
-bool HaveDxc()
+bool HaveCompiler()
 {
     return DekiEditor::ShaderCompiler::IsAvailable();
 }
@@ -86,9 +86,9 @@ TEST(ShaderHooks, ADefinitionCountsAndNothingElse)
 
 TEST(ShaderCompile, AFileWithNoHookOfAnyUseSaysWhichItCouldDefine)
 {
-    if (!HaveDxc())
+    if (!HaveCompiler())
     {
-        GTEST_SKIP() << "no HLSL compiler (DXC) beside the tests";
+        GTEST_SKIP() << "no HLSL compiler (Slang) beside the tests";
     }
     DekiRendering::ShaderCompileResult result;
     EXPECT_FALSE(DekiRendering::CompileShaderFile("float Helper() { return 1.0; }\n", "nothing.shader", result));
@@ -99,9 +99,9 @@ TEST(ShaderCompile, AFileWithNoHookOfAnyUseSaysWhichItCouldDefine)
 
 TEST(ShaderCompile, AnEffectCompilesForBothDialects)
 {
-    if (!HaveDxc())
+    if (!HaveCompiler())
     {
-        GTEST_SKIP() << "no HLSL compiler (DXC) beside the tests";
+        GTEST_SKIP() << "no HLSL compiler (Slang) beside the tests";
     }
     DekiRendering::ShaderCompileResult result;
     ASSERT_TRUE(DekiRendering::CompileShaderFile("float4 Effect(float2 uv) { return Frame(uv) * uColor; }\n",
@@ -122,9 +122,9 @@ TEST(ShaderCompile, AnEffectCompilesForBothDialects)
 
 TEST(ShaderCompile, AnErrorNamesTheFileAndTheLine)
 {
-    if (!HaveDxc())
+    if (!HaveCompiler())
     {
-        GTEST_SKIP() << "no HLSL compiler (DXC) beside the tests";
+        GTEST_SKIP() << "no HLSL compiler (Slang) beside the tests";
     }
     DekiRendering::ShaderCompileResult result;
     EXPECT_FALSE(DekiRendering::CompileShaderFile("// a comment\n\nfloat4 Effect(float2 uv)\n{\n    return oops;\n}\n",
@@ -135,13 +135,28 @@ TEST(ShaderCompile, AnErrorNamesTheFileAndTheLine)
 
 TEST(ShaderCompile, SomethingOpenGLES3CannotRunIsAnError)
 {
-    if (!HaveDxc())
+    if (!HaveCompiler())
     {
-        GTEST_SKIP() << "no HLSL compiler (DXC) beside the tests";
+        GTEST_SKIP() << "no HLSL compiler (Slang) beside the tests";
     }
     // A wave operation: Shader Model 6, with no GLSL ES 3.00 equivalent.
     DekiRendering::ShaderCompileResult result;
     EXPECT_FALSE(DekiRendering::CompileShaderFile(
         "float4 Effect(float2 uv) { return Frame(uv) * WaveActiveSum(uv.x); }\n", "wave.shader", result));
     EXPECT_NE(result.errors.find("wave.shader"), std::string::npos) << result.errors;
+}
+
+TEST(ShaderCompile, AGlobalThatIsSecretlyAUniformIsAWarning)
+{
+    if (!HaveCompiler())
+    {
+        GTEST_SKIP() << "no HLSL compiler (Slang) beside the tests";
+    }
+    // Without `static` it is a uniform, as in HLSL, and nothing sets it.
+    DekiRendering::ShaderCompileResult result;
+    ASSERT_TRUE(DekiRendering::CompileShaderFile(
+        "float kScale = 0.5;\nfloat4 Effect(float2 uv) { return Frame(uv) * kScale; }\n", "scale.shader", result))
+        << result.errors;
+    EXPECT_NE(result.warnings.find("kScale"), std::string::npos) << result.warnings;
+    EXPECT_NE(result.warnings.find("scale.shader:1:"), std::string::npos) << result.warnings;
 }
