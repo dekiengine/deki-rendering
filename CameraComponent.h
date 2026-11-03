@@ -80,6 +80,11 @@ public:
     DEKI_EXPORT
     bool clearEveryFrame = true;
 
+    DEKI_TOOLTIP("Lights (the Light component) light what this camera draws up to this sort order; what draws above "
+                 "it, such as the UI, keeps its own colours. The default lights everything.")
+    DEKI_EXPORT
+    int litUpToSortOrder = 2147483647;
+
     CameraComponent();
     virtual ~CameraComponent() = default;
 

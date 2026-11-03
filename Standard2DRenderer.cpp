@@ -665,6 +665,8 @@ void Standard2DRenderer::Render(Deki::Scene* scene, const RenderContext& ctx)
     const int32_t viewWidth = frameCtx.viewWidth > 0 ? frameCtx.viewWidth : frameCtx.width;
     const int32_t viewHeight = frameCtx.viewHeight > 0 ? frameCtx.viewHeight : frameCtx.height;
     frameCtx.cam = frameCtx.camera->CaptureFrameCamera(viewWidth, viewHeight);
+    m_Lighting.Build(scene, frameCtx.cam, viewWidth, viewHeight, frameCtx.camera->litUpToSortOrder);
+    m_Lit = false;
     frameCtx.cam.halfW -= static_cast<float>(frameCtx.viewLeft);
     frameCtx.cam.halfH -= static_cast<float>(frameCtx.viewTop);
     SetCurrentDrawView({ frameCtx.cam.ppm, viewWidth, viewHeight });
@@ -676,6 +678,7 @@ void Standard2DRenderer::Render(Deki::Scene* scene, const RenderContext& ctx)
         m_PlanMode = PlanMode::Replaying;
         for (uint32_t i = 0; i < m_PlanRoots; i++)
         {
+            LightFrameIfDue(&m_Plan[i].item, frameCtx);
             RenderObject(m_Plan[i].item, frameCtx, static_cast<int32_t>(i));
         }
     }
@@ -720,6 +723,7 @@ void Standard2DRenderer::Render(Deki::Scene* scene, const RenderContext& ctx)
         // but deeper levels use their own scratch lists, so this one stays put.
         for (size_t i = 0; i < sortableItems.size(); i++)
         {
+            LightFrameIfDue(&sortableItems[i], frameCtx);
             RenderObject(sortableItems[i], frameCtx, m_PlanMode == PlanMode::Recording ? static_cast<int32_t>(i) : -1);
         }
 
@@ -732,6 +736,7 @@ void Standard2DRenderer::Render(Deki::Scene* scene, const RenderContext& ctx)
 
     // Nothing was drawn: the clear is all there is.
     RunClear();
+    LightFrameIfDue(nullptr, frameCtx);
 
     // Post-frame composites (e.g. screen-space overlays).
     for (auto it = m_EndPasses.rbegin(); it != m_EndPasses.rend(); ++it)
@@ -858,6 +863,10 @@ bool Standard2DRenderer::FindChanges(Deki::Scene* scene, const RenderContext& ct
         }
     }
 
+    // Where the light changed. Render() works it out again for the frame.
+    m_Lighting.Build(scene, cam, viewWidth, viewHeight, frameCtx.camera->litUpToSortOrder);
+    m_Lighting.AddChanges(m_LightingRecord, changed);
+
     m_Changes = nullptr;
     m_HaveRecords = true;
     m_RecordCam = cam;
@@ -886,6 +895,32 @@ void Standard2DRenderer::NoteDraw(const RendererComponent* renderer, uint64_t si
     record.signature = signature;
     record.area = area;
     record.seen = m_RecordCall;
+}
+
+void Standard2DRenderer::LightFrameIfDue(const SortItem* next, const RenderContext& ctx)
+{
+    if (m_Lit || !m_Lighting.On())
+    {
+        return;
+    }
+    if (next && next->order <= m_Lighting.LitUpToSortOrder() && !(next->renderer && next->renderer->LightsItself()))
+    {
+        return;
+    }
+    m_Lit = true;
+    RunClear();  // the clear colour is lit too: it shows wherever nothing covers it
+    if (m_SinkFrame)
+    {
+        // The frame is on the GPU: the CPU's buffer holds none of it.
+        static bool s_Told = false;
+        if (!QuadBlit::LightSinkFrame(m_Lighting) && !s_Told)
+        {
+            s_Told = true;
+            DEKI_LOG_ERROR("Lights: the GPU drawing this frame cannot light it, so it is drawn unlit");
+        }
+        return;
+    }
+    m_Lighting.Apply(ctx.buffer, ctx.width, ctx.height, ctx.format, ctx.redraw, ctx.viewLeft, ctx.viewTop);
 }
 
 void Standard2DRenderer::ForgetRecords()

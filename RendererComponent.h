@@ -146,6 +146,12 @@ public:
         (void)outVersion;
         return false;
     }
+
+    /// Whether this renderer lights what it draws itself (a lit 3D mesh).
+    /// The 2D light, which lights the frame's pixels, is then laid over the
+    /// frame before it draws, so its pixels are not lit twice. The default is
+    /// no.
+    virtual bool LightsItself() const { return false; }
 };
 
 }  // namespace DekiRendering

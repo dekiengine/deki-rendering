@@ -10,6 +10,7 @@ enum class ColorFormat;
 namespace DekiRendering
 {
 class DirtyRegion;
+class Lighting2D;
 }
 
 /// Quad blitting with full 2D transforms: copies source pixels to a target
@@ -395,6 +396,15 @@ public:
     /// The pixels in [begin, begin + bytes) are going away (ForgetScaled):
     /// nothing kept of them may be used for pixels later at those addresses.
     virtual void Forget(const uint8_t* begin, size_t bytes) = 0;
+
+    /// Lights the frame drawn so far with `lighting` (Lighting2D::Apply's
+    /// light, worked out per pixel where the sink can). False when the sink
+    /// cannot light: the renderer then says so, and the frame is not lit.
+    virtual bool Light(const DekiRendering::Lighting2D& lighting)
+    {
+        (void)lighting;
+        return false;
+    }
 };
 
 /// Registers the sink, or removes it with null.
@@ -415,6 +425,10 @@ const uint8_t* SinkTarget();
 /// frame's target; nothing otherwise. The renderer calls it after the hooks
 /// of a render pass that writes into the buffer (RenderPass::WritesBuffer).
 void NoteWritten(const uint8_t* buffer);
+
+/// Lights what the sink frame drew so far (BlitSink::Light). False outside a
+/// sink frame, or when the sink cannot.
+bool LightSinkFrame(const DekiRendering::Lighting2D& lighting);
 
 // ============================================================================
 // Per-row kernel dispatch

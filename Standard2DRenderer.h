@@ -2,6 +2,7 @@
 
 #include "DekiRenderer.h"
 #include "DirtyRegion.h"
+#include "Lighting2D.h"
 #include "QuadBlit.h"
 #include "RenderPass.h"
 #include <deki/ComponentInterfaceAdapters.h>
@@ -223,6 +224,16 @@ private:
     // Runs the frame's clear, if still pending, before something is drawn.
     void RunClear();
 
+    // The frame's 2D light (Lighting2D.h), worked out at the start of each
+    // Render(), and whether it has been laid over the frame yet. It is laid
+    // over what is drawn up to the camera's litUpToSortOrder, before the
+    // first object above it, or before a renderer that lights itself (a lit
+    // mesh), or at the end.
+    Lighting2D m_Lighting;
+    bool m_Lit = false;
+    // Lights the frame now if `next` (null: the frame's end) is where it is due.
+    void LightFrameIfDue(const SortItem* next, const RenderContext& ctx);
+
     // planIndex: the object's entry in m_Plan while recording or replaying, -1 otherwise.
     void RenderObject(const SortItem& item, const RenderContext& ctx, int32_t planIndex);
 
@@ -251,6 +262,7 @@ private:
     // Compares one renderer's draw with its record and keeps this one.
     void NoteDraw(const RendererComponent* renderer, uint64_t signature, const Deki::Rect& area);
     void ForgetRecords();
+    Lighting2D m_LightingRecord;  // the light of the last frame FindChanges compared
 };
 
 }  // namespace DekiRendering

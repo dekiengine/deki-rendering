@@ -297,6 +297,11 @@ void NoteWritten(const uint8_t* buffer)
     }
 }
 
+bool LightSinkFrame(const DekiRendering::Lighting2D& lighting)
+{
+    return s_Sink && s_SinkTarget && s_Sink->Light(lighting);
+}
+
 // Hands a blit to the sink; true when it drew it. When it cannot, the CPU
 // draws it into the target, so the sink is told the target was written.
 static bool DrawOnSink(const SinkBlit& blit)
