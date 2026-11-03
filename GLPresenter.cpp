@@ -64,33 +64,6 @@ bool RowToRGBA(const uint8_t* row, int width, uint8_t* out)
     return any;
 }
 
-// A screen effect: the shader's Effect() for every window pixel the frame
-// covers, with Frame() to read the frame. uv runs 0 to 1 over the frame,
-// bottom left to top right.
-const char* const kEffectHead = R"(
-precision highp float;
-precision highp int;
-uniform highp sampler2D uFrame;
-uniform vec4 uDst;         // where the frame lands in the window: x, y, width, height
-uniform vec2 uResolution;  // the frame's own size, in screen pixels
-uniform float uTime;       // seconds
-uniform vec3 uParams;      // the ScreenEffect's parameters
-uniform vec4 uColor;       // the ScreenEffect's colour
-out vec4 fragColor;
-vec4 Frame(vec2 uv)
-{
-    return texture(uFrame, uv);
-}
-)";
-
-const char* const kEffectMain = R"(
-void main()
-{
-    vec2 uv = (gl_FragCoord.xy - uDst.xy) / uDst.zw;
-    fragColor = vec4(Effect(uv).rgb, 1.0);
-}
-)";
-
 }  // namespace
 
 GLPresenter* GLPresenter::Active()
@@ -515,13 +488,12 @@ GLuint GLPresenter::Compile(GLenum type, const std::string& source, const char* 
 GLPresenter::EffectProgram GLPresenter::LinkEffect(const DekiRendering::ShaderAsset& shader)
 {
     const GL& gl = m_Context->Functions();
-    const std::string version = m_Context->IsES() ? "#version 300 es\n" : "#version 330 core\n";
-    const std::string fragment = version + kEffectHead + "#line 1\n" + shader.Common() + "\n#line " +
-                                 std::to_string(shader.FragmentLine()) + "\n" + shader.Fragment() + "\n" +
-                                 kEffectMain;
+    // The asset's "effect" program, compiled from HLSL by the editor
+    // (editor/EffectShaderUse.cpp): both stages, for this context's GL.
+    const DekiRendering::ShaderProgramSource* source = shader.Program("effect", m_Context->IsES());
     EffectProgram program;
-    const GLuint vs = Compile(gl::VERTEX_SHADER, version + kVertexShader, "the screen effect's vertex stage");
-    const GLuint fs = vs ? Compile(gl::FRAGMENT_SHADER, fragment, "a screen effect's shader") : 0;
+    const GLuint vs = Compile(gl::VERTEX_SHADER, source->vertex, "a screen effect's shader");
+    const GLuint fs = vs ? Compile(gl::FRAGMENT_SHADER, source->fragment, "a screen effect's shader") : 0;
     if (!vs || !fs)
     {
         gl.DeleteShader(vs);
@@ -543,19 +515,21 @@ GLPresenter::EffectProgram GLPresenter::LinkEffect(const DekiRendering::ShaderAs
         program.id = 0;
         return program;
     }
+    // The compiler keeps the uniforms in one struct, `u`, and names a texture
+    // as the shader does (deki-editor's ShaderCompiler.h).
     program.frame = gl.GetUniformLocation(program.id, "uFrame");
-    program.dst = gl.GetUniformLocation(program.id, "uDst");
-    program.resolution = gl.GetUniformLocation(program.id, "uResolution");
-    program.time = gl.GetUniformLocation(program.id, "uTime");
-    program.params = gl.GetUniformLocation(program.id, "uParams");
-    program.color = gl.GetUniformLocation(program.id, "uColor");
+    program.dst = gl.GetUniformLocation(program.id, "u.uDst");
+    program.resolution = gl.GetUniformLocation(program.id, "u.uResolution");
+    program.time = gl.GetUniformLocation(program.id, "u.uTime");
+    program.params = gl.GetUniformLocation(program.id, "u.uParams");
+    program.color = gl.GetUniformLocation(program.id, "u.uColor");
     return program;
 }
 
 bool GLPresenter::DrawEffect(const Effect& effect, int x, int y, int width, int height)
 {
     const DekiRendering::ShaderAsset* shader = effect.shader;
-    if (!shader || shader->Fragment().empty())
+    if (!shader || !shader->Program("effect", m_Context->IsES()))
     {
         return false;
     }

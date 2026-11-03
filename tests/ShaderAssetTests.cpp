@@ -1,66 +1,147 @@
-// Tests that a .shader file splits into its shared, vertex and fragment
-// parts at the markers, whatever order they come in, and that every load is
-// a new revision.
+// Tests the .shader asset: the compiled form the editor writes and a device
+// loads, how the editor finds the hooks a file defines, and compiling a file
+// for each use, with every problem said (file and line).
 
 #include <gtest/gtest.h>
 
-#include <cstring>
 #include <string>
+#include <vector>
 
 #include "../ShaderAsset.h"
+#include "../editor/ShaderUses.h"
+
+#include <deki-editor/ShaderCompiler.h>
 
 using DekiRendering::ShaderAsset;
+using DekiRendering::ShaderProgram;
 
 namespace
 {
-ShaderAsset Parse(const std::string& text)
+
+ShaderProgram MakeProgram(const char* use, const char* tag)
 {
-    ShaderAsset shader;
-    EXPECT_TRUE(shader.Parse(text.data(), text.size()));
-    return shader;
+    ShaderProgram p;
+    p.use = use;
+    p.es = { std::string("es vertex ") + tag, std::string("es fragment ") + tag };
+    p.gl = { std::string("gl vertex ") + tag, std::string("gl fragment ") + tag };
+    return p;
 }
+
+bool HaveDxc()
+{
+    return DekiEditor::ShaderCompiler::IsAvailable();
+}
+
 }  // namespace
 
-TEST(ShaderAsset, SplitsAtTheMarkers)
+TEST(ShaderAsset, LoadsWhatTheEditorWrote)
 {
-    const ShaderAsset s = Parse("float shared;\n// @vertex\nvec3 Displace();\n// @fragment\nvec4 Shade();\n");
-    EXPECT_EQ(s.Common(), "float shared;\n");
-    EXPECT_EQ(s.Vertex(), "// @vertex\nvec3 Displace();\n");
-    EXPECT_EQ(s.Fragment(), "// @fragment\nvec4 Shade();\n");
+    const std::vector<uint8_t> blob = ShaderAsset::Encode({ MakeProgram("mesh", "a"), MakeProgram("effect", "b") });
+    ShaderAsset s;
+    ASSERT_TRUE(s.Parse(blob.data(), blob.size()));
+    ASSERT_EQ(s.Programs().size(), 2u);
+    ASSERT_NE(s.Program("mesh", true), nullptr);
+    EXPECT_EQ(s.Program("mesh", true)->vertex, "es vertex a");
+    EXPECT_EQ(s.Program("mesh", false)->fragment, "gl fragment a");
+    EXPECT_EQ(s.Program("effect", true)->fragment, "es fragment b");
+    EXPECT_EQ(s.Program("particles", true), nullptr);
 }
 
-TEST(ShaderAsset, TheStagesMayComeInEitherOrder)
+TEST(ShaderAsset, RefusesWhatIsNotACompiledShader)
 {
-    const ShaderAsset s = Parse("// @fragment\nvec4 Shade();\n// @vertex\nvec3 Displace();\n");
-    EXPECT_EQ(s.Common(), "");
-    EXPECT_EQ(s.Fragment(), "// @fragment\nvec4 Shade();\n");
-    EXPECT_EQ(s.Vertex(), "// @vertex\nvec3 Displace();\n");
-}
+    ShaderAsset s;
+    EXPECT_FALSE(s.Parse(nullptr, 0));
+    const std::string text = "float4 Shade(Fragment f) { return f.base; }";
+    EXPECT_FALSE(s.Parse(reinterpret_cast<const uint8_t*>(text.data()), text.size()));
 
-TEST(ShaderAsset, AMarkerCountsOnlyAtTheStartOfALine)
-{
-    const ShaderAsset s = Parse("float x; // @vertex is not a marker here\n");
-    EXPECT_EQ(s.Vertex(), "");
-    EXPECT_EQ(s.Common(), "float x; // @vertex is not a marker here\n");
+    std::vector<uint8_t> blob = ShaderAsset::Encode({ MakeProgram("mesh", "a") });
+    blob.resize(blob.size() - 3);  // cut short
+    EXPECT_FALSE(s.Parse(blob.data(), blob.size()));
+    EXPECT_TRUE(s.Programs().empty());
 }
 
 TEST(ShaderAsset, EveryLoadIsANewRevision)
 {
-    const ShaderAsset a = Parse("// @fragment\n");
-    const ShaderAsset b = Parse("// @fragment\n");
+    const std::vector<uint8_t> blob = ShaderAsset::Encode({ MakeProgram("mesh", "a") });
+    ShaderAsset a, b;
+    ASSERT_TRUE(a.Parse(blob.data(), blob.size()));
+    ASSERT_TRUE(b.Parse(blob.data(), blob.size()));
     EXPECT_NE(a.Revision(), 0u);
     EXPECT_NE(a.Revision(), b.Revision());
 }
 
-TEST(ShaderAsset, AnEmptyFileIsNotAShader)
+TEST(ShaderHooks, ADefinitionCountsAndNothingElse)
 {
-    ShaderAsset s;
-    EXPECT_FALSE(s.Parse("", 0));
+    using DekiRendering::DefinesFunction;
+    EXPECT_TRUE(DefinesFunction("float4 Shade(Fragment f) { return f.base; }", "Shade"));
+    EXPECT_TRUE(DefinesFunction("float4 Shade(Fragment f)\n{\n}", "Shade"));
+    EXPECT_TRUE(DefinesFunction("float4 Effect(float2 uv) : SV_Target { return 0; }", "Effect"));
+    EXPECT_FALSE(DefinesFunction("float4 Shade(Fragment f);", "Shade")) << "a declaration";
+    EXPECT_FALSE(DefinesFunction("float4 x = Shade(f);", "Shade")) << "a call";
+    EXPECT_FALSE(DefinesFunction("float4 MyShade(Fragment f) { }", "Shade")) << "another name";
+    EXPECT_FALSE(DefinesFunction("float4 ShadeMore(Fragment f) { }", "Shade")) << "another name";
+    EXPECT_FALSE(DefinesFunction("// float4 Shade(Fragment f) { }", "Shade")) << "a comment";
+    EXPECT_FALSE(DefinesFunction("/* float4 Shade(Fragment f) { } */", "Shade")) << "a comment";
 }
 
-TEST(ShaderAsset, KnowsTheLineEachPartStartsOn)
+TEST(ShaderCompile, AFileWithNoHookOfAnyUseSaysWhichItCouldDefine)
 {
-    const ShaderAsset s = Parse("float a;\nfloat b;\n// @vertex\nvec3 D();\n// @fragment\nvec4 S();\n");
-    EXPECT_EQ(s.VertexLine(), 3);
-    EXPECT_EQ(s.FragmentLine(), 5);
+    if (!HaveDxc())
+    {
+        GTEST_SKIP() << "no HLSL compiler (DXC) beside the tests";
+    }
+    DekiRendering::ShaderCompileResult result;
+    EXPECT_FALSE(DekiRendering::CompileShaderFile("float Helper() { return 1.0; }\n", "nothing.shader", result));
+    EXPECT_NE(result.errors.find("nothing.shader"), std::string::npos) << result.errors;
+    EXPECT_NE(result.errors.find("Effect()"), std::string::npos) << result.errors;
+    EXPECT_TRUE(result.programs.empty());
+}
+
+TEST(ShaderCompile, AnEffectCompilesForBothDialects)
+{
+    if (!HaveDxc())
+    {
+        GTEST_SKIP() << "no HLSL compiler (DXC) beside the tests";
+    }
+    DekiRendering::ShaderCompileResult result;
+    ASSERT_TRUE(DekiRendering::CompileShaderFile("float4 Effect(float2 uv) { return Frame(uv) * uColor; }\n",
+                                                 "tint.shader", result))
+        << result.errors;
+    ASSERT_EQ(result.programs.size(), 1u);
+    const ShaderProgram& p = result.programs[0];
+    EXPECT_EQ(p.use, "effect");
+    EXPECT_EQ(p.es.vertex.rfind("#version 300 es", 0), 0u) << p.es.vertex;
+    EXPECT_EQ(p.es.fragment.rfind("#version 300 es", 0), 0u) << p.es.fragment;
+    EXPECT_EQ(p.gl.fragment.rfind("#version 330", 0), 0u) << p.gl.fragment;
+    // The names the presenter looks up (ShaderCompiler.h).
+    EXPECT_NE(p.es.fragment.find("uniform highp sampler2D uFrame;"), std::string::npos) << p.es.fragment;
+    EXPECT_NE(p.es.fragment.find("u.uColor"), std::string::npos) << p.es.fragment;
+    EXPECT_NE(p.es.fragment.find("fragColor"), std::string::npos) << p.es.fragment;
+    EXPECT_EQ(p.es.fragment.find("#extension"), std::string::npos) << p.es.fragment;
+}
+
+TEST(ShaderCompile, AnErrorNamesTheFileAndTheLine)
+{
+    if (!HaveDxc())
+    {
+        GTEST_SKIP() << "no HLSL compiler (DXC) beside the tests";
+    }
+    DekiRendering::ShaderCompileResult result;
+    EXPECT_FALSE(DekiRendering::CompileShaderFile("// a comment\n\nfloat4 Effect(float2 uv)\n{\n    return oops;\n}\n",
+                                                  "shaders/typo.shader", result));
+    EXPECT_NE(result.errors.find("shaders/typo.shader:5:"), std::string::npos) << result.errors;
+    EXPECT_NE(result.errors.find("oops"), std::string::npos) << result.errors;
+}
+
+TEST(ShaderCompile, SomethingOpenGLES3CannotRunIsAnError)
+{
+    if (!HaveDxc())
+    {
+        GTEST_SKIP() << "no HLSL compiler (DXC) beside the tests";
+    }
+    // A wave operation: Shader Model 6, with no GLSL ES 3.00 equivalent.
+    DekiRendering::ShaderCompileResult result;
+    EXPECT_FALSE(DekiRendering::CompileShaderFile(
+        "float4 Effect(float2 uv) { return Frame(uv) * WaveActiveSum(uv.x); }\n", "wave.shader", result));
+    EXPECT_NE(result.errors.find("wave.shader"), std::string::npos) << result.errors;
 }

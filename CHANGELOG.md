@@ -17,11 +17,13 @@ alongside one that has them.
   on the GPU (`GLPresenter`), the 2D drawn there too (`GLBlitSink`), and
   `ScreenEffect`, a full-screen shader over the finished frame. Types live in
   `DekiGL`.
-- `ShaderAsset` (`.shader`): GPU shader source, GLSL ES 3.00, in a shared
-  part and `// @vertex` and `// @fragment` parts, compiled by whatever GPU
-  code draws with it (deki-3d's meshes, screen effects). A platform without
-  OpenGL loads it but keeps none of its source, and draws without it. The
-  editor lists it as the Shader asset type and ships it with a build.
+- `ShaderAsset` (`.shader`): a GPU shader, written in HLSL. The editor
+  compiles it (DXC, then SPIRV-Cross) to GLSL ES 3.00 and GLSL 3.30 for each
+  use whose hooks it defines (`editor/ShaderUses.h`: deki-3d's meshes, screen
+  effects), and the asset is that GLSL. Errors name the file and line, in the
+  Console and in a build's problems; a build for a target without OpenGL that
+  ships a scene using a shader stops. The editor lists it as the Shader asset
+  type.
 - A blit sink (`QuadBlit::BlitSink`), so a GPU that builds the frame
   (`GLPresenter`) can draw its 2D. While a sink frame is on
   (`QuadBlit::BeginSinkFrame`), every `Blit` and `BlitScaled` into that

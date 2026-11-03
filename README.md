@@ -219,15 +219,14 @@ against 0.6; 2000, 5.6 against 0.8.
 
 A `ScreenEffect` component anywhere in the scene draws the finished frame into
 the window through a shader: scanlines, a vignette, colour grading. Its
-`.shader` defines, in its `// @fragment` part:
+`.shader` defines:
 
-```glsl
-// @fragment
-vec4 Effect(vec2 uv)
+```hlsl
+float4 Effect(float2 uv)
 {
-    vec3 colour = Frame(uv).rgb;
-    float scan = mod(floor(uv.y * uResolution.y * 2.0), 2.0) < 1.0 ? 1.0 : 1.0 - uParams.x;
-    return vec4(colour * scan, 1.0);
+    float3 colour = Frame(uv).rgb;
+    float scan = fmod(floor(uv.y * uResolution.y * 2.0), 2.0) < 1.0 ? 1.0 : 1.0 - uParams.x;
+    return float4(colour * scan, 1.0);
 }
 ```
 
@@ -235,8 +234,8 @@ vec4 Effect(vec2 uv)
 pixel the frame covers, so an effect can work finer than the game's pixels.
 `Frame(uv)` reads the frame; `uResolution` is its size in game pixels, `uDst`
 where it lands in the window, and `uTime`, `uParams`, `uColor` come from the
-component. A shader that does not compile is logged, and the frame shows as it
-is. Code can also present through an effect of its own
+component. A shader that does not compile is an error in the editor (below).
+Code can also present through an effect of its own
 (`GLPresenter::Present` with an `Effect`).
 
 ### Limits
@@ -256,11 +255,30 @@ is. Code can also present through an effect of its own
 
 ## Shaders
 
-`ShaderAsset` is a `.shader` file: GPU shader source in GLSL ES 3.00, split
-into a shared part and the parts after `// @vertex` and `// @fragment`
-markers. This package only loads it; what it must define depends on what
-draws with it: deki-3d's meshes call `Shade()` and `Displace()`, a
-`ScreenEffect` calls `Effect()` (above).
+A `.shader` is HLSL. It defines the functions of what draws with it, its
+hooks: deki-3d's meshes call `Shade()` and `Displace()`, a `ScreenEffect`
+calls `Effect()` (above). What draws with it wraps the file in its own
+shader, with the uniforms and types it promises, so a file holds only the
+interesting part.
+
+Devices run GLSL, so the editor compiles each file. DXC, Microsoft's HLSL
+compiler, makes SPIR-V; SPIRV-Cross writes that as GLSL ES 3.00 (OpenGL ES
+3.0, WebGL 2) and GLSL 3.30 (desktop OpenGL). This is done once for each use
+whose hooks the file defines (`editor/ShaderUses.h`: "mesh", "effect"), and
+`ShaderAsset` is the result: no compiler goes to a device. The Shader
+Model 6 language is there, but only what OpenGL ES 3.0 can run compiles; a
+wave operation, say, is an error.
+
+Every problem is said, with the file and line, in the Console when the file
+changes and in the build's list of problems:
+
+- it does not compile, or uses what OpenGL ES 3.0 cannot run;
+- it defines no hook of any use, or only part of what a use needs;
+- a scene the build ships uses it, and the target has no OpenGL (a board).
+  The build stops: nothing there could draw it.
+
+A package that draws with shaders registers its use from its editor code
+(`RegisterShaderUse`), with its hooks and the HLSL around them.
 
 ## Dependencies
 

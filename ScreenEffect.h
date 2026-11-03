@@ -31,8 +31,8 @@ public:
     ScreenEffect();
     ~ScreenEffect() override;
 
-    DEKI_TOOLTIP("A .shader whose fragment part defines vec4 Effect(vec2 uv): the colour of each window pixel, "
-                 "where uv runs 0 to 1 over the frame, bottom left to top right. Frame(uv) reads the frame.")
+    DEKI_TOOLTIP("An HLSL .shader that defines float4 Effect(float2 uv): the colour of each window pixel, where "
+                 "uv runs 0 to 1 over the frame, bottom left to top right. Frame(uv) reads the frame.")
     DEKI_EXPORT
     Deki::AssetRef<DekiRendering::ShaderAsset> shader;
 

@@ -19,6 +19,7 @@
 #include "deki-rendering/GLPresenter.h"
 #include "deki-rendering/PixelFormat.h"
 #include "deki-rendering/ShaderAsset.h"
+#include "deki-rendering/editor/ShaderUses.h"
 
 using namespace DekiGL;
 
@@ -171,9 +172,10 @@ TEST(GLPresenter, AScreenEffectShowsTheFrameThroughItsShader)
     std::unique_ptr<GLPresenter> presenter = GLPresenter::Create(context, window);
     ASSERT_NE(presenter, nullptr);
 
-    const char* text = "// @fragment\nvec4 Effect(vec2 uv)\n{\n    return vec4(1.0) - Frame(uv);\n}\n";
+    const char* text = "float4 Effect(float2 uv)\n{\n    return 1.0 - Frame(uv);\n}\n";
     DekiRendering::ShaderAsset invert;
-    ASSERT_TRUE(invert.Parse(text, std::strlen(text)));
+    std::string errors;
+    ASSERT_TRUE(DekiRendering::CompileShaderText(text, "invert.shader", invert, errors)) << errors;
     GLPresenter::Effect effect;
     effect.shader = &invert;
 

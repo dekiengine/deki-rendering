@@ -1,58 +1,67 @@
 #pragma once
 
-// A GPU shader's source, as a project asset (.shader).
+// A GPU shader, as a project asset (.shader).
 //
-// The text is GLSL ES 3.00, the language of OpenGL ES 3.0 and, with the
-// version line changed, desktop OpenGL 3.3. A file has up to three parts:
+// The file is HLSL. It defines the hooks of what draws with it: deki-3d's
+// GPU meshes call Shade() and, if the file has one, Displace(); a screen
+// effect calls Effect(). What draws with it wraps the hooks in its own
+// shader, so a file holds only the interesting part.
 //
-//   (anything before the first marker)  shared: helpers, constants
-//   // @vertex                          what the vertex stage adds
-//   // @fragment                        what the fragment stage adds
-//
-// What each part must define is up to what draws with it: deki-3d's GPU
-// meshes call Shade() and, if the file has one, Displace(); a screen effect
-// calls Effect(). The backend wraps the parts in its own shaders, so a file
-// holds only the interesting part.
-//
-// Compiled by a GPU backend when it first draws with it. A platform without
-// OpenGL (DEKI_CAPABILITY_OPENGL) loads it but keeps none of its source, and
-// draws without it.
+// Devices run GLSL, so the editor compiles the file (deki-editor's
+// ShaderCompiler) once for each use whose hooks it defines: "mesh", "effect".
+// This asset is that result, the GLSL of each program in the two dialects a
+// device may have. A board without OpenGL (no DEKI_CAPABILITY_OPENGL) cannot
+// use a shader at all: a build for one that needs a shader stops and says so.
 
 #include "DekiRenderingPackage.h"
 
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include <vector>
 
 namespace DekiRendering
 {
+
+/// One program's stages in one dialect.
+struct ShaderProgramSource
+{
+    std::string vertex;
+    std::string fragment;
+};
+
+/// One program: what it is for, and its text for OpenGL ES 3.0 and desktop
+/// OpenGL 3.3.
+struct ShaderProgram
+{
+    std::string use;  // "mesh", "effect"
+    ShaderProgramSource es;
+    ShaderProgramSource gl;
+};
 
 class DEKI_RENDERING_API ShaderAsset
 {
 public:
     static constexpr const char* kAssetTypeName = "Shader";
 
-    /// Splits `text` at the stage markers. False when it is empty.
-    bool Parse(const char* text, size_t size);
+    /// Reads what Encode() wrote. False when it is not that.
+    bool Parse(const uint8_t* data, size_t size);
 
-    const std::string& Common() const { return m_Common; }
-    const std::string& Vertex() const { return m_Vertex; }
-    const std::string& Fragment() const { return m_Fragment; }
-    /// The file's line each part starts on, counting from 1, so a backend can
-    /// tell the compiler (#line) and its errors name the file's lines.
-    int VertexLine() const { return m_VertexLine; }
-    int FragmentLine() const { return m_FragmentLine; }
+    /// The compiled form of `programs`, as the editor stores a .shader.
+    static std::vector<uint8_t> Encode(const std::vector<ShaderProgram>& programs);
 
-    /// Never zero, and new every time a source loads, so a backend can keep
+    /// The program for `use` in OpenGL ES (`es`) or desktop GL text, or null
+    /// when the file does not define that use's hooks.
+    const ShaderProgramSource* Program(const char* use, bool es) const;
+
+    const std::vector<ShaderProgram>& Programs() const { return m_Programs; }
+
+    /// Never zero, and new every time a shader loads, so a backend can keep
     /// one compiled program per revision.
     uint32_t Revision() const { return m_Revision; }
 
 private:
-    std::string m_Common;
-    std::string m_Vertex;
-    std::string m_Fragment;
-    int m_VertexLine = 1;
-    int m_FragmentLine = 1;
+    std::vector<ShaderProgram> m_Programs;
     uint32_t m_Revision = 0;
 };
 
