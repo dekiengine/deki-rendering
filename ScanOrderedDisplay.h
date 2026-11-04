@@ -80,6 +80,17 @@ public:
         return nullptr;
     }
 
+    /// A frame of `bytes` to draw a whole frame in (one that cannot be drawn
+    /// in strips, a 3D scene's), which the next Present or PresentRegions of
+    /// it takes as it is, with no copy, one with nothing to send included; or
+    /// null: draw it in your own. It holds a frame drawn before, not the last
+    /// one, so it is asked for only when every pixel is drawn anew.
+    virtual uint8_t* LendFrame(size_t bytes)
+    {
+        (void)bytes;
+        return nullptr;
+    }
+
 protected:
     ~IScanOrderedDisplay() = default;
 };

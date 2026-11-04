@@ -480,6 +480,25 @@ void DekiRenderSystem::Render(Deki::Scene* currentScene)
             ResetHistory();
         }
         m_WholeFrameHolds = true;
+        // A display that sends whole frames from copies of its own lends one
+        // to draw in, when every pixel of the frame is drawn anew, and sends
+        // it with no copy (a frame's copy cost the drawing core 5 ms on a
+        // T-Deck). Otherwise the frame is drawn in m_WholeFrame, which holds
+        // the last one.
+        m_LentFrame = nullptr;
+        m_RenderBuffer = m_WholeFrame;
+        if (camera->clearEveryFrame && !m_RedrawChanges && !capture)
+        {
+            if (IScanOrderedDisplay* scan = FindScanOrderedDisplay(Deki::Engine::GetInstance().GetDisplay()))
+            {
+                m_LentFrame = scan->LendFrame(Deki::FrameBufferBytes(m_ColorFormat, m_ScreenWidth, m_ScreenHeight));
+            }
+            if (m_LentFrame)
+            {
+                m_RenderBuffer = m_LentFrame;
+                m_WholeFrameHolds = false;
+            }
+        }
     }
 
     if (RenderOnSink(currentScene, camera))

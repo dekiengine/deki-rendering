@@ -115,6 +115,9 @@ private:
     // while something needs it and freed the first frame nothing does.
     uint8_t* m_WholeFrame = nullptr;
     bool m_WholeFrameHolds = false;  // holds the frame last drawn
+    // This frame's buffer, lent by the display (IScanOrderedDisplay::LendFrame)
+    // in place of m_WholeFrame, until it is presented.
+    uint8_t* m_LentFrame = nullptr;
     bool m_WholeFrames = false;      // drawing whole frames into it (DrawsInStrips said no)
     bool m_WholeFrameWarned = false;
     uint32_t m_CaptureSeen = 0;
@@ -219,6 +222,10 @@ public:
     {
         if (m_BandRows > 0)
         {
+            if (m_LentFrame)
+            {
+                return m_LentFrame;
+            }
             return m_WholeFrameHolds ? m_WholeFrame : nullptr;
         }
         return m_RenderBuffer;

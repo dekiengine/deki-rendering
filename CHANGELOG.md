@@ -24,6 +24,12 @@ alongside one that has them.
   cleared and lit after, still when the frame is first written. The same
   pixels. A 3D scene lit by an ambient light and the sun saves the 2D light's
   pass over the screen: 6.8 ms a frame on a T-Deck.
+- A frame that cannot be drawn in strips (a 3D scene's) is drawn in a frame
+  the display lends (`IScanOrderedDisplay::LendFrame`) when every pixel of
+  it is drawn anew (the camera clears every frame, changes are not redrawn
+  on their own, no screenshot is wanted), and goes to the display as it is.
+  On a T-Deck that is the 5 ms copy of each frame gone: a 3D corridor of
+  2,000 triangles at 19.5 frames a second, from 17.
 - A render pass about to write every pixel of the frame itself can take the
   pending clear as one pixel (`QuadBlit::TakePendingClear`,
   `DeferredClear::pixel`), lit when the light came first, and draw it where

@@ -269,14 +269,17 @@ class PlaceRenderer : public DekiRenderer
 {
 public:
     std::vector<Deki::Rect> strips;  // each Render()'s place in the view
+    bool inStrips = true;            // false: as a frame with a 3D mesh, drawn whole
+    const uint8_t* drewIn = nullptr;  // the buffer of the last Render()
 
     uint32_t GetRendererType() const override { return 0x504C4345; }
-    bool DrawsInStrips(Deki::Scene*) const override { return true; }
+    bool DrawsInStrips(Deki::Scene*) const override { return inStrips; }
     void Render(Deki::Scene*, const RenderContext& ctx) override
     {
         EXPECT_EQ(ctx.viewWidth > 0 ? ctx.viewWidth : ctx.width, kW);
         EXPECT_EQ(ctx.viewHeight > 0 ? ctx.viewHeight : ctx.height, kH);
         strips.push_back(Deki::Rect{ ctx.viewLeft, ctx.viewTop, ctx.viewLeft + ctx.width, ctx.viewTop + ctx.height });
+        drewIn = ctx.buffer;
         auto* px = reinterpret_cast<uint16_t*>(ctx.buffer);
         for (int32_t y = 0; y < ctx.height; ++y)
         {
@@ -296,8 +299,20 @@ public:
     std::vector<uint16_t> frame = std::vector<uint16_t>(kW * kH, 0xFFFF);
     std::vector<Deki::Rect> sent;
     std::vector<bool> firsts;
+    bool lends = false;  // lends frames to draw whole frames in (LendFrame)
+    std::vector<uint8_t> lent = std::vector<uint8_t>(kW * kH * 2);
+    int lendings = 0;
 
     ScanOrder GetScanOrder() const override { return order; }
+    uint8_t* LendFrame(size_t bytes) override
+    {
+        if (!lends || bytes != lent.size())
+        {
+            return nullptr;
+        }
+        ++lendings;
+        return lent.data();
+    }
     void PresentStrip(const ScanStrip& s) override
     {
         sent.push_back(s.changed);
@@ -322,6 +337,7 @@ struct ScanFixture
     Deki::Scene scene;
     PlaceRenderer renderer;
     DekiRenderSystem system;
+    CameraComponent* camera = nullptr;
 
     explicit ScanFixture(ScanOrder order)
     {
@@ -331,7 +347,7 @@ struct ScanFixture
         engine.SetDisplay(&display, "scan");
         RegisterScanOrderedDisplay(&display, &scan);
         auto* camObj = new Deki::Object("Camera");
-        camObj->AddComponent<CameraComponent>();
+        camera = camObj->AddComponent<CameraComponent>();
         scene.AddObject(camObj);
         EXPECT_TRUE(system.Setup(kW, kH, Deki::ColorFormat::RGB565));
         system.SetRenderer(&renderer);
@@ -447,4 +463,32 @@ TEST(ScanOrderStrips, AnotherDisplaysOrderIsNotUsed)
     ASSERT_TRUE(f.system.SetBandRows(8));
     EXPECT_FALSE(f.system.IsBandColumns());
     RegisterScanOrderedDisplay(&other, nullptr);
+}
+
+// A frame that cannot be drawn in strips, drawn anew all over, is drawn in a
+// frame the display lends, which then goes to it as it is; one that keeps
+// the last frame, or is wanted for a screenshot, is drawn in a frame of the
+// render system's own.
+TEST(ScanOrderStrips, AWholeFrameDrawnAnewIsDrawnInAFrameTheDisplayLends)
+{
+    ScanFixture f(ScanOrder::ColumnsRight);
+    ASSERT_TRUE(f.system.SetBandRows(8));
+    f.renderer.inStrips = false;
+    f.scan.lends = true;
+    f.system.Render(&f.scene);
+    EXPECT_EQ(f.renderer.drewIn, f.scan.lent.data());
+    EXPECT_EQ(f.system.GetFrameBuffer(), f.scan.lent.data()) << "what the engine presents";
+    EXPECT_EQ(f.scan.lendings, 1);
+
+    f.camera->clearEveryFrame = false;
+    f.system.Render(&f.scene);
+    EXPECT_NE(f.renderer.drewIn, f.scan.lent.data()) << "the last frame is drawn over, in its own";
+    EXPECT_EQ(f.system.GetFrameBuffer(), f.renderer.drewIn);
+    EXPECT_EQ(f.scan.lendings, 1);
+
+    f.camera->clearEveryFrame = true;
+    DekiRenderSystem::RequestFrameCapture();
+    f.system.Render(&f.scene);
+    EXPECT_NE(f.renderer.drewIn, f.scan.lent.data()) << "a screenshot reads its own";
+    EXPECT_EQ(f.scan.lendings, 1);
 }
