@@ -233,6 +233,16 @@ private:
     // mesh), or at the end.
     Lighting2D m_Lighting;
     bool m_Lit = false;
+    // The frame's clear, lit, waiting for the frame's first write as the
+    // clear itself did (QuadBlit::PendingClear): it stands for m_LitFrom,
+    // the clear DekiRenderSystem left, made in its colour lit.
+    DeferredClear m_LitClear;
+    const DeferredClear* m_LitFrom = nullptr;
+    Deki::ColorFormat m_LitFormat = Deki::ColorFormat::RGB565;
+    int32_t m_LitViewLeft = 0;
+    int32_t m_LitViewTop = 0;
+    static void RunLitClear(void* owner);
+    static bool LitClearPixel(void* owner, uint8_t* out);
     // Lights the frame now if `next` (null: the frame's end) is where it is due.
     void LightFrameIfDue(const SortItem* next, const RenderContext& ctx);
 

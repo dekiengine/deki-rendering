@@ -21,9 +21,14 @@ alongside one that has them.
 - A frame holding nothing but its clear when the 2D light is due, and lit
   the same all over (`Lighting2D::Uniform`: no point or spot light in view),
   is cleared in the clear colour lit (`DeferredClear::runLit`) instead of
-  cleared and lit after. The same pixels. A 3D scene lit by an ambient light
-  and the sun saves the 2D light's pass over the screen: 6.8 ms a frame on a
-  T-Deck.
+  cleared and lit after, still when the frame is first written. The same
+  pixels. A 3D scene lit by an ambient light and the sun saves the 2D light's
+  pass over the screen: 6.8 ms a frame on a T-Deck.
+- A render pass about to write every pixel of the frame itself can take the
+  pending clear as one pixel (`QuadBlit::TakePendingClear`,
+  `DeferredClear::pixel`), lit when the light came first, and draw it where
+  it draws nothing: deki-3d's software rasteriser does, which saves the
+  clear's own pass over the screen.
 - The shader loader is registered once, as "Shader"
   (`ShaderAsset::kAssetTypeName`). Its second name, "ShaderAsset", was there
   because the reflection named an `AssetRef<ShaderAsset>` by its class; it no

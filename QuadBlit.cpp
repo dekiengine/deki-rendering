@@ -323,6 +323,17 @@ void DropPendingClear()
     s_ClearTarget = nullptr;
 }
 
+bool TakePendingClear(const uint8_t* buffer, uint8_t* pixel)
+{
+    if (!buffer || buffer != s_ClearTarget || !s_PendingClear->pixel ||
+        !s_PendingClear->pixel(s_PendingClear->owner, pixel))
+    {
+        return false;
+    }
+    DropPendingClear();
+    return true;
+}
+
 void BeforeWriting(const uint8_t* buffer)
 {
     if (buffer && buffer == s_ClearTarget)

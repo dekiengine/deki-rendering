@@ -446,6 +446,12 @@ const DekiRendering::DeferredClear* PendingClear();
 void RunPendingClear();
 /// Forgets the pending clear without running it: what is drawn next covers it.
 void DropPendingClear();
+/// For a render pass about to write every pixel of `buffer` itself: when
+/// `buffer` has a pending clear of the whole frame in one colour, writes its
+/// pixel (the frame's format, 4 bytes) to `pixel`, forgets the clear and says
+/// true. The pass then draws that pixel wherever it draws nothing. False
+/// otherwise, and the pass calls BeforeWriting instead.
+bool TakePendingClear(const uint8_t* buffer, uint8_t* pixel);
 /// Runs `buffer`'s pending clear, if it has one. A render pass that writes
 /// into the buffer other than through QuadBlit, and says so only after
 /// (RenderPass::WritesBuffer false, NoteWritten), calls it before it does.

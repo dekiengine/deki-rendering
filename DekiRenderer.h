@@ -20,12 +20,17 @@ class Lighting2D;
 /// (DekiRenderer::ClearsLazily): run(owner) clears it. runLit, when given,
 /// clears it in the clear colour lit by `light`, which must light the view the
 /// same all over (Lighting2D::Uniform): what Lighting2D::Apply would make of
-/// a frame holding only the clear, without the pass over it.
+/// a frame holding only the clear, without the pass over it. pixel, when
+/// given, writes the clear's one pixel in the frame's format to `out` (4
+/// bytes) and says true, when the clear is of the whole frame: a render pass
+/// that writes every pixel of the frame itself takes it instead
+/// (QuadBlit::TakePendingClear) and draws it where it draws nothing.
 struct DeferredClear
 {
     void (*run)(void* owner) = nullptr;
     void* owner = nullptr;
     void (*runLit)(void* owner, Lighting2D& light, int32_t viewLeft, int32_t viewTop) = nullptr;
+    bool (*pixel)(void* owner, uint8_t* out) = nullptr;
 };
 
 /// Everything a renderer or render pass needs to produce a frame.

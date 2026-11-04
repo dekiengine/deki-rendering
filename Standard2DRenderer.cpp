@@ -916,12 +916,18 @@ void Standard2DRenderer::LightFrameIfDue(const SortItem* next, const RenderConte
     m_Lit = true;
     // Nothing has written the frame yet, and it is lit the same all over:
     // lit, the clear is one colour, so it is made in that colour instead of
-    // lit after.
+    // lit after, still when the frame is first written.
     const DeferredClear* clear = QuadBlit::PendingClear();
     if (clear && clear->runLit && !m_SinkFrame && m_Lighting.Uniform())
     {
-        QuadBlit::DropPendingClear();
-        clear->runLit(clear->owner, m_Lighting, ctx.viewLeft, ctx.viewTop);
+        m_LitFrom = clear;
+        m_LitFormat = ctx.format;
+        m_LitViewLeft = ctx.viewLeft;
+        m_LitViewTop = ctx.viewTop;
+        m_LitClear.run = &Standard2DRenderer::RunLitClear;
+        m_LitClear.owner = this;
+        m_LitClear.pixel = clear->pixel ? &Standard2DRenderer::LitClearPixel : nullptr;
+        QuadBlit::SetPendingClear(m_FrameBuffer, &m_LitClear);
         return;
     }
     RunClear();  // the clear colour is lit too: it shows wherever nothing covers it
@@ -937,6 +943,25 @@ void Standard2DRenderer::LightFrameIfDue(const SortItem* next, const RenderConte
         return;
     }
     m_Lighting.Apply(ctx.buffer, ctx.width, ctx.height, ctx.format, ctx.redraw, ctx.viewLeft, ctx.viewTop);
+}
+
+void Standard2DRenderer::RunLitClear(void* owner)
+{
+    Standard2DRenderer* self = static_cast<Standard2DRenderer*>(owner);
+    self->m_LitFrom->runLit(self->m_LitFrom->owner, self->m_Lighting, self->m_LitViewLeft, self->m_LitViewTop);
+}
+
+bool Standard2DRenderer::LitClearPixel(void* owner, uint8_t* out)
+{
+    // The clear's pixel, lit by Apply itself, as DekiRenderSystem's lit clear.
+    Standard2DRenderer* self = static_cast<Standard2DRenderer*>(owner);
+    if (!self->m_LitFrom->pixel(self->m_LitFrom->owner, out))
+    {
+        return false;
+    }
+    self->m_Lighting.Apply(out, 1, 1, self->m_LitFormat, Deki::Rect{ 0, 0, 1, 1 }, self->m_LitViewLeft,
+                           self->m_LitViewTop);
+    return true;
 }
 
 void Standard2DRenderer::ForgetRecords()

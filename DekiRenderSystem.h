@@ -135,6 +135,8 @@ private:
     void ClearFrameWith(const uint8_t* pixel);
     // In the clear colour lit (DeferredClear::runLit).
     static void ClearFrameLit(void* owner, Lighting2D& light, int32_t viewLeft, int32_t viewTop);
+    // The clear's pixel, for a pass that takes it (DeferredClear::pixel).
+    static bool ClearPixel(void* owner, uint8_t* out);
 
 public:
     DekiRenderSystem();

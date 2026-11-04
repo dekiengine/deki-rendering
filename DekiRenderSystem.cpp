@@ -498,7 +498,8 @@ void DekiRenderSystem::Render(Deki::Scene* currentScene)
     ClearChanged(*camera);
     m_ClearColor = camera->clearColor;
     m_ClearRects = nullptr;
-    const DeferredClear deferred{ &DekiRenderSystem::ClearFrame, this, &DekiRenderSystem::ClearFrameLit };
+    const DeferredClear deferred{ &DekiRenderSystem::ClearFrame, this, &DekiRenderSystem::ClearFrameLit,
+                                  &DekiRenderSystem::ClearPixel };
     const bool lazily = camera->clearEveryFrame && m_Renderer->ClearsLazily();
     if (camera->clearEveryFrame && !lazily)
     {
@@ -638,7 +639,8 @@ bool DekiRenderSystem::RenderChanges(Deki::Scene* scene, CameraComponent* camera
     }
     QuadBlit::NextFrame();
     m_ClearColor = camera->clearColor;
-    const DeferredClear deferred{ &DekiRenderSystem::ClearFrame, this, &DekiRenderSystem::ClearFrameLit };
+    const DeferredClear deferred{ &DekiRenderSystem::ClearFrame, this, &DekiRenderSystem::ClearFrameLit,
+                                  &DekiRenderSystem::ClearPixel };
     const bool lazily = m_Renderer->ClearsLazily();
     RenderContext ctx{ camera, m_RenderBuffer, m_ScreenWidth, m_ScreenHeight, m_ColorFormat };
     ctx.contentFrame = m_ContentFrame;
@@ -1171,6 +1173,18 @@ void DekiRenderSystem::ClearFrameLit(void* owner, Lighting2D& light, int32_t vie
     WritePixel(pixel, self->m_ColorFormat, self->m_ClearColor.r, self->m_ClearColor.g, self->m_ClearColor.b);
     light.Apply(pixel, 1, 1, self->m_ColorFormat, Deki::Rect{ 0, 0, 1, 1 }, viewLeft, viewTop);
     self->ClearFrameWith(pixel);
+}
+
+bool DekiRenderSystem::ClearPixel(void* owner, uint8_t* out)
+{
+    // Only a clear of the whole frame: a pass that takes it writes all of it.
+    const DekiRenderSystem* self = static_cast<const DekiRenderSystem*>(owner);
+    if (!self->m_RenderBuffer || self->m_ClearRects)
+    {
+        return false;
+    }
+    WritePixel(out, self->m_ColorFormat, self->m_ClearColor.r, self->m_ClearColor.g, self->m_ClearColor.b);
+    return true;
 }
 
 void DekiRenderSystem::ClearBuffer(uint8_t r, uint8_t g, uint8_t b)

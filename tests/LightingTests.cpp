@@ -517,6 +517,31 @@ public:
         QuadBlit::NoteWritten(ctx.buffer);
     }
 };
+// Takes the frame's clear and draws all of the frame in its pixel, as a
+// software rasteriser drawing the clear wherever it draws nothing.
+class TakingPass : public RenderPass
+{
+public:
+    bool took = false;
+    uint32_t HookMask() const override { return RenderPassHooks::Execute; }
+    bool WantsObject(Deki::Object* obj) const override { return obj->GetName() == "Writer"; }
+    bool WritesBuffer() const override { return false; }
+    void Execute(Deki::Object*, RenderContext& ctx) override
+    {
+        uint8_t pixel[4];
+        took = QuadBlit::TakePendingClear(ctx.buffer, pixel);
+        if (!took)
+        {
+            return;
+        }
+        const size_t bpp = Deki::FrameBufferBytes(ctx.format, 1, 1);
+        for (size_t i = 0; i < static_cast<size_t>(ctx.width) * ctx.height; i++)
+        {
+            std::memcpy(ctx.buffer + i * bpp, pixel, bpp);
+        }
+        QuadBlit::NoteWritten(ctx.buffer);
+    }
+};
 }  // namespace
 
 // A frame holding nothing but its clear when its light is due, and lit the
@@ -613,5 +638,43 @@ TEST(Lighting2D, APassThatWritesItselfIsClearedUnderWhenItSaysSo)
         {
             EXPECT_NE(first, 0x1234) << "with nothing said, the clear came after";
         }
+    }
+}
+
+// A pass that writes every pixel itself can take the frame's clear as one
+// pixel: lit, when the light came first and is the same all over, so the
+// frame is what the lit clear would have made.
+TEST(Lighting2D, APassTakesTheClearLitAsTheClearWouldBe)
+{
+    for (Deki::ColorFormat format : kFormats)
+    {
+        Frame plain;  // the lit clear, made by the render system
+        plain.Add(1.0f, 1)->selfLit = true;
+        DekiRenderSystem made;
+        ASSERT_TRUE(made.Setup(kW, kH, format));
+        made.SetRenderer(&plain.renderer);
+        made.Render(&plain.scene);
+
+        Frame f;
+        auto* writer = new Deki::Object("Writer");
+        Patch* nothing = writer->AddComponent<Patch>();
+        nothing->draws = false;
+        nothing->selfLit = true;  // the light is due before it, with nothing drawn
+        nothing->sortingOrder = 1;
+        f.scene.AddObject(writer);
+        TakingPass pass;
+        f.renderer.AddPass(&pass);
+        DekiRenderSystem system;
+        ASSERT_TRUE(system.Setup(kW, kH, format));
+        system.SetRenderer(&f.renderer);
+        system.Render(&f.scene);
+        EXPECT_TRUE(pass.took);
+        // The corners, which hold only the clear in both: `plain`'s patch is
+        // in the middle.
+        const size_t bpp = Deki::FrameBufferBytes(format, 1, 1);
+        EXPECT_EQ(std::memcmp(system.GetFrameBuffer(), made.GetFrameBuffer(), bpp), 0) << static_cast<int>(format);
+        EXPECT_EQ(std::memcmp(system.GetFrameBuffer() + (static_cast<size_t>(kW) * kH - 1) * bpp,
+                              made.GetFrameBuffer() + (static_cast<size_t>(kW) * kH - 1) * bpp, bpp),
+                  0);
     }
 }
