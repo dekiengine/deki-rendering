@@ -223,6 +223,14 @@ and blends them the same way; the picture differs from the CPU's only where
 the CPU rounds each write to 565. Quads are drawn in call order, in batches,
 one draw per run of quads from the same texture.
 
+A source's `filter` is its image's Filter. Point, the default, is the CPU's
+own pick of one texel, and the only one the CPU draws. Bilinear blends the
+four texels nearest each pixel, and Trilinear also blends between the
+texture's mipmaps by how small the quad draws it; both stay within the
+source, so a sprite-sheet frame or a tile never takes in its neighbour's
+texels. A texture gets its mipmaps when a Trilinear source first draws from
+it.
+
 Each source is uploaded as a texture and kept: until its `revision` changes,
 or for pixels marked `cacheScaled`, until `QuadBlit::ForgetScaled` says they
 go. deki-2d's components, particles and tilemaps set revisions. A source with

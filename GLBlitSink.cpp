@@ -46,6 +46,7 @@ layout(location = 2) in ivec4 aStep;
 layout(location = 3) in ivec4 aSize;
 layout(location = 4) in uvec4 aTint;
 layout(location = 5) in uvec4 aKey;
+layout(location = 6) in uvec4 aSample;
 
 uniform vec2 uFrame;  // the frame's size in pixels
 
@@ -54,6 +55,7 @@ flat out ivec4 vStep;
 flat out ivec4 vSize;
 flat out uvec4 vTint;
 flat out uvec4 vKey;
+flat out uvec4 vSample;
 
 void main()
 {
@@ -65,6 +67,7 @@ void main()
     vSize = aSize;
     vTint = aTint;
     vKey = aKey;
+    vSample = aSample;
 }
 )";
 
@@ -84,6 +87,7 @@ flat in ivec4 vStep;
 flat in ivec4 vSize;
 flat in uvec4 vTint;
 flat in uvec4 vKey;
+flat in uvec4 vSample;
 
 out vec4 fragColor;
 )";
@@ -92,6 +96,50 @@ const char* const kQuadFragmentMain = R"(
 uint Div255(uint x)
 {
     return (x + 1u + (x >> 8)) >> 8;
+}
+
+// One texel of the source at mipmap `level`, at (x, y) in the sampled space
+// (before the flips), clamped into the source so a frame never takes its
+// neighbour's texels; premultiplied, a keyed texel transparent.
+vec4 TexelAt(int x, int y, int level)
+{
+    uint flags = vKey.w;
+    ivec2 sampled = max(ivec2(vSize.zw) >> level, ivec2(1));
+    ivec2 full = max(ivec2(vSize.xy) >> level, ivec2(1));
+    x = clamp(x, 0, sampled.x - 1);
+    y = clamp(y, 0, sampled.y - 1);
+    if ((flags & 2u) != 0u)
+    {
+        y = full.y - 1 - y;
+    }
+    if ((flags & 1u) != 0u)
+    {
+        x = full.x - 1 - x;
+    }
+    if ((flags & 4u) != 0u)
+    {
+        int t = x;
+        x = y;
+        y = t;
+    }
+    vec4 c = texelFetch(uTexture, ivec2(x, y), level);
+    if ((flags & 32u) != 0u && uvec3(c.rgb * 255.0 + 0.5) == vKey.rgb)
+    {
+        return vec4(0.0);
+    }
+    return vec4(c.rgb * c.a, c.a);
+}
+
+// The four texels around `pos` (texel units of level 0, sampled space),
+// blended, at mipmap `level`.
+vec4 BilinearAt(vec2 pos, int level)
+{
+    vec2 p = pos / float(1 << level) - 0.5;
+    vec2 f = fract(p);
+    ivec2 i = ivec2(floor(p));
+    vec4 a = mix(TexelAt(i.x, i.y, level), TexelAt(i.x + 1, i.y, level), f.x);
+    vec4 b = mix(TexelAt(i.x, i.y + 1, level), TexelAt(i.x + 1, i.y + 1, level), f.x);
+    return mix(a, b, f.y);
 }
 
 void main()
@@ -134,15 +182,54 @@ void main()
         y = t;
     }
 
-    uvec4 c = uvec4(texelFetch(uTexture, ivec2(x, y), 0) * 255.0 + 0.5);
-    if (c.a == 0u)
+    uvec4 c;
+    if (vSample.x == 0u)
     {
-        discard;
+        c = uvec4(texelFetch(uTexture, ivec2(x, y), 0) * 255.0 + 0.5);
+        if (c.a == 0u)
+        {
+            discard;
+        }
+        // The key is compared against the untinted colour.
+        if ((flags & 32u) != 0u && c.rgb == vKey.rgb)
+        {
+            discard;
+        }
     }
-    // The key is compared against the untinted colour.
-    if ((flags & 32u) != 0u && c.rgb == vKey.rgb)
+    else
     {
-        discard;
+        // Filtered: the same pixels are covered (the walk above), each
+        // taking the blend at its exact place in the source.
+        vec2 pos = vec2(float(int(uint(vOrigin.z) + dx * uint(vStep.x) + dy * uint(vStep.z))),
+                        float(int(uint(vOrigin.w) + dx * uint(vStep.y) + dy * uint(vStep.w)))) / 65536.0;
+        if ((flags & 8u) != 0u)
+        {
+            pos.x = 0.5;
+        }
+        if ((flags & 16u) != 0u)
+        {
+            pos.y = 0.5;
+        }
+        vec4 premul;
+        if (vSample.x == 2u && vSample.y > 0u)
+        {
+            // Trilinear: the two levels around how many texels one pixel
+            // steps across.
+            float across = max(length(vec2(vStep.xy)), length(vec2(vStep.zw))) / 65536.0;
+            float lod = clamp(log2(max(across, 1e-6)), 0.0, float(vSample.y));
+            int low = int(floor(lod));
+            int high = min(low + 1, int(vSample.y));
+            premul = mix(BilinearAt(pos, low), BilinearAt(pos, high), lod - float(low));
+        }
+        else
+        {
+            premul = BilinearAt(pos, 0);
+        }
+        if (premul.a <= 0.5 / 255.0)
+        {
+            discard;
+        }
+        c = uvec4(vec4(premul.rgb / premul.a, premul.a) * 255.0 + 0.5);
     }
     uvec3 rgb = uvec3(Div255(c.r * vTint.r), Div255(c.g * vTint.g), Div255(c.b * vTint.b));
     uint a = Div255(c.a * vTint.a);
@@ -265,6 +352,7 @@ bool GLBlitSink::Build()
     attribute(3, 4, gl::SHORT, offsetof(Vertex, size));
     attribute(4, 4, gl::UNSIGNED_BYTE, offsetof(Vertex, tint));
     attribute(5, 4, gl::UNSIGNED_BYTE, offsetof(Vertex, key));
+    attribute(6, 4, gl::UNSIGNED_BYTE, offsetof(Vertex, sample));
     gl.BindVertexArray(0);
     return gl.GetError() == 0;
 }
@@ -369,7 +457,8 @@ bool GLBlitSink::Draw(const QuadBlit::SinkBlit& blit)
     {
         Flush();
     }
-    const GLuint texture = TextureFor(source);
+    uint8_t mipLevels = 0;
+    const GLuint texture = TextureFor(source, mipLevels);
     if (!texture)
     {
         return false;
@@ -404,6 +493,10 @@ bool GLBlitSink::Draw(const QuadBlit::SinkBlit& blit)
     flags |= source.hasChromaKey ? kFlagKey : 0;
     flags |= blit.orderedDither ? kFlagDither : 0;
     v.key[3] = flags;
+    v.sample[0] = static_cast<uint8_t>(source.filter);
+    v.sample[1] = mipLevels;
+    v.sample[2] = 0;
+    v.sample[3] = 0;
     const int16_t xs[2] = { static_cast<int16_t>(blit.left), static_cast<int16_t>(blit.right) };
     const int16_t ys[2] = { static_cast<int16_t>(blit.top), static_cast<int16_t>(blit.bottom) };
     for (int corner = 0; corner < 4; ++corner)
@@ -470,8 +563,10 @@ void GLBlitSink::Forget(const uint8_t* begin, size_t bytes)
     }
 }
 
-GLuint GLBlitSink::TextureFor(const QuadBlit::Source& source)
+GLuint GLBlitSink::TextureFor(const QuadBlit::Source& source, uint8_t& mipLevels)
 {
+    mipLevels = 0;
+    const bool wantsMipmaps = source.filter == Deki::TextureFilter::Trilinear;
     const GL& gl = m_Presenter.m_Context->Functions();
     // Pixels handed over (ownsPixels) are freed after the blit, and the next
     // ones may land anywhere: they go up into one texture kept for them, not
@@ -487,6 +582,11 @@ GLuint GLBlitSink::TextureFor(const QuadBlit::Source& source)
             Flush();
         }
         Upload(m_Scratch, source);
+        if (wantsMipmaps)
+        {
+            MakeMipmaps(m_Scratch);
+        }
+        mipLevels = m_Scratch.mipLevels;
         m_Scratch.batch = m_Batch;
         return m_Scratch.id;
     }
@@ -526,9 +626,41 @@ GLuint GLBlitSink::TextureFor(const QuadBlit::Source& source)
         texture.revision = source.revision;
         texture.stable = source.revision == 0 && source.cacheScaled;
     }
+    if (wantsMipmaps && texture.mipLevels == 0)
+    {
+        if (texture.batch == m_Batch && !m_Vertices.empty())
+        {
+            Flush();
+        }
+        MakeMipmaps(texture);
+    }
+    mipLevels = texture.mipLevels;
     texture.lastUsed = m_Frame;
     texture.batch = m_Batch;
     return texture.id;
+}
+
+void GLBlitSink::MakeMipmaps(Texture& texture)
+{
+    // Halved down to 1x1, the levels a Trilinear quad reads with texelFetch.
+    // A texture is complete for that only with a mipmapped filter.
+    int levels = 0;
+    for (int32_t size = std::max(texture.width, texture.height); size > 1; size >>= 1)
+    {
+        ++levels;
+    }
+    if (levels == 0)
+    {
+        return;
+    }
+    const GL& gl = m_Presenter.m_Context->Functions();
+    gl.ActiveTexture(gl::TEXTURE0);
+    gl.BindTexture(gl::TEXTURE_2D, texture.id);
+    gl.GenerateMipmap(gl::TEXTURE_2D);
+    gl.TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MIN_FILTER, static_cast<GLint>(gl::NEAREST_MIPMAP_NEAREST));
+    texture.mipLevels = static_cast<uint8_t>(std::min(levels, 255));
+    texture.mipBytes = static_cast<size_t>(texture.width) * texture.height * 4 / 3;
+    m_TextureBytes += texture.mipBytes;
 }
 
 void GLBlitSink::Upload(Texture& texture, const QuadBlit::Source& source)
@@ -592,6 +724,14 @@ void GLBlitSink::Upload(Texture& texture, const QuadBlit::Source& source)
     {
         gl.TexSubImage2D(gl::TEXTURE_2D, 0, 0, 0, w, h, gl::RGBA, gl::UNSIGNED_BYTE, m_Staging.data());
     }
+    if (texture.mipLevels > 0)
+    {
+        // Level 0 changed: back to the one level until mipmaps are made again.
+        m_TextureBytes -= texture.mipBytes;
+        texture.mipBytes = 0;
+        texture.mipLevels = 0;
+        gl.TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MIN_FILTER, static_cast<GLint>(gl::NEAREST));
+    }
     ++m_Stats.uploads;
     m_Stats.textures = static_cast<uint32_t>(m_Textures.size());
     m_Stats.textureBytes = m_TextureBytes;
@@ -601,7 +741,7 @@ void GLBlitSink::DeleteTexture(Texture& texture)
 {
     const GL& gl = m_Presenter.m_Context->Functions();
     gl.DeleteTextures(1, &texture.id);
-    m_TextureBytes -= static_cast<size_t>(texture.width) * texture.height * 4;
+    m_TextureBytes -= static_cast<size_t>(texture.width) * texture.height * 4 + texture.mipBytes;
     texture = Texture{};
 }
 

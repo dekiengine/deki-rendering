@@ -11,8 +11,14 @@ alongside one that has them.
 ## Unreleased
 
 ### Added
-- `GL::GenerateMipmap` and `gl::LINEAR_MIPMAP_LINEAR`, for deki-3d's smooth
-  textures.
+- `GL::GenerateMipmap`, `gl::LINEAR_MIPMAP_LINEAR` and
+  `gl::NEAREST_MIPMAP_NEAREST`, for filtered textures.
+- A source's filter (`QuadBlit::Source::filter`: Point, Bilinear,
+  Trilinear, the image's setting). `GLBlitSink` draws Bilinear blended
+  between the four nearest texels, and Trilinear also between mipmaps by how
+  small it is drawn, kept within each source so a frame or tile never takes
+  in its neighbour's texels; a texture gets its mipmaps when a Trilinear
+  source first draws from it. The CPU draws Point, as before.
 - Lights: the `Light` component (Ambient, Directional, Point, Spot; colour,
   intensity, range, a spot's angle and softness, a sun's yaw and pitch, 2D
   bands, shadows). Every active Light in the scene lights deki-3d's meshes and

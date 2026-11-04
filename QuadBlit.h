@@ -1,4 +1,5 @@
 #pragma once
+#include <deki/assets/TextureFilter.h>
 #include <cstddef>
 #include <cstdint>
 #include <deki/assets/Texture2D.h>  // TextureFormat, for PixelLayout::FromTexture
@@ -125,6 +126,10 @@ struct Source
     uint8_t alphaOffset;  // byte offset of alpha: 2 for RGB565A8, 3 for RGBA8888
 
     bool isRGB565;  // RGB565 or RGB565A8
+
+    // How a GPU sink samples it (Deki::TextureFilter, the image's setting).
+    // The CPU draws every source Point; so does the GPU for Point.
+    Deki::TextureFilter filter = Deki::TextureFilter::Point;
 
     // Optional per-row opaque spans, nullptr if none: packed int16_t pairs
     // [opaqueStart, opaqueEnd] per row.

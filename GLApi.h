@@ -85,6 +85,7 @@ constexpr GLenum RENDERER = 0x1F01;
 constexpr GLenum VERSION = 0x1F02;
 constexpr GLenum NEAREST = 0x2600;
 constexpr GLenum LINEAR = 0x2601;
+constexpr GLenum NEAREST_MIPMAP_NEAREST = 0x2700;
 constexpr GLenum LINEAR_MIPMAP_LINEAR = 0x2703;
 constexpr GLenum TEXTURE_MAG_FILTER = 0x2800;
 constexpr GLenum TEXTURE_MIN_FILTER = 0x2801;

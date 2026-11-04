@@ -85,6 +85,7 @@ private:
         int16_t size[4];    // the source's width and height, then the sampled ones
         uint8_t tint[4];    // r, g, b, a
         uint8_t key[4];     // the chroma key's r, g, b, then the flags (kFlag*)
+        uint8_t sample[4];  // the filter (Deki::TextureFilter), then the top mipmap level
     };
 
     // The pixels a texture holds: a source's, as QuadBlit reads them.
@@ -109,6 +110,8 @@ private:
         int32_t width = 0, height = 0;  // as allocated
         uint32_t revision = 0;          // the source's when uploaded; 0 for none
         bool stable = false;            // uploaded for a cacheScaled source, not forgotten since
+        uint8_t mipLevels = 0;          // levels above 0 made for it (a Trilinear source), 0 for none
+        size_t mipBytes = 0;            // what those levels take
         uint32_t lastUsed = 0;          // m_Frame
         uint32_t batch = 0;             // m_Batch it was last queued in
     };
@@ -122,7 +125,10 @@ private:
 
     /// The texture with `source`'s pixels, uploaded now if what it holds may
     /// not be them. 0 when there is none.
-    GLuint TextureFor(const QuadBlit::Source& source);
+    // The texture holding `source`'s pixels, and how many mipmap levels it
+    // has (made for a Trilinear source).
+    GLuint TextureFor(const QuadBlit::Source& source, uint8_t& mipLevels);
+    void MakeMipmaps(Texture& texture);
     void Upload(Texture& texture, const QuadBlit::Source& source);
     void Evict();
     void DeleteTexture(Texture& texture);

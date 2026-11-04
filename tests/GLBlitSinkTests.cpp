@@ -426,6 +426,82 @@ TEST(GLBlitSink, TexturesAreKeptAndNeverStale)
     ExpectGpuMatchesCpu(*presenter, "changed in place within a frame", twice);
 }
 
+// A source's filter: Point keeps each texel's colour; Bilinear blends the
+// four nearest where it is drawn larger, without taking in what lies past its
+// edges; Trilinear blends smaller copies where it is drawn smaller, so a fine
+// checker drawn at a quarter is its average grey, not one of its colours.
+TEST(GLBlitSink, FiltersBlendTexels)
+{
+    REQUIRE_PRESENTER(presenter);
+    auto checker = [](int size)
+    {
+        auto t = MakeTestSource(QuadBlit::PixelLayout::RGB565(), size, size, 0);
+        for (int y = 0; y < size; ++y)
+        {
+            for (int x = 0; x < size; ++x)
+            {
+                DekiPixel::Store565(&t->pixels[(static_cast<size_t>(y) * size + x) * 2],
+                                    ((x ^ y) & 1) ? 0xFFFF : 0x0000);
+            }
+        }
+        t->source.revision = QuadBlit::NextRevision();
+        return t;
+    };
+    // Of the pixels in [x0, x1) x [y0, y1): how many are grey, and how many
+    // are near the clear colour.
+    struct Count
+    {
+        int grey = 0;
+        int clear = 0;
+        int sum = 0;
+        int pixels = 0;
+    };
+    auto count = [](const std::vector<uint8_t>& frame, int x0, int y0, int x1, int y1)
+    {
+        Count c;
+        for (int y = y0; y < y1; ++y)
+        {
+            for (int x = x0; x < x1; ++x)
+            {
+                const uint8_t* p = &frame[(static_cast<size_t>(y) * kW + x) * 4];
+                c.grey += p[0] > 40 && p[0] < 215 && std::abs(p[0] - p[2]) < 24 ? 1 : 0;
+                c.clear += std::abs(p[0] - kClear[0]) < 12 && std::abs(p[2] - kClear[2]) < 12 ? 1 : 0;
+                c.sum += p[0];
+                ++c.pixels;
+            }
+        }
+        return c;
+    };
+
+    // Drawn 8 times larger: a 4 x 4 checker over (8, 8) to (40, 40).
+    auto big = checker(4);
+    auto drawLarger = [&](Deki::TextureFilter filter)
+    {
+        big->source.filter = filter;
+        return count(DrawOnGpu(*presenter, [&](uint8_t* fb) { Blit(big->source, fb, 8, 8, 8, 8, 0, 0, 0); }), 8, 8,
+                     40, 40);
+    };
+    const Count point = drawLarger(Deki::TextureFilter::Point);
+    const Count bilinear = drawLarger(Deki::TextureFilter::Bilinear);
+    EXPECT_EQ(point.grey, 0) << "point draws black and white";
+    EXPECT_GT(bilinear.grey, point.pixels / 4) << "bilinear draws the greys between";
+    EXPECT_EQ(bilinear.clear, 0) << "its edges blend only its own texels";
+
+    // Drawn at a quarter: a 32 x 32 checker of single texels over 8 x 8.
+    auto fine = checker(32);
+    auto drawSmaller = [&](Deki::TextureFilter filter)
+    {
+        fine->source.filter = filter;
+        return count(DrawOnGpu(*presenter, [&](uint8_t* fb) { Blit(fine->source, fb, 8, 8, 0.25f, 0.25f, 0, 0, 0); }),
+                     8, 8, 16, 16);
+    };
+    const Count pointSmall = drawSmaller(Deki::TextureFilter::Point);
+    const Count trilinear = drawSmaller(Deki::TextureFilter::Trilinear);
+    EXPECT_EQ(pointSmall.grey, 0) << "point picks one texel of each 4 x 4";
+    EXPECT_EQ(trilinear.grey, trilinear.pixels) << "trilinear draws the checker's average";
+    EXPECT_NEAR(trilinear.sum / trilinear.pixels, 128, 24);
+}
+
 // What code writes into the frame buffer directly (a pass that sets pixels
 // itself, told with NoteWritten) goes over everything drawn before it and
 // under everything drawn after.
