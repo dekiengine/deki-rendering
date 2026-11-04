@@ -10,6 +10,12 @@ alongside one that has them.
 
 ## Unreleased
 
+### Changed
+- The shader loader is registered once, as "Shader"
+  (`ShaderAsset::kAssetTypeName`). Its second name, "ShaderAsset", was there
+  because the reflection named an `AssetRef<ShaderAsset>` by its class; it no
+  longer does (engine changelog).
+
 ### Added
 - `GL::GenerateMipmap`, `gl::LINEAR_MIPMAP_LINEAR` and
   `gl::NEAREST_MIPMAP_NEAREST`, for filtered textures.

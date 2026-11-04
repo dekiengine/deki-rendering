@@ -7,6 +7,8 @@
 #include <string>
 #include <vector>
 
+#include <deki/reflection/ComponentRegistry.h>
+
 #include "../ShaderAsset.h"
 #include "../editor/ShaderUses.h"
 
@@ -159,4 +161,24 @@ TEST(ShaderCompile, AGlobalThatIsSecretlyAUniformIsAWarning)
         << result.errors;
     EXPECT_NE(result.warnings.find("kScale"), std::string::npos) << result.warnings;
     EXPECT_NE(result.warnings.find("scale.shader:1:"), std::string::npos) << result.warnings;
+}
+
+// A component's reference to a shader is reflected by the asset type its
+// loader registers (ShaderAsset::kAssetTypeName), so a scene's reference
+// loads; the class name is not it.
+extern const ::Deki::ComponentMeta DekiGen_DekiGL_ScreenEffect_Meta;
+TEST(ShaderAsset, AReflectedReferenceNamesTheLoadersType)
+{
+    const ::Deki::ComponentMeta& meta = DekiGen_DekiGL_ScreenEffect_Meta;
+    const ::Deki::PropertyInfo* shader = nullptr;
+    for (int i = 0; i < meta.propertyCount; ++i)
+    {
+        if (std::string(meta.properties[i].name) == "shader")
+        {
+            shader = &meta.properties[i];
+        }
+    }
+    ASSERT_NE(shader, nullptr);
+    ASSERT_NE(shader->assetType, nullptr);
+    EXPECT_STREQ(shader->assetType, ShaderAsset::kAssetTypeName);
 }

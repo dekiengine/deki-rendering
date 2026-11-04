@@ -179,10 +179,6 @@ void DekiRenderingRegisterShaderLoader()
     };
     auto unloader = [](void* asset) { delete static_cast<ShaderAsset*>(asset); };
     Deki::AssetManager::RegisterLoader(ShaderAsset::kAssetTypeName, loader, unloader, memLoader);
-    // A component's AssetRef<ShaderAsset> is resolved by its class name (the
-    // reflection tables name the type the field holds), as deki-2d's
-    // FrameAnimationData is.
-    Deki::AssetManager::RegisterLoader("ShaderAsset", loader, unloader, memLoader);
 }
 
 namespace
