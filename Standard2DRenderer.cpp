@@ -70,11 +70,20 @@ bool Standard2DRenderer::CoversView(const RenderContext& ctx) const
 
 void Standard2DRenderer::RunClear()
 {
-    if (m_Clear)
+    QuadBlit::RunPendingClear();
+}
+
+void Standard2DRenderer::RunClearFor(const std::vector<RenderPass*>& passes)
+{
+    // A pass that says no writes through QuadBlit, which clears first, or
+    // calls QuadBlit::BeforeWriting.
+    for (const RenderPass* pass : passes)
     {
-        const DeferredClear* clear = m_Clear;
-        m_Clear = nullptr;
-        clear->run(clear->owner);
+        if (pass->WritesBuffer())
+        {
+            RunClear();
+            return;
+        }
     }
 }
 
@@ -478,14 +487,14 @@ void Standard2DRenderer::ExecuteBuiltins(const SortItem& item, RenderContext& ct
 
             // The frame's first draw: when it covers what is drawn opaquely,
             // the clear would only be drawn over.
-            if (m_Clear)
+            if (QuadBlit::PendingClear())
             {
                 const Deki::Rect cover = ctx.redraw.Empty() ? Deki::Rect{ 0, 0, ctx.width, ctx.height } : ctx.redraw;
                 if (ctx.buffer == m_FrameBuffer &&
                     QuadBlit::CoversRect(source, intScreenX, intScreenY, drawScaleX, drawScaleY, wt.rotation, pivotX,
                                          pivotY, tintA, cover.left, cover.top, cover.right, cover.bottom))
                 {
-                    m_Clear = nullptr;
+                    QuadBlit::DropPendingClear();
                 }
                 else
                 {
@@ -614,7 +623,7 @@ void SetCurrentDrawView(const DrawView& view)
 
 void Standard2DRenderer::Render(Deki::Scene* scene, const RenderContext& ctx)
 {
-    m_Clear = ctx.clear && ctx.clear->run ? ctx.clear : nullptr;
+    QuadBlit::SetPendingClear(ctx.buffer, ctx.clear && ctx.clear->run ? ctx.clear : nullptr);
     if (!scene || !ctx.camera || !ctx.buffer)
     {
         RunClear();
@@ -644,15 +653,12 @@ void Standard2DRenderer::Render(Deki::Scene* scene, const RenderContext& ctx)
     // to set the render target for the whole frame; every RenderObject below
     // uses frameCtx, not the original ctx.
     //
-    // The clear waits for the frame's first draw, which may cover it. Passes
-    // may write anywhere, so it is made before any of them runs; an Execute
+    // The clear waits for the frame's first draw, which may cover it. A pass
+    // that may write anywhere has it made before its hooks run; an Execute
     // pass only for an object it wants.
     RenderContext frameCtx = ctx;
     frameCtx.clear = nullptr;
-    if (!m_BeginPasses.empty())
-    {
-        RunClear();
-    }
+    RunClearFor(m_BeginPasses);
     for (RenderPass* pass : m_BeginPasses)
     {
         pass->BeginFrame(frameCtx);
@@ -734,9 +740,9 @@ void Standard2DRenderer::Render(Deki::Scene* scene, const RenderContext& ctx)
     }
     m_PlanMode = PlanMode::Off;
 
-    // Nothing was drawn: the clear is all there is.
-    RunClear();
+    // Nothing was drawn: the clear is all there is, and is lit if the frame is.
     LightFrameIfDue(nullptr, frameCtx);
+    RunClear();
 
     // Post-frame composites (e.g. screen-space overlays).
     for (auto it = m_EndPasses.rbegin(); it != m_EndPasses.rend(); ++it)
@@ -802,7 +808,7 @@ bool Standard2DRenderer::FindChanges(Deki::Scene* scene, const RenderContext& ct
     }
 
     QuadBlit::ClearClipStack();
-    m_Clear = nullptr;
+    QuadBlit::SetPendingClear(nullptr, nullptr);
     m_FrameBuffer = ctx.buffer;
     m_Changes = &changed;
     m_DrawIndex = 0;
@@ -908,6 +914,16 @@ void Standard2DRenderer::LightFrameIfDue(const SortItem* next, const RenderConte
         return;
     }
     m_Lit = true;
+    // Nothing has written the frame yet, and it is lit the same all over:
+    // lit, the clear is one colour, so it is made in that colour instead of
+    // lit after.
+    const DeferredClear* clear = QuadBlit::PendingClear();
+    if (clear && clear->runLit && !m_SinkFrame && m_Lighting.Uniform())
+    {
+        QuadBlit::DropPendingClear();
+        clear->runLit(clear->owner, m_Lighting, ctx.viewLeft, ctx.viewTop);
+        return;
+    }
     RunClear();  // the clear colour is lit too: it shows wherever nothing covers it
     if (m_SinkFrame)
     {
@@ -935,10 +951,7 @@ void Standard2DRenderer::RenderObject(const SortItem& item, const RenderContext&
     RenderContext objCtx = ctx;
 
     // Phase 1: PreExecute passes, which may redirect ctx.buffer for this object.
-    if (!m_PrePasses.empty())
-    {
-        RunClear();
-    }
+    RunClearFor(m_PrePasses);
     for (RenderPass* pass : m_PrePasses)
     {
         pass->PreExecute(obj, objCtx);
@@ -985,7 +998,7 @@ void Standard2DRenderer::RenderObject(const SortItem& item, const RenderContext&
             }
             continue;
         }
-        if (m_Clear && pass->WantsObject(obj))
+        if (QuadBlit::PendingClear() && pass->WritesBuffer() && pass->WantsObject(obj))
         {
             RunClear();
         }
@@ -1041,10 +1054,7 @@ void Standard2DRenderer::RenderObject(const SortItem& item, const RenderContext&
     }
 
     // Phase 5: PostExecute passes, in reverse order.
-    if (!m_PostPasses.empty())
-    {
-        RunClear();
-    }
+    RunClearFor(m_PostPasses);
     for (auto it = m_PostPasses.rbegin(); it != m_PostPasses.rend(); ++it)
     {
         (*it)->PostExecute(obj, objCtx);

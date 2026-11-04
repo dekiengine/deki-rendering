@@ -18,6 +18,7 @@ namespace DekiRendering
 {
 class CameraComponent;
 class DekiRenderer;
+class Lighting2D;
 
 class DekiRenderSystem : public Deki::IRenderSystem
 {
@@ -130,6 +131,10 @@ private:
     // (DeferredClear): m_ClearRects null clears all of it.
     void ClearFrame();
     static void ClearFrame(void* owner);
+    // The same with `pixel`, one pixel of the frame's format.
+    void ClearFrameWith(const uint8_t* pixel);
+    // In the clear colour lit (DeferredClear::runLit).
+    static void ClearFrameLit(void* owner, Lighting2D& light, int32_t viewLeft, int32_t viewTop);
 
 public:
     DekiRenderSystem();

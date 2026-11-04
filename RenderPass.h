@@ -129,8 +129,11 @@ public:
     /// it keeps its place in the draw order. That costs a look through the
     /// whole buffer each time. Say no for a pass that draws only through
     /// QuadBlit or straight into the GPU's frame; one that writes only now
-    /// and then can say no and call QuadBlit::NoteWritten(ctx.buffer) when it
-    /// does. The default is yes.
+    /// and then can say no and call QuadBlit::BeforeWriting(ctx.buffer)
+    /// before it does, which makes the frame's clear if it is still to come,
+    /// and QuadBlit::NoteWritten(ctx.buffer) after. Its hooks then leave the
+    /// clear waiting, so the frame's first draw may still cover it, or the 2D
+    /// light colour it. The default is yes.
     virtual bool WritesBuffer() const { return true; }
 
     /// Adds to `changed` the pixels where this pass draws `obj` differently

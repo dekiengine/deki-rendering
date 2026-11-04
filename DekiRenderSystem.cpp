@@ -3,6 +3,7 @@
 #include "DekiRenderer.h"
 #include "PixelFormat.h"
 #include "QuadBlit.h"
+#include "Lighting2D.h"
 #include <deki/Engine.h>
 #include <deki/LogSystem.h>
 #include <deki/SceneSystem.h>
@@ -57,9 +58,10 @@ inline size_t WritePixel(uint8_t* p, Deki::ColorFormat format, uint8_t r, uint8_
     return 0;
 }
 
-// Fills [x, x+w) x [y, y+h) of a buffer of bufW x bufH pixels, clipped.
+// Fills [x, x+w) x [y, y+h) of a buffer of bufW x bufH pixels, clipped,
+// with `pixel`, one pixel of `format`.
 void FillRect(uint8_t* buffer, int32_t bufW, int32_t bufH, Deki::ColorFormat format, int32_t x, int32_t y, int32_t w,
-              int32_t h, uint8_t r, uint8_t g, uint8_t b)
+              int32_t h, const uint8_t* pixel)
 {
     int32_t x0 = std::max<int32_t>(x, 0), y0 = std::max<int32_t>(y, 0);
     int32_t x1 = std::min<int32_t>(x + w, bufW), y1 = std::min<int32_t>(y + h, bufH);
@@ -75,7 +77,7 @@ void FillRect(uint8_t* buffer, int32_t bufW, int32_t bufH, Deki::ColorFormat for
 
     // Write one pixel, double it across the first row, then copy the row down:
     // all memcpy, no per-pixel loop.
-    WritePixel(row0, format, r, g, b);
+    memcpy(row0, pixel, bpp);
     for (size_t written = bpp; written < span; written *= 2)
     {
         memcpy(row0 + written, row0, std::min(written, span - written));
@@ -84,6 +86,14 @@ void FillRect(uint8_t* buffer, int32_t bufW, int32_t bufH, Deki::ColorFormat for
     {
         memcpy(row0 + static_cast<size_t>(yy - y0) * pitch, row0, span);
     }
+}
+
+void FillRect(uint8_t* buffer, int32_t bufW, int32_t bufH, Deki::ColorFormat format, int32_t x, int32_t y, int32_t w,
+              int32_t h, uint8_t r, uint8_t g, uint8_t b)
+{
+    uint8_t pixel[4];
+    WritePixel(pixel, format, r, g, b);
+    FillRect(buffer, bufW, bufH, format, x, y, w, h, pixel);
 }
 }  // namespace
 
@@ -488,7 +498,7 @@ void DekiRenderSystem::Render(Deki::Scene* currentScene)
     ClearChanged(*camera);
     m_ClearColor = camera->clearColor;
     m_ClearRects = nullptr;
-    const DeferredClear deferred{ &DekiRenderSystem::ClearFrame, this };
+    const DeferredClear deferred{ &DekiRenderSystem::ClearFrame, this, &DekiRenderSystem::ClearFrameLit };
     const bool lazily = camera->clearEveryFrame && m_Renderer->ClearsLazily();
     if (camera->clearEveryFrame && !lazily)
     {
@@ -628,7 +638,7 @@ bool DekiRenderSystem::RenderChanges(Deki::Scene* scene, CameraComponent* camera
     }
     QuadBlit::NextFrame();
     m_ClearColor = camera->clearColor;
-    const DeferredClear deferred{ &DekiRenderSystem::ClearFrame, this };
+    const DeferredClear deferred{ &DekiRenderSystem::ClearFrame, this, &DekiRenderSystem::ClearFrameLit };
     const bool lazily = m_Renderer->ClearsLazily();
     RenderContext ctx{ camera, m_RenderBuffer, m_ScreenWidth, m_ScreenHeight, m_ColorFormat };
     ctx.contentFrame = m_ContentFrame;
@@ -1117,16 +1127,28 @@ void DekiRenderSystem::ClearRect(int32_t x, int32_t y, int32_t w, int32_t h, uin
 
 void DekiRenderSystem::ClearFrame()
 {
+    uint8_t pixel[4];
+    WritePixel(pixel, m_ColorFormat, m_ClearColor.r, m_ClearColor.g, m_ClearColor.b);
+    ClearFrameWith(pixel);
+}
+
+void DekiRenderSystem::ClearFrameWith(const uint8_t* pixel)
+{
     const uint64_t clearStart = RenderProfiler::IsEnabled() ? RenderProfiler::Now() : 0;
-    if (!m_ClearRects)
+    if (m_RenderBuffer)
     {
-        ClearBuffer(m_ClearColor);
-    }
-    else
-    {
-        for (const Deki::Rect& r : m_ClearRects->Rects())
+        if (!m_ClearRects)
         {
-            ClearRect(r.left, r.top, r.Width(), r.Height(), m_ClearColor.r, m_ClearColor.g, m_ClearColor.b);
+            FillRect(m_RenderBuffer, m_ScreenWidth, m_ScreenHeight, m_ColorFormat, 0, 0, m_ScreenWidth, m_ScreenHeight,
+                     pixel);
+        }
+        else
+        {
+            for (const Deki::Rect& r : m_ClearRects->Rects())
+            {
+                FillRect(m_RenderBuffer, m_ScreenWidth, m_ScreenHeight, m_ColorFormat, r.left, r.top, r.Width(),
+                         r.Height(), pixel);
+            }
         }
     }
     if (RenderProfiler::IsEnabled())
@@ -1138,6 +1160,17 @@ void DekiRenderSystem::ClearFrame()
 void DekiRenderSystem::ClearFrame(void* owner)
 {
     static_cast<DekiRenderSystem*>(owner)->ClearFrame();
+}
+
+void DekiRenderSystem::ClearFrameLit(void* owner, Lighting2D& light, int32_t viewLeft, int32_t viewTop)
+{
+    // The clear's pixel, lit by Apply itself: lit the same all over, every
+    // pixel of a frame holding only the clear comes out as this one.
+    DekiRenderSystem* self = static_cast<DekiRenderSystem*>(owner);
+    uint8_t pixel[4];
+    WritePixel(pixel, self->m_ColorFormat, self->m_ClearColor.r, self->m_ClearColor.g, self->m_ClearColor.b);
+    light.Apply(pixel, 1, 1, self->m_ColorFormat, Deki::Rect{ 0, 0, 1, 1 }, viewLeft, viewTop);
+    self->ClearFrameWith(pixel);
 }
 
 void DekiRenderSystem::ClearBuffer(uint8_t r, uint8_t g, uint8_t b)

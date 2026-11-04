@@ -11,6 +11,19 @@ alongside one that has them.
 ## Unreleased
 
 ### Changed
+- The frame's clear waits for its first write, wherever that is: the
+  renderer leaves it with QuadBlit (`SetPendingClear`), a blit into the
+  buffer runs it first, and so must a render pass that writes into the buffer
+  itself and says it does not (`RenderPass::WritesBuffer` false): it now
+  calls `QuadBlit::BeforeWriting(ctx.buffer)` before it writes, as well as
+  `NoteWritten` after. Such a pass that does not would have its pixels
+  cleared over. Before, any pass with a hook had the clear made first.
+- A frame holding nothing but its clear when the 2D light is due, and lit
+  the same all over (`Lighting2D::Uniform`: no point or spot light in view),
+  is cleared in the clear colour lit (`DeferredClear::runLit`) instead of
+  cleared and lit after. The same pixels. A 3D scene lit by an ambient light
+  and the sun saves the 2D light's pass over the screen: 6.8 ms a frame on a
+  T-Deck.
 - The shader loader is registered once, as "Shader"
   (`ShaderAsset::kAssetTypeName`). Its second name, "ShaderAsset", was there
   because the reflection named an `AssetRef<ShaderAsset>` by its class; it no

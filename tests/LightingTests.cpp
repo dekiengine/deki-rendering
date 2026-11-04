@@ -14,9 +14,13 @@
 #include <deki/Object.h>
 #include <deki/Scene.h>
 #include "CameraComponent.h"
+#include "DekiRenderSystem.h"
+#include "DekiRenderer.h"
 #include "Light.h"
 #include "Lighting2D.h"
 #include "PixelFormat.h"
+#include "QuadBlit.h"
+#include "RenderPass.h"
 #include "RendererComponent.h"
 #include "ScopedArtDensity.h"
 #include "Standard2DRenderer.h"
@@ -376,6 +380,7 @@ public:
     Patch() { SetTypeInfo(&kTypeInfo); }
 
     bool selfLit = false;
+    bool draws = true;  // false: a renderer with nothing to show
 
     bool GetContentExtents(float& outW, float& outH) const override
     {
@@ -385,6 +390,10 @@ public:
     bool RenderContent(const Deki::Object*, QuadBlit::Source& outSource, float& outPivotX, float& outPivotY,
                        uint8_t& tr, uint8_t& tg, uint8_t& tb, uint8_t& ta) override
     {
+        if (!draws)
+        {
+            return false;
+        }
         for (int i = 0; i < 64; i++)
         {
             DekiPixel::Store565(&m_Pixels[i * 2], DekiPixel::PackRGB565(200, 200, 200));
@@ -447,8 +456,8 @@ TEST(Lighting2D, WhatDrawsAboveTheCamerasLitSortOrderKeepsItsColours)
 {
     Frame f;
     f.camera->litUpToSortOrder = 5;
-    f.Add(-1.0f, 0);   // the world
-    f.Add(1.0f, 10);   // the UI
+    f.Add(-1.0f, 0);  // the world
+    f.Add(1.0f, 10);  // the UI
     f.Draw();
     EXPECT_NEAR(f.GreenAt(-1.0f), 100, 6);
     EXPECT_NEAR(f.GreenAt(1.0f), 200, 3);
@@ -463,4 +472,146 @@ TEST(Lighting2D, ARendererThatLightsItselfIsNotLitAgain)
     f.Draw();
     EXPECT_NEAR(f.GreenAt(-1.0f), 100, 6);
     EXPECT_NEAR(f.GreenAt(1.0f), 200, 3);
+}
+
+namespace
+{
+// How often a frame's deferred clear ran plain and lit.
+struct ClearCounts
+{
+    int plain = 0;
+    int lit = 0;
+    DeferredClear clear;
+    ClearCounts()
+    {
+        clear.owner = this;
+        clear.run = [](void* o) { ++static_cast<ClearCounts*>(o)->plain; };
+        clear.runLit = [](void* o, Lighting2D&, int32_t, int32_t) { ++static_cast<ClearCounts*>(o)->lit; };
+    }
+};
+
+void DrawWith(Frame& f, ClearCounts& counts)
+{
+    f.px = Filled(Deki::ColorFormat::RGB565, 0, 0, 0);
+    RenderContext ctx{ f.camera, f.px.data(), kW, kH, Deki::ColorFormat::RGB565 };
+    ctx.clear = &counts.clear;
+    f.renderer.Render(&f.scene, ctx);
+}
+
+// Writes the frame's first pixel itself, as a software rasteriser does,
+// saying so as RenderPass::WritesBuffer asks: BeforeWriting, or not at all.
+class WritingPass : public RenderPass
+{
+public:
+    bool says = true;
+    uint32_t HookMask() const override { return RenderPassHooks::Execute; }
+    bool WantsObject(Deki::Object* obj) const override { return obj->GetName() == "Writer"; }
+    bool WritesBuffer() const override { return false; }
+    void Execute(Deki::Object*, RenderContext& ctx) override
+    {
+        if (says)
+        {
+            QuadBlit::BeforeWriting(ctx.buffer);
+        }
+        DekiPixel::Store565(ctx.buffer, 0x1234);
+        QuadBlit::NoteWritten(ctx.buffer);
+    }
+};
+}  // namespace
+
+// A frame holding nothing but its clear when its light is due, and lit the
+// same all over, is cleared in the clear colour lit instead of cleared and
+// lit after: the same pixels, in every format, without the pass over them.
+TEST(Lighting2D, AFrameOfOnlyTheClearIsClearedLitAsLightingItWould)
+{
+    for (Deki::ColorFormat format : kFormats)
+    {
+        // Lit after: the clear made first, and no clear left to the renderer.
+        Frame before;
+        before.Add(1.0f, 1)->selfLit = true;
+        DekiRenderSystem cleared;
+        ASSERT_TRUE(cleared.Setup(kW, kH, format));
+        cleared.ClearBuffer(200, 200, 200);
+        const size_t bytes = static_cast<size_t>(kW) * kH * Deki::FrameBufferBytes(format, 1, 1);
+        std::vector<uint8_t> want(cleared.GetFrameBuffer(), cleared.GetFrameBuffer() + bytes);
+        RenderContext ctx{ before.camera, want.data(), kW, kH, format };
+        before.renderer.Render(&before.scene, ctx);
+
+        // Left to the renderer, which finds the frame holds only the clear.
+        Frame f;
+        f.Add(1.0f, 1)->selfLit = true;
+        DekiRenderSystem system;
+        ASSERT_TRUE(system.Setup(kW, kH, format));
+        system.SetRenderer(&f.renderer);
+        system.Render(&f.scene);
+        EXPECT_EQ(std::memcmp(system.GetFrameBuffer(), want.data(), bytes), 0) << static_cast<int>(format);
+        EXPECT_NEAR(At(want, format, 0, 0).g, 100, 6) << "the clear is lit";
+    }
+}
+
+TEST(Lighting2D, OnlyAClearNothingWroteUnderIsClearedLit)
+{
+    {
+        Frame f;  // ambient light only, and the one renderer lights itself
+        f.Add(1.0f, 1)->selfLit = true;
+        ClearCounts counts;
+        DrawWith(f, counts);
+        EXPECT_EQ(counts.lit, 1);
+        EXPECT_EQ(counts.plain, 0);
+    }
+    {
+        Frame f;  // a lamp in view: the light differs from place to place
+        AddLight(f.scene, LightType::Point, 0.5f, 0.0f)->range = 1.0f;
+        f.Add(1.0f, 1)->selfLit = true;
+        ClearCounts counts;
+        DrawWith(f, counts);
+        EXPECT_EQ(counts.lit, 0);
+        EXPECT_EQ(counts.plain, 1);
+    }
+    {
+        Frame f;  // something lit is drawn before the light is due
+        f.Add(-1.0f, 0);
+        ClearCounts counts;
+        DrawWith(f, counts);
+        EXPECT_EQ(counts.lit, 0);
+        EXPECT_EQ(counts.plain, 1);
+    }
+}
+
+// A pass that writes into the frame itself and says it does not
+// (WritesBuffer) leaves the clear waiting until it calls BeforeWriting.
+TEST(Lighting2D, APassThatWritesItselfIsClearedUnderWhenItSaysSo)
+{
+    for (bool says : { true, false })
+    {
+        // No lights, and nothing else that draws: only the pass can make the
+        // clear before the frame's end.
+        ScopedArtDensity art;
+        Deki::Scene scene;
+        auto* camObj = new Deki::Object("Camera");
+        CameraComponent* camera = camObj->AddComponent<CameraComponent>();
+        camera->orthoHeight = 3.0f;
+        camera->clearColor = Deki::Color(200, 200, 200);
+        scene.AddObject(camObj);
+        auto* writer = new Deki::Object("Writer");
+        writer->AddComponent<Patch>()->draws = false;
+        scene.AddObject(writer);
+        Standard2DRenderer renderer;
+        WritingPass pass;
+        pass.says = says;
+        renderer.AddPass(&pass);
+        DekiRenderSystem system;
+        ASSERT_TRUE(system.Setup(kW, kH, Deki::ColorFormat::RGB565));
+        system.SetRenderer(&renderer);
+        system.Render(&scene);
+        const uint16_t first = DekiPixel::Load565(system.GetFrameBuffer());
+        if (says)
+        {
+            EXPECT_EQ(first, 0x1234) << "the clear came before the pass wrote";
+        }
+        else
+        {
+            EXPECT_NE(first, 0x1234) << "with nothing said, the clear came after";
+        }
+    }
 }

@@ -298,6 +298,23 @@ Deki::Rect Light2D::Bounds() const
     return Deki::Rect{ bx0 * k, by0 * k, (bx1 + 1) * k, (by1 + 1) * k };
 }
 
+bool Lighting2D::Uniform() const
+{
+    if (!m_On)
+    {
+        return false;
+    }
+    for (const Light2D& light : m_Lights)
+    {
+        const Deki::Rect reach = light.Bounds();
+        if (reach.right > 0 && reach.bottom > 0 && reach.left < m_ViewWidth && reach.top < m_ViewHeight)
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
 void Lighting2D::Build(const Deki::Scene* scene, const FrameCamera& cam, int32_t viewWidth, int32_t viewHeight,
                        int32_t litUpToSortOrder)
 {

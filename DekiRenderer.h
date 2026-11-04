@@ -14,13 +14,18 @@ namespace DekiRendering
 {
 class CameraComponent;
 class DirtyRegion;
+class Lighting2D;
 
 /// A clear of the frame's buffer that its caller leaves to the renderer
-/// (DekiRenderer::ClearsLazily): run(owner) clears it.
+/// (DekiRenderer::ClearsLazily): run(owner) clears it. runLit, when given,
+/// clears it in the clear colour lit by `light`, which must light the view the
+/// same all over (Lighting2D::Uniform): what Lighting2D::Apply would make of
+/// a frame holding only the clear, without the pass over it.
 struct DeferredClear
 {
     void (*run)(void* owner) = nullptr;
     void* owner = nullptr;
+    void (*runLit)(void* owner, Lighting2D& light, int32_t viewLeft, int32_t viewTop) = nullptr;
 };
 
 /// Everything a renderer or render pass needs to produce a frame.
@@ -57,7 +62,9 @@ struct RenderContext
     // The clear of `buffer` DekiRenderSystem left to a renderer that
     // ClearsLazily(), or null. The renderer runs it once, before its first
     // write into `buffer`, or skips it when that write covers every pixel
-    // opaquely: the clear would only be drawn over.
+    // opaquely: the clear would only be drawn over. It leaves it with
+    // QuadBlit (SetPendingClear), so a blit or a render pass that writes
+    // there runs it first.
     const DeferredClear* clear = nullptr;
     // Redrawing only what changed: the part of `buffer` to draw, in its own
     // pixels. Nothing outside it is written, and the clear covers only it.

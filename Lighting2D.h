@@ -69,6 +69,9 @@ public:
 
     /// Whether the frame is lit at all.
     bool On() const { return m_On; }
+    /// Whether it is lit the same all over the view: no point or spot light
+    /// reaches it, only ambient and directional light.
+    bool Uniform() const;
     int32_t LitUpToSortOrder() const { return m_LitUpTo; }
     const std::vector<Light2D>& Lights() const { return m_Lights; }
     void Ambient(float& r, float& g, float& b) const

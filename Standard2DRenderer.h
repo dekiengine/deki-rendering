@@ -209,8 +209,6 @@ private:
     // came before it, so the later strips need no clear (CoversView).
     bool m_PlanCovers = false;
     const uint8_t* m_FrameBuffer = nullptr;  // the buffer Render() was given
-    // The frame's clear while nothing has been written yet (ctx.clear).
-    const DeferredClear* m_Clear = nullptr;
     // The frame's blits go to a GPU (QuadBlit::BeginSinkFrame): after a hook
     // of a pass that writes into the buffer itself, the sink is told.
     bool m_SinkFrame = false;
@@ -221,8 +219,12 @@ private:
             QuadBlit::NoteWritten(m_FrameBuffer);
         }
     }
-    // Runs the frame's clear, if still pending, before something is drawn.
+    // Runs the frame's clear, if still pending (QuadBlit::PendingClear),
+    // before something is drawn.
     void RunClear();
+    // Before the hooks of `passes`: the clear, if one of them may write into
+    // the buffer other than through QuadBlit (RenderPass::WritesBuffer).
+    void RunClearFor(const std::vector<RenderPass*>& passes);
 
     // The frame's 2D light (Lighting2D.h), worked out at the start of each
     // Render(), and whether it has been laid over the frame yet. It is laid

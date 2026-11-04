@@ -1,4 +1,5 @@
 #include "QuadBlit.h"
+#include "DekiRenderer.h"
 #include "PixelFormat.h"
 #include "DirtyRegion.h"
 #include "RenderProfiler.h"
@@ -287,6 +288,47 @@ void EndSinkFrame()
 const uint8_t* SinkTarget()
 {
     return s_SinkTarget;
+}
+
+// The frame's clear while nothing has written its buffer: a blit tests one
+// pointer for it.
+static const uint8_t* s_ClearTarget = nullptr;
+static const DekiRendering::DeferredClear* s_PendingClear = nullptr;
+
+void SetPendingClear(const uint8_t* buffer, const DekiRendering::DeferredClear* clear)
+{
+    s_PendingClear = buffer ? clear : nullptr;
+    s_ClearTarget = s_PendingClear ? buffer : nullptr;
+}
+
+const DekiRendering::DeferredClear* PendingClear()
+{
+    return s_PendingClear;
+}
+
+void RunPendingClear()
+{
+    const DekiRendering::DeferredClear* clear = s_PendingClear;
+    s_PendingClear = nullptr;
+    s_ClearTarget = nullptr;
+    if (clear && clear->run)
+    {
+        clear->run(clear->owner);
+    }
+}
+
+void DropPendingClear()
+{
+    s_PendingClear = nullptr;
+    s_ClearTarget = nullptr;
+}
+
+void BeforeWriting(const uint8_t* buffer)
+{
+    if (buffer && buffer == s_ClearTarget)
+    {
+        RunPendingClear();
+    }
 }
 
 void NoteWritten(const uint8_t* buffer)
@@ -1728,6 +1770,7 @@ void BlitScaled(const Source& source, uint8_t* target, int32_t targetWidth, int3
     {
         return;
     }
+    BeforeWriting(target);
 
     // A frame drawn by the sink: the rect, and the 16.16 steps BlitRows
     // samples with, from the rect's corner.
@@ -2285,6 +2328,7 @@ void Blit(const Source& source, uint8_t* target, int32_t targetWidth, int32_t ta
     {
         return;
     }
+    BeforeWriting(target);
     PathScope scope(static_cast<uint64_t>(endX - startX) * static_cast<uint64_t>(endY - startY));
 
     BlitParams p;

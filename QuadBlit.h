@@ -12,6 +12,7 @@ namespace DekiRendering
 {
 class DirtyRegion;
 class Lighting2D;
+struct DeferredClear;
 }
 
 /// Quad blitting with full 2D transforms: copies source pixels to a target
@@ -434,6 +435,21 @@ void NoteWritten(const uint8_t* buffer);
 /// Lights what the sink frame drew so far (BlitSink::Light). False outside a
 /// sink frame, or when the sink cannot.
 bool LightSinkFrame(const DekiRendering::Lighting2D& lighting);
+
+/// The frame's clear while nothing has written `buffer` yet: the renderer
+/// leaves it here (RenderContext::clear), and a blit into `buffer` runs it
+/// first, as must a render pass before it writes there itself
+/// (BeforeWriting). Null when there is none.
+void SetPendingClear(const uint8_t* buffer, const DekiRendering::DeferredClear* clear);
+const DekiRendering::DeferredClear* PendingClear();
+/// Runs the pending clear, if there is one, and forgets it.
+void RunPendingClear();
+/// Forgets the pending clear without running it: what is drawn next covers it.
+void DropPendingClear();
+/// Runs `buffer`'s pending clear, if it has one. A render pass that writes
+/// into the buffer other than through QuadBlit, and says so only after
+/// (RenderPass::WritesBuffer false, NoteWritten), calls it before it does.
+void BeforeWriting(const uint8_t* buffer);
 
 // ============================================================================
 // Per-row kernel dispatch
