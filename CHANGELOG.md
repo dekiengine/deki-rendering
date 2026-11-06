@@ -10,6 +10,13 @@ alongside one that has them.
 
 ## Unreleased
 
+### Declares the capabilities it uses
+- `package.json` has `"capabilityDefines": ["opengl"]` and
+  `"filtersTexturesWith": ["opengl"]`: its GPU code tests
+  `DEKI_CAPABILITY_OPENGL`, and its GL sprite sink draws textures filtered.
+  The editor reads them instead of knowing `opengl` itself; needs the editor
+  from this release.
+
 ### Changed
 - The frame's clear waits for its first write, wherever that is: the
   renderer leaves it with QuadBlit (`SetPendingClear`), a blit into the

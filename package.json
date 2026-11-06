@@ -6,6 +6,12 @@
     "transform_2d"
   ],
   "buildDefine": "DEKI_PACKAGE_RENDERING",
+  "capabilityDefines": [
+    "opengl"
+  ],
+  "filtersTexturesWith": [
+    "opengl"
+  ],
   "requires": [],
   "features": []
 }
