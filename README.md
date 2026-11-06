@@ -167,7 +167,7 @@ deki-3d draws its meshes with it, and `deki-sdl3-integration` presents
 through it. Its types live in `DekiGL`.
 
 > **Experimental.** Run on Windows (desktop OpenGL 3.3, NVIDIA) in the editor
-> and a desktop simulator build, and on Linux (OpenGL ES 3.0 through EGL,
+> and a desktop build, and on Linux (OpenGL ES 3.0 through EGL,
 > Mesa) in its tests. Not yet run on a handheld.
 
 ### The context
