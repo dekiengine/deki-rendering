@@ -1,7 +1,7 @@
 {
   "id": "deki-rendering",
   "displayName": "Rendering",
-  "minEngine": "0.22.0",
+  "minEngine": "0.30.0",
   "tags": [
     "transform_2d"
   ],

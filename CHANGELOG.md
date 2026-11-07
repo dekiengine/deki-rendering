@@ -8,7 +8,7 @@ breaking change bumps the minor across the editor, the engine and every
 package together, so a package with no changes of its own is still released
 alongside one that has them.
 
-## Unreleased
+## 0.30.0
 
 ### Declares the capabilities it uses
 - `package.json` has `"capabilityDefines": ["opengl"]` and
@@ -18,6 +18,8 @@ alongside one that has them.
   from this release.
 
 ### Changed
+- `minEngine` 0.30.0: built against engine 0.30.0. A build of this package
+  from before does not load and is rebuilt.
 - The frame's clear waits for its first write, wherever that is: the
   renderer leaves it with QuadBlit (`SetPendingClear`), a blit into the
   buffer runs it first, and so must a render pass that writes into the buffer
