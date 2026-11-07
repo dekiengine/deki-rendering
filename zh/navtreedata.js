@@ -28,7 +28,9 @@ var NAVTREE =
     [ "组件", "index.html#components", null ],
     [ "功能开关", "index.html#feature-flags", null ],
     [ "组件参考", "index.html#component-reference", [
-      [ "CameraComponent", "index.html#c-cameracomponent", null ]
+      [ "CameraComponent", "index.html#c-cameracomponent", null ],
+      [ "Light", "index.html#c-light", null ],
+      [ "ScreenEffect", "index.html#c-screeneffect", null ]
     ] ],
     [ "项目设置", "index.html#project-settings", [
       [ "渲染 设置", "index.html#s-rendering-settings", null ]

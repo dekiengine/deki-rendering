@@ -28,7 +28,9 @@ var NAVTREE =
     [ "컴포넌트", "index.html#components", null ],
     [ "기능 플래그", "index.html#feature-flags", null ],
     [ "컴포넌트 레퍼런스", "index.html#component-reference", [
-      [ "CameraComponent", "index.html#c-cameracomponent", null ]
+      [ "CameraComponent", "index.html#c-cameracomponent", null ],
+      [ "Light", "index.html#c-light", null ],
+      [ "ScreenEffect", "index.html#c-screeneffect", null ]
     ] ],
     [ "프로젝트 설정", "index.html#project-settings", [
       [ "렌더링 설정", "index.html#s-rendering-settings", null ]

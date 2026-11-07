@@ -57,7 +57,7 @@
  <tbody>
  <tr id="projectrow">
   <td id="projectalign">
-   <div id="projectname">deki-rendering<span id="projectnumber">&#160;0.30.0</span>
+   <div id="projectname">deki-rendering<span id="projectnumber">&#160;0.30.3</span>
    </div>
    <div id="projectbrief">Deki 패키지 레퍼런스</div>
   </td>
@@ -125,6 +125,10 @@ document.addEventListener('DOMContentLoaded',() => { initNavTree('index.html',''
 <th class="markdownTableHeadNone">컴포넌트  </th><th class="markdownTableHeadNone">카테고리  </th><th class="markdownTableHeadNone">설명  </th></tr>
 <tr class="markdownTableRowOdd">
 <td class="markdownTableBodyNone"><a class="el" href="#c-cameracomponent" title="CameraComponent">CameraComponent</a>  </td><td class="markdownTableBodyNone">코어  </td><td class="markdownTableBodyNone">뷰입니다. 위치, 보여 줄 월드의 범위, 클리어 색상을 정합니다.  </td></tr>
+<tr class="markdownTableRowEven">
+<td class="markdownTableBodyNone"><a class="el" href="#c-light" title="Light">Light</a>  </td><td class="markdownTableBodyNone">렌더링  </td><td class="markdownTableBodyNone">라이트입니다. 주변광, 태양, 한 점 주위, 또는 원뿔 모양으로 비춥니다. 메시와 2D 세계를 비춥니다.  </td></tr>
+<tr class="markdownTableRowOdd">
+<td class="markdownTableBodyNone"><a class="el" href="#c-screeneffect" title="ScreenEffect">ScreenEffect</a>  </td><td class="markdownTableBodyNone">렌더링  </td><td class="markdownTableBodyNone">완성된 프레임에 적용하는 전체 화면 셰이더입니다. 디스플레이가 OpenGL로 표시할 때만입니다.  </td></tr>
 </table>
 <h1 class="doxsection"><a class="anchor" id="feature-flags"></a>
 기능 플래그</h1>
@@ -160,6 +164,54 @@ CameraComponent</h2>
 <td class="markdownTableBodyNone"><span class="tt">farPlane</span>  </td><td class="markdownTableBodyNone">float  </td><td class="markdownTableBodyNone"><span class="tt">100</span>  </td><td class="markdownTableBodyNone"><span class="tt">projection</span>이(가) 허용할 때 표시  </td><td class="markdownTableBodyNone">이보다 먼 것은 그려지지 않습니다.  </td></tr>
 <tr class="markdownTableRowEven">
 <td class="markdownTableBodyNone"><span class="tt">clearEveryFrame</span>  </td><td class="markdownTableBodyNone">bool  </td><td class="markdownTableBodyNone"><span class="tt">true</span>  </td><td class="markdownTableBodyNone"></td><td class="markdownTableBodyNone">매 프레임 전에 화면을 클리어합니다. 끄면 이전 프레임이 아래에 남습니다. 전체 화면 배경이 모든 것을 덮을 때는 더 빠르고, 잔상을 원할 때도 가끔 쓸 수 있습니다.  </td></tr>
+<tr class="markdownTableRowOdd">
+<td class="markdownTableBodyNone"><span class="tt">litUpToSortOrder</span>  </td><td class="markdownTableBodyNone">int32  </td><td class="markdownTableBodyNone"><span class="tt">2147483647</span>  </td><td class="markdownTableBodyNone"></td><td class="markdownTableBodyNone">라이트(Light 컴포넌트)는 이 카메라가 그리는 것 중 이 정렬 순서까지를 비춥니다. 그보다 위에 그려지는 것(UI 등)은 자신의 색상을 유지합니다. 기본값은 모든 것을 비춥니다.  </td></tr>
+</table>
+<h2 class="doxsection"><a class="anchor" id="c-light"></a>
+Light</h2>
+<p>라이트입니다. 주변광, 태양, 한 점 주위, 또는 원뿔 모양으로 비춥니다. 메시와 2D 세계를 비춥니다.</p>
+<p>카테고리: 렌더링 · 유형: <span class="tt">DekiRendering::Light</span></p>
+<table class="markdownTable">
+<tr class="markdownTableHead">
+<th class="markdownTableHeadNone">속성  </th><th class="markdownTableHeadNone">유형  </th><th class="markdownTableHeadNone">기본값  </th><th class="markdownTableHeadNone">제약  </th><th class="markdownTableHeadNone">설명  </th></tr>
+<tr class="markdownTableRowOdd">
+<td class="markdownTableBodyNone"><span class="tt">type</span>  </td><td class="markdownTableBodyNone">enum  </td><td class="markdownTableBodyNone"><span class="tt">"Point"</span>  </td><td class="markdownTableBodyNone"><span class="tt">Ambient</span>, <span class="tt">Directional</span>, <span class="tt">Point</span>, <span class="tt">Spot</span>  </td><td class="markdownTableBodyNone">주변광은 모든 것을 똑같이 비춥니다. 디렉셔널은 태양처럼 먼 한 방향에서 비춥니다. 포인트는 오브젝트 주위를 범위까지 비춥니다. 스포트는 오브젝트의 X축을 따라 원뿔을 비추며, 방향은 오브젝트의 회전을 따릅니다.  </td></tr>
+<tr class="markdownTableRowEven">
+<td class="markdownTableBodyNone"><span class="tt">color</span>  </td><td class="markdownTableBodyNone">Color  </td><td class="markdownTableBodyNone"><span class="tt">"#FFFFFFFF"</span>  </td><td class="markdownTableBodyNone"></td><td class="markdownTableBodyNone">라이트의 색상입니다.  </td></tr>
+<tr class="markdownTableRowOdd">
+<td class="markdownTableBodyNone"><span class="tt">intensity</span>  </td><td class="markdownTableBodyNone">float  </td><td class="markdownTableBodyNone"><span class="tt">1</span>  </td><td class="markdownTableBodyNone">0~8  </td><td class="markdownTableBodyNone">라이트의 세기입니다. 1은 가장 강한 곳에서 색상을 원래대로 비추고, 0.5는 그 절반입니다. 라이트는 더해지며 최대 색상의 두 배까지입니다.  </td></tr>
+<tr class="markdownTableRowEven">
+<td class="markdownTableBodyNone"><span class="tt">range</span>  </td><td class="markdownTableBodyNone">float  </td><td class="markdownTableBodyNone"><span class="tt">3</span>  </td><td class="markdownTableBodyNone">0.01~100000; 단위 m; <span class="tt">type</span>이(가) 허용할 때 표시  </td><td class="markdownTableBodyNone">라이트가 닿는 거리(미터)입니다. 그곳에서 완전히 사라집니다.  </td></tr>
+<tr class="markdownTableRowOdd">
+<td class="markdownTableBodyNone"><span class="tt">spotAngle</span>  </td><td class="markdownTableBodyNone">float  </td><td class="markdownTableBodyNone"><span class="tt">45</span>  </td><td class="markdownTableBodyNone">1~179; <span class="tt">type</span>이(가) 허용할 때 표시  </td><td class="markdownTableBodyNone">원뿔의 전체 폭(도)입니다.  </td></tr>
+<tr class="markdownTableRowEven">
+<td class="markdownTableBodyNone"><span class="tt">spotSoftness</span>  </td><td class="markdownTableBodyNone">float  </td><td class="markdownTableBodyNone"><span class="tt">0.25</span>  </td><td class="markdownTableBodyNone">0~1(슬라이더); <span class="tt">type</span>이(가) 허용할 때 표시  </td><td class="markdownTableBodyNone">원뿔이 가장자리로 갈수록 얼마나 흐려지는지입니다. 0은 선명한 가장자리, 1은 중심부터 흐려집니다.  </td></tr>
+<tr class="markdownTableRowOdd">
+<td class="markdownTableBodyNone"><span class="tt">yaw</span>  </td><td class="markdownTableBodyNone">float  </td><td class="markdownTableBodyNone"><span class="tt">-25</span>  </td><td class="markdownTableBodyNone">-180~180; <span class="tt">type</span>이(가) 허용할 때 표시  </td><td class="markdownTableBodyNone">라이트가 오는 방향을 수직축 둘레의 각도(도)로 나타냅니다. 0은 카메라 뒤, 90은 오른쪽입니다.  </td></tr>
+<tr class="markdownTableRowEven">
+<td class="markdownTableBodyNone"><span class="tt">pitch</span>  </td><td class="markdownTableBodyNone">float  </td><td class="markdownTableBodyNone"><span class="tt">55</span>  </td><td class="markdownTableBodyNone">-90~90; <span class="tt">type</span>이(가) 허용할 때 표시  </td><td class="markdownTableBodyNone">라이트의 높이(도)입니다. 90은 바로 위에서 아래로, 0은 지평선과 같은 높이입니다.  </td></tr>
+<tr class="markdownTableRowOdd">
+<td class="markdownTableBodyNone"><span class="tt">bands</span>  </td><td class="markdownTableBodyNone">int32  </td><td class="markdownTableBodyNone"><span class="tt">0</span>  </td><td class="markdownTableBodyNone">0~8; <span class="tt">type</span>이(가) 허용할 때 표시  </td><td class="markdownTableBodyNone">2D 전용: 0은 부드럽게 흐려집니다. 2에서 8은 그 수만큼의 뚜렷한 고리로 비추며 가운데가 가장 밝습니다. 픽셀 아트용입니다.  </td></tr>
+<tr class="markdownTableRowEven">
+<td class="markdownTableBodyNone"><span class="tt">castShadows</span>  </td><td class="markdownTableBodyNone">bool  </td><td class="markdownTableBodyNone"><span class="tt">false</span>  </td><td class="markdownTableBodyNone"><span class="tt">type</span>이(가) 허용할 때 표시  </td><td class="markdownTableBodyNone">그 빛 안의 메시가 그림자를 드리웁니다. 디스플레이가 OpenGL로 그릴 때만이며, 한 프레임에서 그림자를 드리우는 라이트는 최대 두 개입니다. OpenGL이 없는 보드는 그림자 없이 라이트를 그리고, 빌드가 그렇다고 알려 줍니다. 포인트 라이트는 아직 그림자를 드리우지 않습니다.  </td></tr>
+<tr class="markdownTableRowOdd">
+<td class="markdownTableBodyNone"><span class="tt">shadowResolution</span>  </td><td class="markdownTableBodyNone">int32  </td><td class="markdownTableBodyNone"><span class="tt">1024</span>  </td><td class="markdownTableBodyNone">128~4096; <span class="tt">type</span>이(가) 허용할 때 표시  </td><td class="markdownTableBodyNone">섀도 맵 한 변의 픽셀 수입니다. 클수록 선명하지만 GPU 메모리와 시간이 듭니다.  </td></tr>
+<tr class="markdownTableRowEven">
+<td class="markdownTableBodyNone"><span class="tt">shadowBias</span>  </td><td class="markdownTableBodyNone">float  </td><td class="markdownTableBodyNone"><span class="tt">0.002</span>  </td><td class="markdownTableBodyNone">0~0.1; <span class="tt">type</span>이(가) 허용할 때 표시  </td><td class="markdownTableBodyNone">그림자를 드리우는 표면에서 그림자를 뒤로 밀어냅니다. 빛을 받는 표면에 줄무늬 그림자가 생기면 올리세요. 너무 높으면 그림자가 드리우는 물체에서 떨어져 보입니다.  </td></tr>
+</table>
+<h2 class="doxsection"><a class="anchor" id="c-screeneffect"></a>
+ScreenEffect</h2>
+<p>완성된 프레임에 적용하는 전체 화면 셰이더입니다. 디스플레이가 OpenGL로 표시할 때만입니다.</p>
+<p>인스펙터 이름: 화면 효과 · 카테고리: 렌더링 · 유형: <span class="tt">DekiGL::ScreenEffect</span></p>
+<table class="markdownTable">
+<tr class="markdownTableHead">
+<th class="markdownTableHeadNone">속성  </th><th class="markdownTableHeadNone">유형  </th><th class="markdownTableHeadNone">기본값  </th><th class="markdownTableHeadNone">설명  </th></tr>
+<tr class="markdownTableRowOdd">
+<td class="markdownTableBodyNone"><span class="tt">shader</span>  </td><td class="markdownTableBodyNone">AssetRef (Shader)  </td><td class="markdownTableBodyNone"><span class="tt">""</span>  </td><td class="markdownTableBodyNone">float4 Effect(float2 uv)를 정의하는 HLSL .shader입니다. 창의 각 픽셀 색상을 돌려주며, uv는 프레임 전체에서 왼쪽 아래부터 오른쪽 위까지 0에서 1로 바뀝니다. Frame(uv)로 프레임을 읽습니다.  </td></tr>
+<tr class="markdownTableRowEven">
+<td class="markdownTableBodyNone"><span class="tt">params</span>  </td><td class="markdownTableBodyNone">Vector3  </td><td class="markdownTableBodyNone"><span class="tt">[0.0, 0.0, 0.0]</span>  </td><td class="markdownTableBodyNone">셰이더가 uParams로 읽는 숫자 세 개입니다. 세기, 속도 등 셰이더가 원한다고 밝힌 것을 넣습니다.  </td></tr>
+<tr class="markdownTableRowOdd">
+<td class="markdownTableBodyNone"><span class="tt">color</span>  </td><td class="markdownTableBodyNone">Color  </td><td class="markdownTableBodyNone"><span class="tt">"#000000FF"</span>  </td><td class="markdownTableBodyNone">셰이더가 uColor로 읽는 색상입니다.  </td></tr>
 </table>
 <h1 class="doxsection"><a class="anchor" id="project-settings"></a>
 프로젝트 설정</h1>
@@ -235,7 +287,7 @@ Fixed</h2>
 </ul>
 <p>이전 릴리스: <a href="https://github.com/dekiengine/deki-rendering/blob/master/CHANGELOG.md">CHANGELOG.md</a></p>
 <hr  />
-<p>패키지의 리플렉션 데이터에서 생성했습니다(엔진 0.30.0). 속성 이름은 씬 파일에서 쓰는 키입니다. 이름을 바꿔도 별칭이 유지됩니다(<a href="https://github.com/dekiengine/deki-editor/blob/master/COMPATIBILITY.md">호환성</a>). </p>
+<p>패키지의 리플렉션 데이터에서 생성했습니다(엔진 0.30.3). 속성 이름은 씬 파일에서 쓰는 키입니다. 이름을 바꿔도 별칭이 유지됩니다(<a href="https://github.com/dekiengine/deki-editor/blob/master/COMPATIBILITY.md">호환성</a>). </p>
 </div></div><!-- PageDoc -->
 <a href="doxygen_crawl.html"></a>
 </div><!-- contents -->

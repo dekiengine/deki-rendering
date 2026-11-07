@@ -10,6 +10,8 @@ var NAVTREEINDEX0 =
 "index.html#autotoc_md6":[4,6],
 "index.html#autotoc_md7":[4,7],
 "index.html#c-cameracomponent":[2,0],
+"index.html#c-light":[2,1],
+"index.html#c-screeneffect":[2,2],
 "index.html#changelog":[4],
 "index.html#component-reference":[2],
 "index.html#components":[0],

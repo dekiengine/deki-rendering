@@ -57,7 +57,7 @@
  <tbody>
  <tr id="projectrow">
   <td id="projectalign">
-   <div id="projectname">deki-rendering<span id="projectnumber">&#160;0.30.0</span>
+   <div id="projectname">deki-rendering<span id="projectnumber">&#160;0.30.3</span>
    </div>
    <div id="projectbrief">Deki 包参考</div>
   </td>
@@ -125,6 +125,10 @@ document.addEventListener('DOMContentLoaded',() => { initNavTree('index.html',''
 <th class="markdownTableHeadNone">组件  </th><th class="markdownTableHeadNone">类别  </th><th class="markdownTableHeadNone">说明  </th></tr>
 <tr class="markdownTableRowOdd">
 <td class="markdownTableBodyNone"><a class="el" href="#c-cameracomponent" title="CameraComponent">CameraComponent</a>  </td><td class="markdownTableBodyNone">核心  </td><td class="markdownTableBodyNone">视图：位置、显示的世界范围大小，以及清除颜色。  </td></tr>
+<tr class="markdownTableRowEven">
+<td class="markdownTableBodyNone"><a class="el" href="#c-light" title="Light">Light</a>  </td><td class="markdownTableBodyNone">渲染  </td><td class="markdownTableBodyNone">光源：环境光、太阳、点周围或锥形。它照亮网格和 2D 世界。  </td></tr>
+<tr class="markdownTableRowOdd">
+<td class="markdownTableBodyNone"><a class="el" href="#c-screeneffect" title="ScreenEffect">ScreenEffect</a>  </td><td class="markdownTableBodyNone">渲染  </td><td class="markdownTableBodyNone">作用于完成帧的全屏着色器，仅限显示通过 OpenGL 呈现时。  </td></tr>
 </table>
 <h1 class="doxsection"><a class="anchor" id="feature-flags"></a>
 功能开关</h1>
@@ -160,6 +164,54 @@ CameraComponent</h2>
 <td class="markdownTableBodyNone"><span class="tt">farPlane</span>  </td><td class="markdownTableBodyNone">float  </td><td class="markdownTableBodyNone"><span class="tt">100</span>  </td><td class="markdownTableBodyNone"><span class="tt">projection</span> 允许时显示  </td><td class="markdownTableBodyNone">比此距离更远的内容不会绘制。  </td></tr>
 <tr class="markdownTableRowEven">
 <td class="markdownTableBodyNone"><span class="tt">clearEveryFrame</span>  </td><td class="markdownTableBodyNone">bool  </td><td class="markdownTableBodyNone"><span class="tt">true</span>  </td><td class="markdownTableBodyNone"></td><td class="markdownTableBodyNone">每帧开始前清除屏幕。关闭时上一帧会保留在下方：当全屏背景覆盖一切时更快，有时也正好用于制作拖尾效果。  </td></tr>
+<tr class="markdownTableRowOdd">
+<td class="markdownTableBodyNone"><span class="tt">litUpToSortOrder</span>  </td><td class="markdownTableBodyNone">int32  </td><td class="markdownTableBodyNone"><span class="tt">2147483647</span>  </td><td class="markdownTableBodyNone"></td><td class="markdownTableBodyNone">光源（Light 组件）照亮此相机绘制的、排序顺序不超过此值的内容；绘制在其上的内容（如 UI）保持自己的颜色。默认照亮所有内容。  </td></tr>
+</table>
+<h2 class="doxsection"><a class="anchor" id="c-light"></a>
+Light</h2>
+<p>光源：环境光、太阳、点周围或锥形。它照亮网格和 2D 世界。</p>
+<p>类别：渲染 · 类型：<span class="tt">DekiRendering::Light</span></p>
+<table class="markdownTable">
+<tr class="markdownTableHead">
+<th class="markdownTableHeadNone">属性  </th><th class="markdownTableHeadNone">类型  </th><th class="markdownTableHeadNone">默认值  </th><th class="markdownTableHeadNone">约束  </th><th class="markdownTableHeadNone">说明  </th></tr>
+<tr class="markdownTableRowOdd">
+<td class="markdownTableBodyNone"><span class="tt">type</span>  </td><td class="markdownTableBodyNone">enum  </td><td class="markdownTableBodyNone"><span class="tt">"Point"</span>  </td><td class="markdownTableBodyNone"><span class="tt">Ambient</span>, <span class="tt">Directional</span>, <span class="tt">Point</span>, <span class="tt">Spot</span>  </td><td class="markdownTableBodyNone">环境光对所有东西照亮程度相同。方向光像太阳一样从一个遥远的方向照射。点光源照亮物体周围直到范围。聚光灯沿物体的 X 轴照亮一个锥形，方向随其旋转。  </td></tr>
+<tr class="markdownTableRowEven">
+<td class="markdownTableBodyNone"><span class="tt">color</span>  </td><td class="markdownTableBodyNone">Color  </td><td class="markdownTableBodyNone"><span class="tt">"#FFFFFFFF"</span>  </td><td class="markdownTableBodyNone"></td><td class="markdownTableBodyNone">光的颜色。  </td></tr>
+<tr class="markdownTableRowOdd">
+<td class="markdownTableBodyNone"><span class="tt">intensity</span>  </td><td class="markdownTableBodyNone">float  </td><td class="markdownTableBodyNone"><span class="tt">1</span>  </td><td class="markdownTableBodyNone">0 到 8  </td><td class="markdownTableBodyNone">光的强度：1 在光最强处按颜色原样照亮，0.5 为一半。多个光源会叠加，最多为颜色的两倍。  </td></tr>
+<tr class="markdownTableRowEven">
+<td class="markdownTableBodyNone"><span class="tt">range</span>  </td><td class="markdownTableBodyNone">float  </td><td class="markdownTableBodyNone"><span class="tt">3</span>  </td><td class="markdownTableBodyNone">0.01 到 100000；单位 m；<span class="tt">type</span> 允许时显示  </td><td class="markdownTableBodyNone">光照到达的距离（米）。到那里衰减为零。  </td></tr>
+<tr class="markdownTableRowOdd">
+<td class="markdownTableBodyNone"><span class="tt">spotAngle</span>  </td><td class="markdownTableBodyNone">float  </td><td class="markdownTableBodyNone"><span class="tt">45</span>  </td><td class="markdownTableBodyNone">1 到 179；<span class="tt">type</span> 允许时显示  </td><td class="markdownTableBodyNone">锥形的完整宽度（度）。  </td></tr>
+<tr class="markdownTableRowEven">
+<td class="markdownTableBodyNone"><span class="tt">spotSoftness</span>  </td><td class="markdownTableBodyNone">float  </td><td class="markdownTableBodyNone"><span class="tt">0.25</span>  </td><td class="markdownTableBodyNone">0 到 1（滑块）；<span class="tt">type</span> 允许时显示  </td><td class="markdownTableBodyNone">锥形向边缘衰减的程度：0 为硬边缘，1 从中心开始衰减。  </td></tr>
+<tr class="markdownTableRowOdd">
+<td class="markdownTableBodyNone"><span class="tt">yaw</span>  </td><td class="markdownTableBodyNone">float  </td><td class="markdownTableBodyNone"><span class="tt">-25</span>  </td><td class="markdownTableBodyNone">-180 到 180；<span class="tt">type</span> 允许时显示  </td><td class="markdownTableBodyNone">光从哪里来，绕竖直轴旋转的角度（度）。0 在相机后方，90 在右侧。  </td></tr>
+<tr class="markdownTableRowEven">
+<td class="markdownTableBodyNone"><span class="tt">pitch</span>  </td><td class="markdownTableBodyNone">float  </td><td class="markdownTableBodyNone"><span class="tt">55</span>  </td><td class="markdownTableBodyNone">-90 到 90；<span class="tt">type</span> 允许时显示  </td><td class="markdownTableBodyNone">光源的高度（度）：90 为正上方向下，0 与地平线齐平。  </td></tr>
+<tr class="markdownTableRowOdd">
+<td class="markdownTableBodyNone"><span class="tt">bands</span>  </td><td class="markdownTableBodyNone">int32  </td><td class="markdownTableBodyNone"><span class="tt">0</span>  </td><td class="markdownTableBodyNone">0 到 8；<span class="tt">type</span> 允许时显示  </td><td class="markdownTableBodyNone">仅 2D：0 为平滑衰减。2 到 8 则以相应数量的清晰光环照亮，中间最亮，适合像素画。  </td></tr>
+<tr class="markdownTableRowEven">
+<td class="markdownTableBodyNone"><span class="tt">castShadows</span>  </td><td class="markdownTableBodyNone">bool  </td><td class="markdownTableBodyNone"><span class="tt">false</span>  </td><td class="markdownTableBodyNone"><span class="tt">type</span> 允许时显示  </td><td class="markdownTableBodyNone">其光照范围内的网格会投射阴影，仅限显示通过 OpenGL 绘制时；每帧最多两个光源投射阴影。没有 OpenGL 的开发板会绘制光照但没有阴影，其构建会说明这一点。点光源暂不投射阴影。  </td></tr>
+<tr class="markdownTableRowOdd">
+<td class="markdownTableBodyNone"><span class="tt">shadowResolution</span>  </td><td class="markdownTableBodyNone">int32  </td><td class="markdownTableBodyNone"><span class="tt">1024</span>  </td><td class="markdownTableBodyNone">128 到 4096；<span class="tt">type</span> 允许时显示  </td><td class="markdownTableBodyNone">阴影贴图每边的像素数。越大越清晰，但会占用 GPU 内存和时间。  </td></tr>
+<tr class="markdownTableRowEven">
+<td class="markdownTableBodyNone"><span class="tt">shadowBias</span>  </td><td class="markdownTableBodyNone">float  </td><td class="markdownTableBodyNone"><span class="tt">0.002</span>  </td><td class="markdownTableBodyNone">0 到 0.1；<span class="tt">type</span> 允许时显示  </td><td class="markdownTableBodyNone">把阴影从投射它的表面向后推。被照亮的表面上出现条纹状阴影时调高它；太高会让阴影与投射物脱开。  </td></tr>
+</table>
+<h2 class="doxsection"><a class="anchor" id="c-screeneffect"></a>
+ScreenEffect</h2>
+<p>作用于完成帧的全屏着色器，仅限显示通过 OpenGL 呈现时。</p>
+<p>检视器中的名称：屏幕效果 · 类别：渲染 · 类型：<span class="tt">DekiGL::ScreenEffect</span></p>
+<table class="markdownTable">
+<tr class="markdownTableHead">
+<th class="markdownTableHeadNone">属性  </th><th class="markdownTableHeadNone">类型  </th><th class="markdownTableHeadNone">默认值  </th><th class="markdownTableHeadNone">说明  </th></tr>
+<tr class="markdownTableRowOdd">
+<td class="markdownTableBodyNone"><span class="tt">shader</span>  </td><td class="markdownTableBodyNone">AssetRef (Shader)  </td><td class="markdownTableBodyNone"><span class="tt">""</span>  </td><td class="markdownTableBodyNone">定义 float4 Effect(float2 uv) 的 HLSL .shader：返回窗口每个像素的颜色，uv 在整个帧上从左下到右上由 0 变到 1。Frame(uv) 读取帧。  </td></tr>
+<tr class="markdownTableRowEven">
+<td class="markdownTableBodyNone"><span class="tt">params</span>  </td><td class="markdownTableBodyNone">Vector3  </td><td class="markdownTableBodyNone"><span class="tt">[0.0, 0.0, 0.0]</span>  </td><td class="markdownTableBodyNone">着色器以 uParams 读取的三个数：强度、速度，或者它说明需要的任何东西。  </td></tr>
+<tr class="markdownTableRowOdd">
+<td class="markdownTableBodyNone"><span class="tt">color</span>  </td><td class="markdownTableBodyNone">Color  </td><td class="markdownTableBodyNone"><span class="tt">"#000000FF"</span>  </td><td class="markdownTableBodyNone">着色器以 uColor 读取的颜色。  </td></tr>
 </table>
 <h1 class="doxsection"><a class="anchor" id="project-settings"></a>
 项目设置</h1>
@@ -235,7 +287,7 @@ Fixed</h2>
 </ul>
 <p>更早的版本：<a href="https://github.com/dekiengine/deki-rendering/blob/master/CHANGELOG.md">CHANGELOG.md</a></p>
 <hr  />
-<p>由包的反射数据生成（引擎 0.30.0）。属性名就是场景文件中使用的键。重命名后会保留别名（<a href="https://github.com/dekiengine/deki-editor/blob/master/COMPATIBILITY.md">兼容性</a>）。 </p>
+<p>由包的反射数据生成（引擎 0.30.3）。属性名就是场景文件中使用的键。重命名后会保留别名（<a href="https://github.com/dekiengine/deki-editor/blob/master/COMPATIBILITY.md">兼容性</a>）。 </p>
 </div></div><!-- PageDoc -->
 <a href="doxygen_crawl.html"></a>
 </div><!-- contents -->

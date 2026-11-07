@@ -57,7 +57,7 @@
  <tbody>
  <tr id="projectrow">
   <td id="projectalign">
-   <div id="projectname">deki-rendering<span id="projectnumber">&#160;0.30.0</span>
+   <div id="projectname">deki-rendering<span id="projectnumber">&#160;0.30.3</span>
    </div>
    <div id="projectbrief">Deki パッケージリファレンス</div>
   </td>
@@ -125,6 +125,10 @@ document.addEventListener('DOMContentLoaded',() => { initNavTree('index.html',''
 <th class="markdownTableHeadNone">コンポーネント  </th><th class="markdownTableHeadNone">カテゴリ  </th><th class="markdownTableHeadNone">説明  </th></tr>
 <tr class="markdownTableRowOdd">
 <td class="markdownTableBodyNone"><a class="el" href="#c-cameracomponent" title="CameraComponent">CameraComponent</a>  </td><td class="markdownTableBodyNone">コア  </td><td class="markdownTableBodyNone">ビューです。位置、ワールドを映す範囲、クリアカラーを決めます。  </td></tr>
+<tr class="markdownTableRowEven">
+<td class="markdownTableBodyNone"><a class="el" href="#c-light" title="Light">Light</a>  </td><td class="markdownTableBodyNone">レンダリング  </td><td class="markdownTableBodyNone">ライトです。環境光、太陽、点の周り、または円錐状に照らします。メッシュと 2D の世界を照らします。  </td></tr>
+<tr class="markdownTableRowOdd">
+<td class="markdownTableBodyNone"><a class="el" href="#c-screeneffect" title="ScreenEffect">ScreenEffect</a>  </td><td class="markdownTableBodyNone">レンダリング  </td><td class="markdownTableBodyNone">完成したフレームにかける全画面シェーダーです。ディスプレイが OpenGL で表示する場合に限ります。  </td></tr>
 </table>
 <h1 class="doxsection"><a class="anchor" id="feature-flags"></a>
 機能フラグ</h1>
@@ -160,6 +164,54 @@ CameraComponent</h2>
 <td class="markdownTableBodyNone"><span class="tt">farPlane</span>  </td><td class="markdownTableBodyNone">float  </td><td class="markdownTableBodyNone"><span class="tt">100</span>  </td><td class="markdownTableBodyNone"><span class="tt">projection</span> が許すときに表示  </td><td class="markdownTableBodyNone">これより遠いものは描かれません。  </td></tr>
 <tr class="markdownTableRowEven">
 <td class="markdownTableBodyNone"><span class="tt">clearEveryFrame</span>  </td><td class="markdownTableBodyNone">bool  </td><td class="markdownTableBodyNone"><span class="tt">true</span>  </td><td class="markdownTableBodyNone"></td><td class="markdownTableBodyNone">フレームごとに描く前に画面をクリアします。オフにすると前のフレームが下に残ります。全画面の背景がすべてを覆う場合は速くなり、残像を出したいときにも使えます。  </td></tr>
+<tr class="markdownTableRowOdd">
+<td class="markdownTableBodyNone"><span class="tt">litUpToSortOrder</span>  </td><td class="markdownTableBodyNone">int32  </td><td class="markdownTableBodyNone"><span class="tt">2147483647</span>  </td><td class="markdownTableBodyNone"></td><td class="markdownTableBodyNone">ライト (Light コンポーネント) は、このカメラが描くもののうちこのソート順までを照らします。それより上に描かれるもの (UI など) は自身の色のままです。既定ではすべてを照らします。  </td></tr>
+</table>
+<h2 class="doxsection"><a class="anchor" id="c-light"></a>
+Light</h2>
+<p>ライトです。環境光、太陽、点の周り、または円錐状に照らします。メッシュと 2D の世界を照らします。</p>
+<p>カテゴリ: レンダリング · 型: <span class="tt">DekiRendering::Light</span></p>
+<table class="markdownTable">
+<tr class="markdownTableHead">
+<th class="markdownTableHeadNone">プロパティ  </th><th class="markdownTableHeadNone">型  </th><th class="markdownTableHeadNone">デフォルト  </th><th class="markdownTableHeadNone">制約  </th><th class="markdownTableHeadNone">説明  </th></tr>
+<tr class="markdownTableRowOdd">
+<td class="markdownTableBodyNone"><span class="tt">type</span>  </td><td class="markdownTableBodyNone">enum  </td><td class="markdownTableBodyNone"><span class="tt">"Point"</span>  </td><td class="markdownTableBodyNone"><span class="tt">Ambient</span>, <span class="tt">Directional</span>, <span class="tt">Point</span>, <span class="tt">Spot</span>  </td><td class="markdownTableBodyNone">環境光はすべてを同じように照らします。ディレクショナルは太陽のように遠い一方向から照らします。ポイントはオブジェクトの周りを範囲まで照らします。スポットはオブジェクトの X 軸に沿った円錐を、その回転の向きに照らします。  </td></tr>
+<tr class="markdownTableRowEven">
+<td class="markdownTableBodyNone"><span class="tt">color</span>  </td><td class="markdownTableBodyNone">Color  </td><td class="markdownTableBodyNone"><span class="tt">"#FFFFFFFF"</span>  </td><td class="markdownTableBodyNone"></td><td class="markdownTableBodyNone">ライトの色です。  </td></tr>
+<tr class="markdownTableRowOdd">
+<td class="markdownTableBodyNone"><span class="tt">intensity</span>  </td><td class="markdownTableBodyNone">float  </td><td class="markdownTableBodyNone"><span class="tt">1</span>  </td><td class="markdownTableBodyNone">0 から 8  </td><td class="markdownTableBodyNone">ライトの強さです。1 ならいちばん強いところで色をそのままの明るさで照らし、0.5 ならその半分です。ライトは足し合わされ、最大で色の 2 倍になります。  </td></tr>
+<tr class="markdownTableRowEven">
+<td class="markdownTableBodyNone"><span class="tt">range</span>  </td><td class="markdownTableBodyNone">float  </td><td class="markdownTableBodyNone"><span class="tt">3</span>  </td><td class="markdownTableBodyNone">0.01 から 100000。単位 m。<span class="tt">type</span> が許すときに表示  </td><td class="markdownTableBodyNone">ライトが届く距離 (メートル) です。そこで完全に消えます。  </td></tr>
+<tr class="markdownTableRowOdd">
+<td class="markdownTableBodyNone"><span class="tt">spotAngle</span>  </td><td class="markdownTableBodyNone">float  </td><td class="markdownTableBodyNone"><span class="tt">45</span>  </td><td class="markdownTableBodyNone">1 から 179。<span class="tt">type</span> が許すときに表示  </td><td class="markdownTableBodyNone">円錐の全体の幅 (度) です。  </td></tr>
+<tr class="markdownTableRowEven">
+<td class="markdownTableBodyNone"><span class="tt">spotSoftness</span>  </td><td class="markdownTableBodyNone">float  </td><td class="markdownTableBodyNone"><span class="tt">0.25</span>  </td><td class="markdownTableBodyNone">0 から 1 (スライダー)。<span class="tt">type</span> が許すときに表示  </td><td class="markdownTableBodyNone">円錐の縁に向かってどれだけ減衰するかです。0 はくっきりした縁、1 は中心から減衰します。  </td></tr>
+<tr class="markdownTableRowOdd">
+<td class="markdownTableBodyNone"><span class="tt">yaw</span>  </td><td class="markdownTableBodyNone">float  </td><td class="markdownTableBodyNone"><span class="tt">-25</span>  </td><td class="markdownTableBodyNone">-180 から 180。<span class="tt">type</span> が許すときに表示  </td><td class="markdownTableBodyNone">ライトが来る方向を、垂直軸の周りの角度 (度) で表します。0 はカメラの後ろ、90 は右です。  </td></tr>
+<tr class="markdownTableRowEven">
+<td class="markdownTableBodyNone"><span class="tt">pitch</span>  </td><td class="markdownTableBodyNone">float  </td><td class="markdownTableBodyNone"><span class="tt">55</span>  </td><td class="markdownTableBodyNone">-90 から 90。<span class="tt">type</span> が許すときに表示  </td><td class="markdownTableBodyNone">ライトの高さ (度) です。90 は真上から、0 は地平線と同じ高さです。  </td></tr>
+<tr class="markdownTableRowOdd">
+<td class="markdownTableBodyNone"><span class="tt">bands</span>  </td><td class="markdownTableBodyNone">int32  </td><td class="markdownTableBodyNone"><span class="tt">0</span>  </td><td class="markdownTableBodyNone">0 から 8。<span class="tt">type</span> が許すときに表示  </td><td class="markdownTableBodyNone">2D のみ: 0 はなめらかに減衰します。2 から 8 にすると、その数のくっきりした輪で照らし、中心がいちばん明るくなります。ピクセルアート向きです。  </td></tr>
+<tr class="markdownTableRowEven">
+<td class="markdownTableBodyNone"><span class="tt">castShadows</span>  </td><td class="markdownTableBodyNone">bool  </td><td class="markdownTableBodyNone"><span class="tt">false</span>  </td><td class="markdownTableBodyNone"><span class="tt">type</span> が許すときに表示  </td><td class="markdownTableBodyNone">その光の中のメッシュが影を落とします。ディスプレイが OpenGL で描画する場合に限り、1 フレームで影を落とせるライトは 2 つまでです。OpenGL のないボードは影なしでライトを描画し、ビルドがそのことを示します。ポイントライトはまだ影を落としません。  </td></tr>
+<tr class="markdownTableRowOdd">
+<td class="markdownTableBodyNone"><span class="tt">shadowResolution</span>  </td><td class="markdownTableBodyNone">int32  </td><td class="markdownTableBodyNone"><span class="tt">1024</span>  </td><td class="markdownTableBodyNone">128 から 4096。<span class="tt">type</span> が許すときに表示  </td><td class="markdownTableBodyNone">シャドウマップの一辺のピクセル数です。大きいほどくっきりしますが、GPU のメモリーと時間を使います。  </td></tr>
+<tr class="markdownTableRowEven">
+<td class="markdownTableBodyNone"><span class="tt">shadowBias</span>  </td><td class="markdownTableBodyNone">float  </td><td class="markdownTableBodyNone"><span class="tt">0.002</span>  </td><td class="markdownTableBodyNone">0 から 0.1。<span class="tt">type</span> が許すときに表示  </td><td class="markdownTableBodyNone">影を、それを落とす面から奥へずらします。照らされた面に縞状の影が出るときは上げてください。上げすぎると影が落とす物体から離れて見えます。  </td></tr>
+</table>
+<h2 class="doxsection"><a class="anchor" id="c-screeneffect"></a>
+ScreenEffect</h2>
+<p>完成したフレームにかける全画面シェーダーです。ディスプレイが OpenGL で表示する場合に限ります。</p>
+<p>インスペクターでの名前: 画面エフェクト · カテゴリ: レンダリング · 型: <span class="tt">DekiGL::ScreenEffect</span></p>
+<table class="markdownTable">
+<tr class="markdownTableHead">
+<th class="markdownTableHeadNone">プロパティ  </th><th class="markdownTableHeadNone">型  </th><th class="markdownTableHeadNone">デフォルト  </th><th class="markdownTableHeadNone">説明  </th></tr>
+<tr class="markdownTableRowOdd">
+<td class="markdownTableBodyNone"><span class="tt">shader</span>  </td><td class="markdownTableBodyNone">AssetRef (Shader)  </td><td class="markdownTableBodyNone"><span class="tt">""</span>  </td><td class="markdownTableBodyNone">float4 Effect(float2 uv) を定義する HLSL の .shader です。ウィンドウの各ピクセルの色を返します。uv はフレーム全体で左下から右上へ 0 から 1 まで動きます。Frame(uv) でフレームを読みます。  </td></tr>
+<tr class="markdownTableRowEven">
+<td class="markdownTableBodyNone"><span class="tt">params</span>  </td><td class="markdownTableBodyNone">Vector3  </td><td class="markdownTableBodyNone"><span class="tt">[0.0, 0.0, 0.0]</span>  </td><td class="markdownTableBodyNone">シェーダーが uParams として読む 3 つの数値です。強さ、速さなど、シェーダーが求めるものを入れます。  </td></tr>
+<tr class="markdownTableRowOdd">
+<td class="markdownTableBodyNone"><span class="tt">color</span>  </td><td class="markdownTableBodyNone">Color  </td><td class="markdownTableBodyNone"><span class="tt">"#000000FF"</span>  </td><td class="markdownTableBodyNone">シェーダーが uColor として読む色です。  </td></tr>
 </table>
 <h1 class="doxsection"><a class="anchor" id="project-settings"></a>
 プロジェクト設定</h1>
@@ -235,7 +287,7 @@ Fixed</h2>
 </ul>
 <p>それ以前のリリース: <a href="https://github.com/dekiengine/deki-rendering/blob/master/CHANGELOG.md">CHANGELOG.md</a></p>
 <hr  />
-<p>パッケージのリフレクションデータから生成しています (エンジン 0.30.0)。プロパティ名はシーンファイルで使われるキーです。名前を変えても別名が残ります (<a href="https://github.com/dekiengine/deki-editor/blob/master/COMPATIBILITY.md">互換性</a>)。 </p>
+<p>パッケージのリフレクションデータから生成しています (エンジン 0.30.3)。プロパティ名はシーンファイルで使われるキーです。名前を変えても別名が残ります (<a href="https://github.com/dekiengine/deki-editor/blob/master/COMPATIBILITY.md">互換性</a>)。 </p>
 </div></div><!-- PageDoc -->
 <a href="doxygen_crawl.html"></a>
 </div><!-- contents -->

@@ -56,7 +56,7 @@
  <tbody>
  <tr id="projectrow">
   <td id="projectalign">
-   <div id="projectname">deki-rendering<span id="projectnumber">&#160;0.30.0</span>
+   <div id="projectname">deki-rendering<span id="projectnumber">&#160;0.30.3</span>
    </div>
    <div id="projectbrief">Deki package reference</div>
   </td>
@@ -124,6 +124,10 @@ Components</h1>
 <th class="markdownTableHeadNone">Component  </th><th class="markdownTableHeadNone">Category  </th><th class="markdownTableHeadNone">Description  </th></tr>
 <tr class="markdownTableRowOdd">
 <td class="markdownTableBodyNone"><a class="el" href="#c-cameracomponent" title="CameraComponent">CameraComponent</a>  </td><td class="markdownTableBodyNone">Core  </td><td class="markdownTableBodyNone">The view: position, how much world it shows, and clear color.  </td></tr>
+<tr class="markdownTableRowEven">
+<td class="markdownTableBodyNone"><a class="el" href="#c-light" title="Light">Light</a>  </td><td class="markdownTableBodyNone">Rendering  </td><td class="markdownTableBodyNone">A light: ambient, the sun, round a point or in a cone. It lights meshes and the 2D world.  </td></tr>
+<tr class="markdownTableRowOdd">
+<td class="markdownTableBodyNone"><a class="el" href="#c-screeneffect" title="ScreenEffect">ScreenEffect</a>  </td><td class="markdownTableBodyNone">Rendering  </td><td class="markdownTableBodyNone">A full-screen shader over the finished frame, where the display presents through OpenGL.  </td></tr>
 </table>
 <h1 class="doxsection"><a class="anchor" id="feature-flags"></a>
 Feature flags</h1>
@@ -159,6 +163,54 @@ CameraComponent</h2>
 <td class="markdownTableBodyNone"><span class="tt">farPlane</span>  </td><td class="markdownTableBodyNone">float  </td><td class="markdownTableBodyNone"><span class="tt">100</span>  </td><td class="markdownTableBodyNone">shown when <span class="tt">projection</span> allows  </td><td class="markdownTableBodyNone">Nothing further than this is drawn.  </td></tr>
 <tr class="markdownTableRowEven">
 <td class="markdownTableBodyNone"><span class="tt">clearEveryFrame</span>  </td><td class="markdownTableBodyNone">bool  </td><td class="markdownTableBodyNone"><span class="tt">true</span>  </td><td class="markdownTableBodyNone"></td><td class="markdownTableBodyNone">Clear before each frame. Off, the previous frame stays underneath: faster when a full-screen background covers everything, and occasionally what you want for trails.  </td></tr>
+<tr class="markdownTableRowOdd">
+<td class="markdownTableBodyNone"><span class="tt">litUpToSortOrder</span>  </td><td class="markdownTableBodyNone">int32  </td><td class="markdownTableBodyNone"><span class="tt">2147483647</span>  </td><td class="markdownTableBodyNone"></td><td class="markdownTableBodyNone">Lights (the Light component) light what this camera draws up to this sort order; what draws above it, such as the UI, keeps its own colours. The default lights everything.  </td></tr>
+</table>
+<h2 class="doxsection"><a class="anchor" id="c-light"></a>
+Light</h2>
+<p>A light: ambient, the sun, round a point or in a cone. It lights meshes and the 2D world.</p>
+<p>Category: Rendering · Type: <span class="tt">DekiRendering::Light</span></p>
+<table class="markdownTable">
+<tr class="markdownTableHead">
+<th class="markdownTableHeadNone">Property  </th><th class="markdownTableHeadNone">Type  </th><th class="markdownTableHeadNone">Default  </th><th class="markdownTableHeadNone">Constraints  </th><th class="markdownTableHeadNone">Description  </th></tr>
+<tr class="markdownTableRowOdd">
+<td class="markdownTableBodyNone"><span class="tt">type</span>  </td><td class="markdownTableBodyNone">enum  </td><td class="markdownTableBodyNone"><span class="tt">"Point"</span>  </td><td class="markdownTableBodyNone"><span class="tt">Ambient</span>, <span class="tt">Directional</span>, <span class="tt">Point</span>, <span class="tt">Spot</span>  </td><td class="markdownTableBodyNone">Ambient lights everything the same. Directional lights from one far direction, like the sun. Point lights round the object, out to the range. Spot lights a cone along the object's X axis, the way its rotation turns it.  </td></tr>
+<tr class="markdownTableRowEven">
+<td class="markdownTableBodyNone"><span class="tt">color</span>  </td><td class="markdownTableBodyNone">Color  </td><td class="markdownTableBodyNone"><span class="tt">"#FFFFFFFF"</span>  </td><td class="markdownTableBodyNone"></td><td class="markdownTableBodyNone">The light's colour.  </td></tr>
+<tr class="markdownTableRowOdd">
+<td class="markdownTableBodyNone"><span class="tt">intensity</span>  </td><td class="markdownTableBodyNone">float  </td><td class="markdownTableBodyNone"><span class="tt">1</span>  </td><td class="markdownTableBodyNone">0 to 8  </td><td class="markdownTableBodyNone">How strong the light is: 1 lights a colour as it is where the light is strongest, 0.5 half as much. Lights add up, to at most twice a colour.  </td></tr>
+<tr class="markdownTableRowEven">
+<td class="markdownTableBodyNone"><span class="tt">range</span>  </td><td class="markdownTableBodyNone">float  </td><td class="markdownTableBodyNone"><span class="tt">3</span>  </td><td class="markdownTableBodyNone">0.01 to 100000; in m; shown when <span class="tt">type</span> allows  </td><td class="markdownTableBodyNone">How far the light reaches, in meters. It fades to nothing there.  </td></tr>
+<tr class="markdownTableRowOdd">
+<td class="markdownTableBodyNone"><span class="tt">spotAngle</span>  </td><td class="markdownTableBodyNone">float  </td><td class="markdownTableBodyNone"><span class="tt">45</span>  </td><td class="markdownTableBodyNone">1 to 179; shown when <span class="tt">type</span> allows  </td><td class="markdownTableBodyNone">The cone's full width, in degrees.  </td></tr>
+<tr class="markdownTableRowEven">
+<td class="markdownTableBodyNone"><span class="tt">spotSoftness</span>  </td><td class="markdownTableBodyNone">float  </td><td class="markdownTableBodyNone"><span class="tt">0.25</span>  </td><td class="markdownTableBodyNone">0 to 1 (slider); shown when <span class="tt">type</span> allows  </td><td class="markdownTableBodyNone">How much of the cone fades out toward its edge: 0 is a hard edge, 1 fades from the centre.  </td></tr>
+<tr class="markdownTableRowOdd">
+<td class="markdownTableBodyNone"><span class="tt">yaw</span>  </td><td class="markdownTableBodyNone">float  </td><td class="markdownTableBodyNone"><span class="tt">-25</span>  </td><td class="markdownTableBodyNone">-180 to 180; shown when <span class="tt">type</span> allows  </td><td class="markdownTableBodyNone">Where the light comes from, swept around the vertical axis, in degrees. 0 puts it behind the camera, 90 to the right.  </td></tr>
+<tr class="markdownTableRowEven">
+<td class="markdownTableBodyNone"><span class="tt">pitch</span>  </td><td class="markdownTableBodyNone">float  </td><td class="markdownTableBodyNone"><span class="tt">55</span>  </td><td class="markdownTableBodyNone">-90 to 90; shown when <span class="tt">type</span> allows  </td><td class="markdownTableBodyNone">How high the light is, in degrees: 90 straight down, 0 level with the horizon.  </td></tr>
+<tr class="markdownTableRowOdd">
+<td class="markdownTableBodyNone"><span class="tt">bands</span>  </td><td class="markdownTableBodyNone">int32  </td><td class="markdownTableBodyNone"><span class="tt">0</span>  </td><td class="markdownTableBodyNone">0 to 8; shown when <span class="tt">type</span> allows  </td><td class="markdownTableBodyNone">2D only: 0 fades smoothly. 2 to 8 lights in that many hard rings, the brightest in the middle, for pixel art.  </td></tr>
+<tr class="markdownTableRowEven">
+<td class="markdownTableBodyNone"><span class="tt">castShadows</span>  </td><td class="markdownTableBodyNone">bool  </td><td class="markdownTableBodyNone"><span class="tt">false</span>  </td><td class="markdownTableBodyNone">shown when <span class="tt">type</span> allows  </td><td class="markdownTableBodyNone">Meshes in its light cast shadows, where the display draws through OpenGL; at most two lights in a frame cast them. A board without OpenGL draws the light without its shadows, and its build says so. Point lights cast none yet.  </td></tr>
+<tr class="markdownTableRowOdd">
+<td class="markdownTableBodyNone"><span class="tt">shadowResolution</span>  </td><td class="markdownTableBodyNone">int32  </td><td class="markdownTableBodyNone"><span class="tt">1024</span>  </td><td class="markdownTableBodyNone">128 to 4096; shown when <span class="tt">type</span> allows  </td><td class="markdownTableBodyNone">Pixels on each side of the shadow map. More is sharper and costs GPU memory and time.  </td></tr>
+<tr class="markdownTableRowEven">
+<td class="markdownTableBodyNone"><span class="tt">shadowBias</span>  </td><td class="markdownTableBodyNone">float  </td><td class="markdownTableBodyNone"><span class="tt">0.002</span>  </td><td class="markdownTableBodyNone">0 to 0.1; shown when <span class="tt">type</span> allows  </td><td class="markdownTableBodyNone">Pushes shadows back from the surfaces that cast them. Raise it when a lit surface shows stripes of shadow on itself; too much lets shadows come loose from their casters.  </td></tr>
+</table>
+<h2 class="doxsection"><a class="anchor" id="c-screeneffect"></a>
+ScreenEffect</h2>
+<p>A full-screen shader over the finished frame, where the display presents through OpenGL.</p>
+<p>Inspector name: Screen Effect · Category: Rendering · Type: <span class="tt">DekiGL::ScreenEffect</span></p>
+<table class="markdownTable">
+<tr class="markdownTableHead">
+<th class="markdownTableHeadNone">Property  </th><th class="markdownTableHeadNone">Type  </th><th class="markdownTableHeadNone">Default  </th><th class="markdownTableHeadNone">Description  </th></tr>
+<tr class="markdownTableRowOdd">
+<td class="markdownTableBodyNone"><span class="tt">shader</span>  </td><td class="markdownTableBodyNone">AssetRef (Shader)  </td><td class="markdownTableBodyNone"><span class="tt">""</span>  </td><td class="markdownTableBodyNone">An HLSL .shader that defines float4 Effect(float2 uv): the colour of each window pixel, where uv runs 0 to 1 over the frame, bottom left to top right. Frame(uv) reads the frame.  </td></tr>
+<tr class="markdownTableRowEven">
+<td class="markdownTableBodyNone"><span class="tt">params</span>  </td><td class="markdownTableBodyNone">Vector3  </td><td class="markdownTableBodyNone"><span class="tt">[0.0, 0.0, 0.0]</span>  </td><td class="markdownTableBodyNone">Three numbers the shader reads as uParams: strengths, speeds, whatever it says it wants.  </td></tr>
+<tr class="markdownTableRowOdd">
+<td class="markdownTableBodyNone"><span class="tt">color</span>  </td><td class="markdownTableBodyNone">Color  </td><td class="markdownTableBodyNone"><span class="tt">"#000000FF"</span>  </td><td class="markdownTableBodyNone">A colour the shader reads as uColor.  </td></tr>
 </table>
 <h1 class="doxsection"><a class="anchor" id="project-settings"></a>
 Project settings</h1>
@@ -233,7 +285,7 @@ Fixed</h2>
 </ul>
 <p>Earlier releases: <a href="https://github.com/dekiengine/deki-rendering/blob/master/CHANGELOG.md">CHANGELOG.md</a>.</p>
 <hr  />
-<p>Generated from the package's reflection data (engine 0.30.0). Property names are the keys used in scene files. Renames keep an alias (<a href="https://github.com/dekiengine/deki-editor/blob/master/COMPATIBILITY.md">compatibility</a>). </p>
+<p>Generated from the package's reflection data (engine 0.30.3). Property names are the keys used in scene files. Renames keep an alias (<a href="https://github.com/dekiengine/deki-editor/blob/master/COMPATIBILITY.md">compatibility</a>). </p>
 </div></div><!-- PageDoc -->
 <a href="doxygen_crawl.html"></a>
 </div><!-- contents -->

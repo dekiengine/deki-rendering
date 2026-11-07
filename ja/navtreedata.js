@@ -28,7 +28,9 @@ var NAVTREE =
     [ "コンポーネント", "index.html#components", null ],
     [ "機能フラグ", "index.html#feature-flags", null ],
     [ "コンポーネントリファレンス", "index.html#component-reference", [
-      [ "CameraComponent", "index.html#c-cameracomponent", null ]
+      [ "CameraComponent", "index.html#c-cameracomponent", null ],
+      [ "Light", "index.html#c-light", null ],
+      [ "ScreenEffect", "index.html#c-screeneffect", null ]
     ] ],
     [ "プロジェクト設定", "index.html#project-settings", [
       [ "レンダリング 設定", "index.html#s-rendering-settings", null ]
