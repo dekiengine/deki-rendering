@@ -8,6 +8,7 @@
 
 #include "DekiRenderingPackage.h"
 #include "FrameCamera.h"
+#include "RenderingFeatures.h"
 
 namespace Deki
 {

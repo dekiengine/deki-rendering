@@ -13,5 +13,15 @@
     "opengl"
   ],
   "requires": [],
-  "features": []
+  "features": [
+    {
+      "id": "lights",
+      "displayName": "Lights",
+      "buildDefine": "DEKI_FEATURE_LIGHTS",
+      "defaultEnabled": true,
+      "componentTypes": [
+        "Light"
+      ]
+    }
+  ]
 }

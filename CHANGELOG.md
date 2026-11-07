@@ -20,6 +20,14 @@ alongside one that has them.
 ### Changed
 - `minEngine` 0.30.0: built against engine 0.30.0. A build of this package
   from before does not load and is rebuilt.
+- **Lights are a feature** (`lights`, `DEKI_FEATURE_LIGHTS`, the Light
+  component): a device build whose scenes and code have no Light leaves it
+  out. Light.cpp is not compiled, nothing is lit, and the light loops stay in
+  flash: such a game spends no internal RAM on lights (a T-Deck build had
+  1.4 KB of their code there, and 4.2 KB of tables, below). Code that uses
+  Light includes Light.h inside `#ifdef DEKI_FEATURE_LIGHTS`;
+  `RenderingFeatures.h` turns it on in a build that does not configure
+  features.
 - The 2D light's colour tables (about 2 KB for each thread that lights) are
   allocated by the first frame lit, not held static: a game without lights
   keeps that internal RAM (4.2 KB on a T-Deck, where a second core lights

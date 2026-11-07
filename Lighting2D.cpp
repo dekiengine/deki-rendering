@@ -1,7 +1,9 @@
 #include "Lighting2D.h"
 
 #include "DirtyRegion.h"
+#ifdef DEKI_FEATURE_LIGHTS
 #include "Light.h"
+#endif
 #include "PixelFormat.h"
 
 #include <deki/LogSystem.h>
@@ -100,6 +102,15 @@ struct Tables565
     uint16_t b[32];
 };
 
+// The light loops run from internal RAM only in a build whose scenes have a
+// Light (RenderingFeatures.h). A build without one keeps them in flash, where
+// they cost no internal RAM and never run.
+#ifdef DEKI_FEATURE_LIGHTS
+#define DEKI_LIGHT_FAST DEKI_FAST_ATTR
+#else
+#define DEKI_LIGHT_FAST
+#endif
+
 // A few tables kept, by each thread that lights: a frame's light is mostly
 // one value (the ambient), and the rest changes from block to block. About
 // 2 KB each, so they are allocated by the first frame lit, not held static:
@@ -163,7 +174,7 @@ inline uint32_t LightStored565(uint32_t m, const Tables565& t)
 }
 
 // `rows` rows of n RGB565 pixels from p, `stride` bytes apart.
-[[gnu::noinline]] DEKI_FAST_ATTR void LightRows565(uint8_t* p, int32_t stride, int32_t rows, int32_t n,
+[[gnu::noinline]] DEKI_LIGHT_FAST void LightRows565(uint8_t* p, int32_t stride, int32_t rows, int32_t n,
                                                    const Tables565& t)
 {
     for (int32_t y = 0; y < rows; y++, p += stride)
@@ -190,7 +201,7 @@ inline uint32_t LightStored565(uint32_t m, const Tables565& t)
 }
 
 // The same for RGB565A8, three bytes a pixel; the alpha is left alone.
-[[gnu::noinline]] DEKI_FAST_ATTR void LightRows565A8(uint8_t* p, int32_t stride, int32_t rows, int32_t n,
+[[gnu::noinline]] DEKI_LIGHT_FAST void LightRows565A8(uint8_t* p, int32_t stride, int32_t rows, int32_t n,
                                                      const Tables565& t)
 {
     for (int32_t y = 0; y < rows; y++, p += stride)
@@ -328,6 +339,12 @@ void Lighting2D::Build(const Deki::Scene* scene, const FrameCamera& cam, int32_t
     m_AmbientR = m_AmbientG = m_AmbientB = 0.0f;
     m_Lights.clear();
 
+#ifndef DEKI_FEATURE_LIGHTS
+    // No scene of this build has a Light (RenderingFeatures.h).
+    (void)scene;
+    (void)cam;
+    m_On = false;
+#else
     static std::vector<const Light*> s_Found;
     Light::InScene(scene, s_Found);
     m_On = !s_Found.empty();
@@ -383,6 +400,7 @@ void Lighting2D::Build(const Deki::Scene* scene, const FrameCamera& cam, int32_t
             m_Lights.push_back(l);
         }
     }
+#endif
 }
 
 void Lighting2D::KeepOrForgetGrid()
@@ -610,7 +628,7 @@ inline void LightPixel(uint8_t* p, Deki::ColorFormat format, uint32_t lr, uint32
 // the last two, the one before for the first two), across and down alike.
 // The blend keeps six bits below the 1/32 the pixels are lit in, laid down in
 // an ordered dither.
-[[gnu::noinline]] DEKI_FAST_ATTR void LightBlockSoft(const ApplyJob& job, int32_t bx, int32_t by, int32_t x0,
+[[gnu::noinline]] DEKI_LIGHT_FAST void LightBlockSoft(const ApplyJob& job, int32_t bx, int32_t by, int32_t x0,
                                                      int32_t x1, int32_t y0, int32_t y1)
 {
     static constexpr uint32_t kToNext[4] = { 5, 7, 1, 3 };
