@@ -20,6 +20,11 @@ alongside one that has them.
 ### Changed
 - `minEngine` 0.30.0: built against engine 0.30.0. A build of this package
   from before does not load and is rebuilt.
+- The 2D light's colour tables (about 2 KB for each thread that lights) are
+  allocated by the first frame lit, not held static: a game without lights
+  keeps that internal RAM (4.2 KB on a T-Deck, where a second core lights
+  too). With no memory for them the frame is drawn unlit, and the log says
+  so once.
 - The frame's clear waits for its first write, wherever that is: the
   renderer leaves it with QuadBlit (`SetPendingClear`), a blit into the
   buffer runs it first, and so must a render pass that writes into the buffer

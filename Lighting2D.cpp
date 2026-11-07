@@ -10,6 +10,8 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <memory>
+#include <new>
 
 // The pixels of a frame are lit on two threads where there are two cores, on
 // a device or a game build: the editor loads this package as a DLL it can
@@ -99,7 +101,9 @@ struct Tables565
 };
 
 // A few tables kept, by each thread that lights: a frame's light is mostly
-// one value (the ambient), and the rest changes from block to block.
+// one value (the ambient), and the rest changes from block to block. About
+// 2 KB each, so they are allocated by the first frame lit, not held static:
+// a game without lights keeps that internal RAM.
 struct TableCache
 {
     Tables565 tables[8];
@@ -736,11 +740,11 @@ public:
         m_Start = xSemaphoreCreateBinary();
         m_Done = xSemaphoreCreateBinary();
         const BaseType_t core = xPortGetCoreID() == 0 ? 1 : 0;
-        if (!m_Start || !m_Done ||
+        if (!m_Tables || !m_Start || !m_Done ||
             xTaskCreatePinnedToCore(&Main, "deki_light", 3072, this, uxTaskPriorityGet(nullptr), nullptr, core) !=
                 pdPASS)
         {
-            DEKI_LOG_ERROR("Lights: no task for the second core; the frame is lit on one");
+            DEKI_LOG_ERROR("Lights: no task or no tables (2 KB) for the second core; the frame is lit on one");
             m_Running = false;
             return;
         }
@@ -767,7 +771,7 @@ private:
         while (true)
         {
             xSemaphoreTake(w->m_Start, portMAX_DELAY);
-            ApplyRows(w->m_Job, 1, 2, w->m_Tables);
+            ApplyRows(w->m_Job, 1, 2, *w->m_Tables);
             xSemaphoreGive(w->m_Done);
         }
     }
@@ -775,7 +779,7 @@ private:
     SemaphoreHandle_t m_Start = nullptr;
     SemaphoreHandle_t m_Done = nullptr;
     ApplyJob m_Job;
-    TableCache m_Tables;
+    std::unique_ptr<TableCache> m_Tables{ new (std::nothrow) TableCache() };
     bool m_Running = false;
 };
 
@@ -836,7 +840,7 @@ private:
                 }
                 job = m_Job;
             }
-            ApplyRows(job, 1, 2, m_Tables);
+            ApplyRows(job, 1, 2, *m_Tables);
             {
                 std::lock_guard<std::mutex> lock(m_Mutex);
                 m_HasWork = false;
@@ -851,7 +855,12 @@ private:
     ApplyJob m_Job;
     bool m_HasWork = false;
     bool m_Stop = false;
-    TableCache m_Tables;
+
+public:
+    // Before the thread, which uses them.
+    std::unique_ptr<TableCache> m_Tables{ new (std::nothrow) TableCache() };
+
+private:
     std::thread m_Thread;  // last: it starts running in the constructor
 };
 
@@ -862,12 +871,17 @@ ApplyWorker* Worker()
         return nullptr;
     }
     static ApplyWorker s_Worker;
-    return &s_Worker;
+    return s_Worker.m_Tables ? &s_Worker : nullptr;
 }
 #endif
 #endif
 
-TableCache s_MainTables;
+// The calling thread's tables. Null when there was no memory for them.
+TableCache* MainTables()
+{
+    static std::unique_ptr<TableCache> s_Tables(new (std::nothrow) TableCache());
+    return s_Tables.get();
+}
 }  // namespace
 
 void Lighting2D::Apply(uint8_t* buffer, int32_t width, int32_t height, Deki::ColorFormat format,
@@ -928,14 +942,25 @@ void Lighting2D::Apply(uint8_t* buffer, int32_t width, int32_t height, Deki::Col
     const Grid grid{ m_GridR.data(), m_GridG.data(), m_GridB.data(), m_GridEven.data(), m_GridWidth, m_GridHeight };
     job.grid = &grid;
 
+    TableCache* tables = MainTables();
+    if (!tables)
+    {
+        static bool s_Said = false;
+        if (!s_Said)
+        {
+            DEKI_LOG_ERROR("Lights: no memory for the light tables (2 KB); frames are drawn unlit");
+            s_Said = true;
+        }
+        return;
+    }
 #if DEKI_LIGHTING_WORKER
     if (ApplyWorker* worker = job.by1 - job.by0 > 1 ? Worker() : nullptr)
     {
-        worker->Run(job, s_MainTables);
+        worker->Run(job, *tables);
         return;
     }
 #endif
-    ApplyRows(job, 0, 1, s_MainTables);
+    ApplyRows(job, 0, 1, *tables);
 }
 
 void Lighting2D::AddChanges(Lighting2D& last, DirtyRegion& changed) const
