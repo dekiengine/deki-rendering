@@ -57,7 +57,7 @@
  <tbody>
  <tr id="projectrow">
   <td id="projectalign">
-   <div id="projectname">deki-rendering<span id="projectnumber">&#160;0.22.0</span>
+   <div id="projectname">deki-rendering<span id="projectnumber">&#160;0.30.0</span>
    </div>
    <div id="projectbrief">Deki パッケージリファレンス</div>
   </td>
@@ -115,7 +115,7 @@ document.addEventListener('DOMContentLoaded',() => { initNavTree('index.html',''
 <img src="deki-rendering.png" alt=""/>
 </div>
     <p>コアのレンダリングパイプライン。カメラ、レンダーシステム、標準 2D レンダラー、QuadBlit、レンダーパス、ソートを提供します。</p>
-<p>リポジトリ: <a href="https://github.com/dekiengine/deki-rendering">github.com/dekiengine/deki-rendering</a> · 最新リリース: 0.22.0 · エンジン 0.22.0 以降が必要</p>
+<p>リポジトリ: <a href="https://github.com/dekiengine/deki-rendering">github.com/dekiengine/deki-rendering</a> · 最新リリース: 0.30.0 · エンジン 0.30.0 以降が必要</p>
 <p><span class="tt">DekiEditor --packages-add deki-rendering &lt;project&gt;</span> か、パッケージマネージャーからインストールします。エンジン自身のコンポーネントと C++ API は <a href="https://dekiengine.github.io/docs/ja/">Deki のドキュメント</a>にあります。</p>
 <p>エディターでは <b>Rendering</b> と表示されます。</p>
 <h1 class="doxsection"><a class="anchor" id="components"></a>
@@ -125,6 +125,15 @@ document.addEventListener('DOMContentLoaded',() => { initNavTree('index.html',''
 <th class="markdownTableHeadNone">コンポーネント  </th><th class="markdownTableHeadNone">カテゴリ  </th><th class="markdownTableHeadNone">説明  </th></tr>
 <tr class="markdownTableRowOdd">
 <td class="markdownTableBodyNone"><a class="el" href="#c-cameracomponent" title="CameraComponent">CameraComponent</a>  </td><td class="markdownTableBodyNone">コア  </td><td class="markdownTableBodyNone">ビューです。位置、ワールドを映す範囲、クリアカラーを決めます。  </td></tr>
+</table>
+<h1 class="doxsection"><a class="anchor" id="feature-flags"></a>
+機能フラグ</h1>
+<p>ビルドから外せる部分です。define を持つ機能はその define で切り替わり、それ以外はコンポーネントと一緒に取り除かれます。</p>
+<table class="markdownTable">
+<tr class="markdownTableHead">
+<th class="markdownTableHeadNone">機能  </th><th class="markdownTableHeadNone">define  </th><th class="markdownTableHeadNone">デフォルト  </th></tr>
+<tr class="markdownTableRowOdd">
+<td class="markdownTableBodyNone">Lights  </td><td class="markdownTableBodyNone"><span class="tt">DEKI_FEATURE_LIGHTS</span>  </td><td class="markdownTableBodyNone">オン  </td></tr>
 </table>
 <h1 class="doxsection"><a class="anchor" id="component-reference"></a>
 コンポーネントリファレンス</h1>
@@ -172,51 +181,61 @@ CameraComponent</h2>
 変更履歴</h1>
 <p>変更履歴は英語です。</p>
 <h2 class="doxsection"><a class="anchor" id="autotoc_md0"></a>
-0.22.0</h2>
+0.30.0</h2>
 <h2 class="doxsection"><a class="anchor" id="autotoc_md1"></a>
+Declares the capabilities it uses</h2>
+<ul>
+<li><span class="tt">package.json</span> has <span class="tt">"capabilityDefines": ["opengl"]</span> and <span class="tt">"filtersTexturesWith": ["opengl"]</span>: its GPU code tests <span class="tt">DEKI_CAPABILITY_OPENGL</span>, and its GL sprite sink draws textures filtered. The editor reads them instead of knowing <span class="tt">opengl</span> itself; needs the editor from this release.</li>
+</ul>
+<h2 class="doxsection"><a class="anchor" id="autotoc_md2"></a>
+Changed</h2>
+<ul>
+<li><span class="tt">minEngine</span> 0.30.0: built against engine 0.30.0. A build of this package from before does not load and is rebuilt.</li>
+<li><b>Lights are a feature</b> (<span class="tt">lights</span>, <span class="tt">DEKI_FEATURE_LIGHTS</span>, the Light component): a device build whose scenes and code have no Light leaves it out. Light.cpp is not compiled, nothing is lit, and the light loops stay in flash: such a game spends no internal RAM on lights (a T-Deck build had 1.4 KB of their code there, and 4.2 KB of tables, below). Code that uses Light includes Light.h inside <span class="tt">#ifdef DEKI_FEATURE_LIGHTS</span>; <span class="tt">RenderingFeatures.h</span> turns it on in a build that does not configure features.</li>
+<li>The 2D light's colour tables (about 2 KB for each thread that lights) are allocated by the first frame lit, not held static: a game without lights keeps that internal RAM (4.2 KB on a T-Deck, where a second core lights too). With no memory for them the frame is drawn unlit, and the log says so once.</li>
+<li>The frame's clear waits for its first write, wherever that is: the renderer leaves it with QuadBlit (<span class="tt">SetPendingClear</span>), a blit into the buffer runs it first, and so must a render pass that writes into the buffer itself and says it does not (<span class="tt">RenderPass::WritesBuffer</span> false): it now calls <span class="tt">QuadBlit::BeforeWriting(ctx.buffer)</span> before it writes, as well as <span class="tt">NoteWritten</span> after. Such a pass that does not would have its pixels cleared over. Before, any pass with a hook had the clear made first.</li>
+<li>A frame holding nothing but its clear when the 2D light is due, and lit the same all over (<span class="tt">Lighting2D::Uniform</span>: no point or spot light in view), is cleared in the clear colour lit (<span class="tt">DeferredClear::runLit</span>) instead of cleared and lit after, still when the frame is first written. The same pixels. A 3D scene lit by an ambient light and the sun saves the 2D light's pass over the screen: 6.8 ms a frame on a T-Deck.</li>
+<li>A frame that cannot be drawn in strips (a 3D scene's) is drawn in a frame the display lends (<span class="tt">IScanOrderedDisplay::LendFrame</span>) when every pixel of it is drawn anew (the camera clears every frame, changes are not redrawn on their own, no screenshot is wanted), and goes to the display as it is. On a T-Deck that is the 5 ms copy of each frame gone: a 3D corridor of 2,000 triangles at 19.5 frames a second, from 17.</li>
+<li>A render pass about to write every pixel of the frame itself can take the pending clear as one pixel (<span class="tt">QuadBlit::TakePendingClear</span>, <span class="tt">DeferredClear::pixel</span>), lit when the light came first, and draw it where it draws nothing: deki-3d's software rasteriser does, which saves the clear's own pass over the screen.</li>
+<li>The shader loader is registered once, as "Shader" (<span class="tt">ShaderAsset::kAssetTypeName</span>). Its second name, "ShaderAsset", was there because the reflection named an <span class="tt">AssetRef&lt;ShaderAsset&gt;</span> by its class; it no longer does (engine changelog).</li>
+</ul>
+<h2 class="doxsection"><a class="anchor" id="autotoc_md3"></a>
+Added</h2>
+<ul>
+<li><span class="tt">GL::GenerateMipmap</span>, <span class="tt">gl::LINEAR_MIPMAP_LINEAR</span> and <span class="tt">gl::NEAREST_MIPMAP_NEAREST</span>, for filtered textures.</li>
+<li>A source's filter (<span class="tt">QuadBlit::Source::filter</span>: Point, Bilinear, Trilinear, the image's setting). <span class="tt">GLBlitSink</span> draws Bilinear blended between the four nearest texels, and Trilinear also between mipmaps by how small it is drawn, kept within each source so a frame or tile never takes in its neighbour's texels; a texture gets its mipmaps when a Trilinear source first draws from it. The CPU draws Point, as before.</li>
+<li>Lights: the <span class="tt">Light</span> component (Ambient, Directional, Point, Spot; colour, intensity, range, a spot's angle and softness, a sun's yaw and pitch, 2D bands, shadows). Every active Light in the scene lights deki-3d's meshes and the 2D world; a scene with none is lit as before, not at all.</li>
+<li>The 2D light, <span class="tt">Lighting2D</span>: worked out per 4x4 block, blended and dithered between blocks where it changes, up to twice a colour, laid over the frame by <span class="tt">Standard2DRenderer</span> before the first object above the camera's <span class="tt">litUpToSortOrder</span> (new; the default lights everything) or before a renderer that <span class="tt">LightsItself()</span> (new, on <span class="tt">RendererComponent</span>). Strips and redraws of part of the frame are lit as the whole frame, and a changed light is a changed region. On a device both cores light the pixels.</li>
+<li>On the GPU the 2D light is a full-screen pass, per pixel (<span class="tt">QuadBlit::BlitSink::Light</span>, <span class="tt">QuadBlit::LightSinkFrame</span>, the presenter's 2D light program, HLSL in <span class="tt">editor/Light2DShader.cpp</span>, compiled into <span class="tt">GLLight2DShader.inl</span>). A sink that cannot light says so, once.</li>
+<li>In the editor: the Light inspector and its gizmos (a point's reach, a spot's cone), and a check of the scenes a build ships that lists each shadow-casting light a board without OpenGL draws without its shadows.</li>
+<li>OpenGL, where the platform provides <span class="tt">opengl</span> (its build then defines <span class="tt">DEKI_CAPABILITY_OPENGL</span>; a board never does and compiles none of it): the GL loader and shared context (<span class="tt">GLApi.h</span>), a presenter that builds each frame on the GPU (<span class="tt">GLPresenter</span>), the 2D drawn there too (<span class="tt">GLBlitSink</span>), and <span class="tt">ScreenEffect</span>, a full-screen shader over the finished frame. Types live in <span class="tt">DekiGL</span>.</li>
+<li><span class="tt">ShaderAsset</span> (<span class="tt">.shader</span>): a GPU shader, written in HLSL. The editor compiles it (Slang, then SPIRV-Cross) to GLSL ES 3.00 and GLSL 3.30 for each use whose hooks it defines (<span class="tt">editor/ShaderUses.h</span>: deki-3d's meshes, screen effects), and the asset is that GLSL. Errors name the file and line, in the Console and in a build's problems; a build for a target without OpenGL that ships a scene using a shader stops. The editor lists it as the Shader asset type.</li>
+<li>A blit sink (<span class="tt">QuadBlit::BlitSink</span>), so a GPU that builds the frame (<span class="tt">GLPresenter</span>) can draw its 2D. While a sink frame is on (<span class="tt">QuadBlit::BeginSinkFrame</span>), every <span class="tt">Blit</span> and <span class="tt">BlitScaled</span> into that frame's buffer goes to the sink, worked out as the CPU would draw it (<span class="tt">SinkBlit</span>: the clipped rectangle and the 16.16 steps it samples with), and nothing reaches the buffer. Without a sink a blit tests one pointer more and nothing else changes.</li>
+<li><span class="tt">DekiRenderSystem</span> draws the whole frames of a camera that clears into a sink that takes them: the clear is the sink's, and the buffer starts empty (transparent) and collects only what code writes into it directly. Redrawing only what changed is skipped then, as the sink's frame starts over each time. Strips and a camera that keeps its frame stay on the CPU.</li>
+<li><span class="tt">RenderPass::WritesBuffer</span>: whether a pass writes into the buffer other than through QuadBlit. On a sink frame the renderer tells the sink after each hook of a pass that does (<span class="tt">QuadBlit::NoteWritten</span>), so what it wrote is composed in its place in the draw order. Yes by default; a pass that draws only through QuadBlit says no and saves a look through the buffer.</li>
+<li><span class="tt">QuadBlit::Source::revision</span> and <span class="tt">QuadBlit::NextRevision()</span>: a number for a source's pixels, new whenever they are written, so a sink keeps its upload until it changes. <span class="tt">ForgetScaled</span> tells the sink too.</li>
+</ul>
+<h2 class="doxsection"><a class="anchor" id="autotoc_md4"></a>
+Changed</h2>
+<ul>
+<li>QuadBlit's row loops stay where they are meant to on an ESP32. Each one <span class="tt">Blit</span> or <span class="tt">BlitScaled</span> calls is in IRAM and never inlined into those callers, which run from flash; before, the compiler inlined some of them and dropped their IRAM copy, and which ones changed with any edit nearby (the 1:1 alpha blend of RGB565A8 sprites ran from flash). The general per-pixel path (<span class="tt">BlitRows</span>) is in flash, as it was in every build: in IRAM it took 12 KB and drew Wyrdmoor on a T-Deck no faster. IRAM on a T-Deck build: 2.4 KB more.</li>
+</ul>
+<h2 class="doxsection"><a class="anchor" id="autotoc_md5"></a>
+0.22.0</h2>
+<h2 class="doxsection"><a class="anchor" id="autotoc_md6"></a>
 Changed</h2>
 <ul>
 <li>The frame buffer and the render strip are counted in the engine's memory figures. They came from <span class="tt">Memory::AllocateInternal</span>, which counts nothing, so the largest buffer on a board was missing from every total and from the editor's Memory panel. They now come from <span class="tt">Memory::Allocate</span> in the Internal region, as before in internal RAM.</li>
 <li><span class="tt">minEngine</span> 0.22.0: built against engine 0.22.0. A build of this package from before does not load and is rebuilt.</li>
 </ul>
-<h2 class="doxsection"><a class="anchor" id="autotoc_md2"></a>
+<h2 class="doxsection"><a class="anchor" id="autotoc_md7"></a>
 Fixed</h2>
 <ul>
 <li>A Linux desktop game no longer crashes as it exits. A package's render pass (deki-particles) was detached from a pass list that static destruction had already freed.</li>
 </ul>
-<h2 class="doxsection"><a class="anchor" id="autotoc_md3"></a>
-0.21.0</h2>
-<h2 class="doxsection"><a class="anchor" id="autotoc_md4"></a>
-Changed</h2>
-<ul>
-<li><span class="tt">minEngine</span> 0.21.0: built against engine 0.21.0. A build of this package from before does not load and is rebuilt.</li>
-<li><b>Redraw only what changed</b> (project setting <span class="tt">redrawChanges</span>, off by default; <span class="tt">DekiRenderSystem::SetRedrawChanges</span>). Before drawing, the renderer compares each object with the last frame: where it lands and what decides its pixels (content and its version, size, pivot, tint, scale, rotation, clip, place in the draw order). Only the parts that differ are cleared, drawn and sent; a frame where nothing moved costs only the comparison. Past 75% of the screen, or when something cannot say what it draws, the frame is drawn whole as before. Whole frames and strips both do it, and a display that alternates buffers gets every change since each was drawn. On a T-Deck Plus the demo's menu went from 7.6 ms render and 3.4 ms send to 2.0 ms and 0.1 ms; a fully animated scene costs what it did. The editor's Play view does it too.<ul>
-<li><span class="tt">DekiRenderer::FindChanges</span> and <span class="tt">RenderContext::redraw</span> (Standard2DRenderer implements them). <span class="tt">RendererComponent::GetContentVersion</span>: a component whose pixels change in place says so; one that does not counts as changed every frame it draws. <span class="tt">RenderPass::ReportsChanges</span>, <span class="tt">AddChanges</span> and <span class="tt">FinishChanges</span>: a pass that cannot say where it draws makes every frame whole, as does a pass with hooks other than Execute or a camera that does not clear.</li>
-<li><span class="tt">QuadBlit::SetTargetLimit</span>: a rect every blit stays inside, even with clipping off (<span class="tt">ignoreClip</span>), so nothing writes outside the part redrawn.</li>
-<li>The profiler's <span class="tt">Changes</span> entry times the comparison.</li>
-<li><b>Packages built against an older deki-rendering must be rebuilt</b>: <span class="tt">RendererComponent</span> and <span class="tt">RenderPass</span> have new virtual functions.</li>
-</ul>
-</li>
-<li>Drawing in strips keeps each object's content with its place in the frame's plan instead of in a map rebuilt every frame.</li>
-<li><b>No clear under a full-screen background.</b> A whole frame was cleared to the camera's colour and then drawn over. <span class="tt">Standard2DRenderer</span> now clears just before its first draw, and not at all when that draw is opaque and covers the screen: 0.49 ms a frame on a T-Deck Plus. Passes can write anywhere, so the clear comes before any of them runs (an Execute pass only for an object it <span class="tt">WantsObject</span>). A renderer takes this on with <span class="tt">DekiRenderer::ClearsLazily()</span> and <span class="tt">RenderContext::clear</span>.</li>
-<li><b>See-through sprite edges draw faster.</b> An untinted sprite with soft edges blended them through the general per-pixel pipeline; it now has its own loop, which also skips each row's transparent run without reading it. Its blits in the demo's meadow take 1.29 ms instead of 1.97 ms on a T-Deck Plus (render 5.9 to 5.1 ms), with the same pixels. Blends onto RGB565 mix red and blue in one word: two multiplies fewer a pixel, the same result.</li>
-<li><b>Turned sprites draw faster.</b> A rotated blit visits only the pixels of its box that land inside the sprite, worked out once a row, instead of testing every pixel of the box. An RGB565 or RGB565A8 sprite turned onto an RGB565 frame, tinted or faded, has its own loop (<span class="tt">TintRotatedRows</span> in the profiler) instead of the per-pixel pipeline: the demo's spinning gear takes 0.67 ms instead of 0.87 ms on a T-Display S3, with the same pixels. Other rotated blits (a colour key, dithering, flips, other formats) run from flash, so they take no internal RAM.</li>
-<li>Scaled sprites and particles onto RGB565 find each source pixel with a shift instead of a multiply (<span class="tt">TintScaledRows</span>): 5% faster.</li>
-</ul>
-<h2 class="doxsection"><a class="anchor" id="autotoc_md5"></a>
-Added</h2>
-<ul>
-<li><span class="tt">Fingerprint.h</span>: a 64-bit fingerprint over 32-bit words with 32-bit multiplies only, for telling whether something changed since the last frame. A 32-bit microcontroller has no 64-bit multiply.</li>
-<li><span class="tt">QuadBlit::Source::stretchWidth</span> / <span class="tt">stretchHeight</span>: one column or one row drawn as the whole picture it stands for, placed, scaled, clipped and rotated as that picture would be. A plain opaque one onto RGB565 is filled row by row (<span class="tt">StretchRows</span> in the profiler) instead of sampled pixel by pixel. <span class="tt">QuadBlit::DrawnWidth</span> / <span class="tt">DrawnHeight</span> give the size a source is drawn as.</li>
-</ul>
-<h2 class="doxsection"><a class="anchor" id="autotoc_md6"></a>
-Removed</h2>
-<ul>
-<li><b>Dirty-rect tracking</b> (project settings <span class="tt">dirtyTileTracking</span> and <span class="tt">dirtyTileSize</span>, <span class="tt">QuadBlit::MarkDirty</span>, <span class="tt">SetDirtyTracking</span>, <span class="tt">DekiRenderer::trackDirty</span>, <span class="tt">GetLastFrameDirty</span>). <span class="tt">redrawChanges</span> does the same job and also skips the drawing. A project's old keys are ignored; turn on <span class="tt">redrawChanges</span> instead.</li>
-</ul>
 <p>それ以前のリリース: <a href="https://github.com/dekiengine/deki-rendering/blob/master/CHANGELOG.md">CHANGELOG.md</a></p>
 <hr  />
-<p>パッケージのリフレクションデータから生成しています (エンジン 0.22.0)。プロパティ名はシーンファイルで使われるキーです。名前を変えても別名が残ります (<a href="https://github.com/dekiengine/deki-editor/blob/master/COMPATIBILITY.md">互換性</a>)。 </p>
+<p>パッケージのリフレクションデータから生成しています (エンジン 0.30.0)。プロパティ名はシーンファイルで使われるキーです。名前を変えても別名が残ります (<a href="https://github.com/dekiengine/deki-editor/blob/master/COMPATIBILITY.md">互換性</a>)。 </p>
 </div></div><!-- PageDoc -->
 <a href="doxygen_crawl.html"></a>
 </div><!-- contents -->

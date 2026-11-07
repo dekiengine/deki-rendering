@@ -26,6 +26,7 @@ var NAVTREE =
 [
   [ "deki-rendering", "index.html", [
     [ "컴포넌트", "index.html#components", null ],
+    [ "기능 플래그", "index.html#feature-flags", null ],
     [ "컴포넌트 레퍼런스", "index.html#component-reference", [
       [ "CameraComponent", "index.html#c-cameracomponent", null ]
     ] ],
@@ -33,13 +34,14 @@ var NAVTREE =
       [ "렌더링 설정", "index.html#s-rendering-settings", null ]
     ] ],
     [ "변경 내역", "index.html#changelog", [
-      [ "0.22.0", "index.html#autotoc_md0", null ],
-      [ "Changed", "index.html#autotoc_md1", null ],
-      [ "Fixed", "index.html#autotoc_md2", null ],
-      [ "0.21.0", "index.html#autotoc_md3", null ],
+      [ "0.30.0", "index.html#autotoc_md0", null ],
+      [ "Declares the capabilities it uses", "index.html#autotoc_md1", null ],
+      [ "Changed", "index.html#autotoc_md2", null ],
+      [ "Added", "index.html#autotoc_md3", null ],
       [ "Changed", "index.html#autotoc_md4", null ],
-      [ "Added", "index.html#autotoc_md5", null ],
-      [ "Removed", "index.html#autotoc_md6", null ]
+      [ "0.22.0", "index.html#autotoc_md5", null ],
+      [ "Changed", "index.html#autotoc_md6", null ],
+      [ "Fixed", "index.html#autotoc_md7", null ]
     ] ]
   ] ]
 ];
