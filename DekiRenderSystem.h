@@ -59,6 +59,12 @@ private:
     // the renderer cannot tell, the frame is drawn whole as usual.
     static constexpr int32_t kRedrawWholeAbove = 75;  // percent of the screen; a policy
     static constexpr int32_t kRedrawAlign = 8;        // part alignment in px: pairs of rows, the dither's tile
+    // Each part redrawn replays the frame's plan and has each render pass
+    // draw again: measured on a board, about what drawing 2000 more pixels
+    // costs. Parts closer than that are drawn as one. A policy
+    // (SetPartCostPixels).
+    static constexpr int64_t kPartCostPixels = 2048;
+    int64_t m_PartCostPixels = kPartCostPixels;
     bool m_RedrawChanges = false;
     struct OwedBuffer
     {
@@ -71,7 +77,12 @@ private:
     DirtyRegion m_ClearPart;      // the clear of one part
     // The frame's changes, or null when they are unknown (the setting is off,
     // the camera keeps its last frame, the renderer cannot tell).
-    const DirtyRegion* FindFrameChanges(Deki::Scene* scene, CameraComponent* camera, bool clearChanged);
+    const DirtyRegion* FindFrameChanges(Deki::Scene* scene, CameraComponent* camera, bool clearChanged,
+                                        bool scrollable = false);
+    // Moves the frame's pixels by (dx, dy), for a camera that only scrolled.
+    void ScrollFrame(int32_t dx, int32_t dy);
+    std::vector<Deki::Rect> m_ScrollKeep;  // a row's pinned columns, as ScrollFrame copies it
+    std::vector<uint8_t> m_ScrollRow;      // a row moved only across goes through this
     bool MostOfScreen(const DirtyRegion& region) const;
     // Whole frames drawn only where they changed. False: draw it as usual.
     bool RenderChanges(Deki::Scene* scene, CameraComponent* camera);
@@ -118,7 +129,7 @@ private:
     // This frame's buffer, lent by the display (IScanOrderedDisplay::LendFrame)
     // in place of m_WholeFrame, until it is presented.
     uint8_t* m_LentFrame = nullptr;
-    bool m_WholeFrames = false;      // drawing whole frames into it (DrawsInStrips said no)
+    bool m_WholeFrames = false;  // drawing whole frames into it (DrawsInStrips said no)
     bool m_WholeFrameWarned = false;
     uint32_t m_CaptureSeen = 0;
     bool AllocateBand();
@@ -140,6 +151,8 @@ private:
     static void ClearFrameLit(void* owner, Lighting2D& light, int32_t viewLeft, int32_t viewTop);
     // The clear's pixel, for a pass that takes it (DeferredClear::pixel).
     static bool ClearPixel(void* owner, uint8_t* out);
+    // The same, whatever the clear covers (DeferredClear::colour).
+    static bool ClearColour(void* owner, uint8_t* out);
 
 public:
     DekiRenderSystem();
@@ -158,6 +171,9 @@ public:
     // and tests can set it here. The next frame is whole.
     void SetRedrawChanges(bool enabled);
     bool IsRedrawingChanges() const { return m_RedrawChanges; }
+    /// Changed parts are drawn as one where that adds no more than this many
+    /// pixels (kPartCostPixels unless set); 0 merges only what costs nothing.
+    void SetPartCostPixels(int64_t pixels) { m_PartCostPixels = pixels; }
     void MarkAllDirty() override { m_ForceFull = true; }
 
     // Strip rendering. Setup() reads the project setting on a device (the

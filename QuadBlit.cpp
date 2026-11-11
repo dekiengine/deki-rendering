@@ -65,26 +65,26 @@ namespace QuadBlit
 // when all preconditions hold (format, no scale, no rotation, alignment, and
 // no tint where it applies).
 
-static RowKernelFn s_Kernels[(int)KernelOp::Count] = {};
+static RowKernelFn s_Kernels[static_cast<int>(KernelOp::Count)] = {};
 
 // KernelOp is uint8_t, so only the upper bound is checked. A `(int)op < 0`
 // test is always false, which GCC 15 warns about and ESP-IDF 6 makes an error.
 void RegisterKernel(KernelOp op, RowKernelFn fn)
 {
-    if ((int)op >= (int)KernelOp::Count)
+    if (static_cast<int>(op) >= static_cast<int>(KernelOp::Count))
     {
         return;
     }
-    s_Kernels[(int)op] = fn;
+    s_Kernels[static_cast<int>(op)] = fn;
 }
 
 RowKernelFn GetKernel(KernelOp op)
 {
-    if ((int)op >= (int)KernelOp::Count)
+    if (static_cast<int>(op) >= static_cast<int>(KernelOp::Count))
     {
         return nullptr;
     }
-    return s_Kernels[(int)op];
+    return s_Kernels[static_cast<int>(op)];
 }
 
 // ============================================================================
@@ -147,7 +147,7 @@ struct PathScope
 // True when both pointers are 16-byte aligned, as the SIMD (PIE) kernels need.
 static inline bool Aligned16(const void* a, const void* b)
 {
-    return ((uintptr_t)a & 0xF) == 0 && ((uintptr_t)b & 0xF) == 0;
+    return (reinterpret_cast<uintptr_t>(a) & 0xF) == 0 && (reinterpret_cast<uintptr_t>(b) & 0xF) == 0;
 }
 
 // ============================================================================
@@ -214,6 +214,13 @@ void SetTargetLimit(int32_t left, int32_t top, int32_t right, int32_t bottom)
 void ClearTargetLimit()
 {
     s_Limit = ClipRect{};
+}
+
+void SwapClipState(ClipState& state)
+{
+    std::swap(s_ClipStack, state.stack);
+    std::swap(s_Limit, state.limit);
+    std::swap(s_ClipEnabled, state.enabled);
 }
 
 void SetClipEnabled(bool enabled)
@@ -332,6 +339,12 @@ bool TakePendingClear(const uint8_t* buffer, uint8_t* pixel)
     }
     DropPendingClear();
     return true;
+}
+
+bool PendingClearColour(const uint8_t* buffer, uint8_t* pixel)
+{
+    return buffer && buffer == s_ClearTarget && s_PendingClear->colour &&
+           s_PendingClear->colour(s_PendingClear->owner, pixel);
 }
 
 void BeforeWriting(const uint8_t* buffer)
@@ -958,18 +971,18 @@ TintScaledRows_RGB565A8(const Source& source, uint8_t* target, int32_t targetWid
     const int32_t bpp = source.bytesPerPixel;
     const bool alphaTint = p.hasAlphaTint;
     const uint32_t tintA = p.tintA;
-    const uint32_t xStep = ((uint32_t)source.width << 16) / (uint32_t)destWidth;
-    const uint32_t yStep = ((uint32_t)source.height << 16) / (uint32_t)destHeight;
+    const uint32_t xStep = (static_cast<uint32_t>(source.width) << 16) / static_cast<uint32_t>(destWidth);
+    const uint32_t yStep = (static_cast<uint32_t>(source.height) << 16) / static_cast<uint32_t>(destHeight);
 
     for (int32_t py = b.startY; py < b.endY; py++)
     {
-        const int32_t srcY = (int32_t)(((uint32_t)(py - destY) * yStep) >> 16);
+        const int32_t srcY = static_cast<int32_t>((static_cast<uint32_t>(py - destY) * yStep + ((yStep - 1) >> 1)) >> 16);
         const uint8_t* srcRow = source.pixels + srcY * stride;
-        uint8_t* dp = target + ((size_t)py * (size_t)targetWidth + b.startX) * 3;
-        uint32_t acc = (uint32_t)(b.startX - destX) * xStep;
+        uint8_t* dp = target + (static_cast<size_t>(py) * static_cast<size_t>(targetWidth) + b.startX) * 3;
+        uint32_t acc = static_cast<uint32_t>(b.startX - destX) * xStep + ((xStep - 1) >> 1);
         for (int32_t px = b.startX; px < b.endX; px++, dp += 3)
         {
-            const uint8_t* sp = srcRow + (int32_t)(acc >> 16) * bpp;
+            const uint8_t* sp = srcRow + static_cast<int32_t>(acc >> 16) * bpp;
             acc += xStep;
             uint32_t a = 255;
             if constexpr (SourceAlpha)
@@ -1027,18 +1040,18 @@ TintScaledRows_RGB565(const Source& source, uint16_t* target16, int32_t targetWi
     const int32_t stride = SourceStride(source);
     const bool alphaTint = p.hasAlphaTint;
     const uint32_t tintA = p.tintA;
-    const uint32_t xStep = ((uint32_t)source.width << 16) / (uint32_t)destWidth;
-    const uint32_t yStep = ((uint32_t)source.height << 16) / (uint32_t)destHeight;
+    const uint32_t xStep = (static_cast<uint32_t>(source.width) << 16) / static_cast<uint32_t>(destWidth);
+    const uint32_t yStep = (static_cast<uint32_t>(source.height) << 16) / static_cast<uint32_t>(destHeight);
 
     for (int32_t py = b.startY; py < b.endY; py++)
     {
-        const int32_t srcY = (int32_t)(((uint32_t)(py - destY) * yStep) >> 16);
+        const int32_t srcY = static_cast<int32_t>((static_cast<uint32_t>(py - destY) * yStep + ((yStep - 1) >> 1)) >> 16);
         const uint8_t* srcRow = source.pixels + srcY * stride;
         uint16_t* dp = target16 + py * targetWidth + b.startX;
-        uint32_t acc = (uint32_t)(b.startX - destX) * xStep;
+        uint32_t acc = static_cast<uint32_t>(b.startX - destX) * xStep + ((xStep - 1) >> 1);
         for (int32_t px = b.startX; px < b.endX; px++, dp++)
         {
-            const uint8_t* sp = srcRow + (int32_t)(acc >> 16) * Bpp;
+            const uint8_t* sp = srcRow + static_cast<int32_t>(acc >> 16) * Bpp;
             acc += xStep;
             uint32_t a = 255;
             if constexpr (SourceAlpha)
@@ -1081,15 +1094,16 @@ TintScaledRows_RGB565(const Source& source, uint16_t* target16, int32_t targetWi
         }
         return true;
     }
-    RowKernelFn copyKernel = s_Kernels[(int)KernelOp::RGB565CopyRow];
+    RowKernelFn copyKernel = s_Kernels[static_cast<int>(KernelOp::RGB565CopyRow)];
     for (int32_t py = b.startY; py < b.endY; py++)
     {
         const int32_t srcY = source.uniformColumns ? 0 : py - destY;
-        const uint16_t* srcPtr = (const uint16_t*)(source.pixels + srcY * stride) + (b.startX - destX);
+        const uint16_t* srcPtr = reinterpret_cast<const uint16_t*>(source.pixels + srcY * stride) + (b.startX - destX);
         uint16_t* dstPtr = target16 + py * targetWidth + b.startX;
         if (copyKernel && Aligned16(srcPtr, dstPtr))
         {
-            copyKernel((const uint8_t*)srcPtr, (uint8_t*)dstPtr, rowPixels, 255, 255, 255, 255);
+            copyKernel(reinterpret_cast<const uint8_t*>(srcPtr), reinterpret_cast<uint8_t*>(dstPtr), rowPixels, 255,
+                       255, 255, 255);
         }
         else
         {
@@ -1112,20 +1126,20 @@ TintScaledRows_RGB565(const Source& source, uint16_t* target16, int32_t targetWi
     const int32_t rowPixels = b.endX - b.startX;
     if (source.width == 1)
     {
-        const uint32_t yStep = ((uint32_t)source.height << 16) / (uint32_t)destHeight;
+        const uint32_t yStep = (static_cast<uint32_t>(source.height) << 16) / static_cast<uint32_t>(destHeight);
         for (int32_t py = b.startY; py < b.endY; py++)
         {
-            const int32_t srcY = (int32_t)(((uint32_t)(py - destY) * yStep) >> 16);
+            const int32_t srcY = static_cast<int32_t>((static_cast<uint32_t>(py - destY) * yStep + ((yStep - 1) >> 1)) >> 16);
             FillRow565(target16 + py * targetWidth + b.startX, rowPixels, LoadU16(source.pixels + srcY * stride));
         }
         return;
     }
-    const uint32_t xStep = ((uint32_t)source.width << 16) / (uint32_t)destWidth;
+    const uint32_t xStep = (static_cast<uint32_t>(source.width) << 16) / static_cast<uint32_t>(destWidth);
     uint16_t* first = target16 + b.startY * targetWidth + b.startX;
-    uint32_t acc = (uint32_t)(b.startX - destX) * xStep;
+    uint32_t acc = static_cast<uint32_t>(b.startX - destX) * xStep + ((xStep - 1) >> 1);
     for (int32_t i = 0; i < rowPixels; i++, acc += xStep)
     {
-        first[i] = LoadU16(source.pixels + (int32_t)(acc >> 16) * 2);
+        first[i] = LoadU16(source.pixels + static_cast<int32_t>(acc >> 16) * 2);
     }
     for (int32_t py = b.startY + 1; py < b.endY; py++)
     {
@@ -1143,7 +1157,7 @@ TintScaledRows_RGB565(const Source& source, uint16_t* target16, int32_t targetWi
 {
     const int32_t stride = SourceStride(source);
     const int16_t* spans = source.chromaRowSpans;
-    RowKernelFn copyKernel = s_Kernels[(int)KernelOp::RGB565CopyRow];
+    RowKernelFn copyKernel = s_Kernels[static_cast<int>(KernelOp::RGB565CopyRow)];
     // The key is quantised to 5/6/5, so comparing packed pixels is the same
     // test the per-pixel pipeline makes on the unpacked channels. It is
     // compared with pixels as stored, so it is in memory's byte order too.
@@ -1155,7 +1169,7 @@ TintScaledRows_RGB565(const Source& source, uint16_t* target16, int32_t targetWi
         const int32_t srcEndX = b.endX - destX;
         if (spans[srcY * 2] < 0)
         {
-            const uint16_t* srcRow = (const uint16_t*)(source.pixels + srcY * stride);
+            const uint16_t* srcRow = reinterpret_cast<const uint16_t*>(source.pixels + srcY * stride);
             uint16_t* dstRow = target16 + py * targetWidth + destX;
             for (int32_t x = srcStartX; x < srcEndX; ++x)
             {
@@ -1173,12 +1187,13 @@ TintScaledRows_RGB565(const Source& source, uint16_t* target16, int32_t targetWi
         {
             continue;
         }
-        const uint16_t* srcPtr = (const uint16_t*)(source.pixels + srcY * stride) + clampedStart;
+        const uint16_t* srcPtr = reinterpret_cast<const uint16_t*>(source.pixels + srcY * stride) + clampedStart;
         uint16_t* dstPtr = target16 + py * targetWidth + (destX + clampedStart);
         const int32_t rowPixels = clampedEnd - clampedStart;
         if (copyKernel && Aligned16(srcPtr, dstPtr))
         {
-            copyKernel((const uint8_t*)srcPtr, (uint8_t*)dstPtr, rowPixels, 255, 255, 255, 255);
+            copyKernel(reinterpret_cast<const uint8_t*>(srcPtr), reinterpret_cast<uint8_t*>(dstPtr), rowPixels, 255,
+                       255, 255, 255);
         }
         else
         {
@@ -1305,7 +1320,8 @@ TintScaledRows_RGB565(const Source& source, uint16_t* target16, int32_t targetWi
     const int32_t rowPixels = b.endX - b.startX;
     for (int32_t py = b.startY; py < b.endY; py++)
     {
-        const uint16_t* srcPtr = (const uint16_t*)(source.pixels + (py - destY) * stride) + (b.startX - destX);
+        const uint16_t* srcPtr =
+            reinterpret_cast<const uint16_t*>(source.pixels + (py - destY) * stride) + (b.startX - destX);
         uint8_t* dstPtr = target + (py * targetWidth + b.startX) * 3;
         for (int32_t i = 0; i < rowPixels; i++)
         {
@@ -1346,7 +1362,7 @@ TintScaledRows_RGB565(const Source& source, uint16_t* target16, int32_t targetWi
             }
             continue;
         }
-        const size_t rowIdx = (size_t)py * (size_t)targetWidth;
+        const size_t rowIdx = static_cast<size_t>(py) * static_cast<size_t>(targetWidth);
         for (int32_t px = b.startX; px < b.endX; px++, srcPtr += 3)
         {
             CompositePixel<SrcKind::RGB565A8, Deki::ColorFormat::RGB565A8, true>(source, srcPtr, target, rowIdx + px,
@@ -1358,6 +1374,10 @@ TintScaledRows_RGB565(const Source& source, uint16_t* target16, int32_t targetWi
 
 // ============================================================================
 // Scaled blit: 16.16 fixed-point stepping (1:1 is a step of 65536)
+// Each drawn pixel reads the source pixel just before its middle: (step - 1)
+// / 2 to start, as Qt and Tiled do. Exactly between two source pixels it
+// takes the first, so a picture shrunk to half takes every other pixel from
+// the first, and one grown by a whole number repeats each pixel evenly.
 // ============================================================================
 
 // The per-pixel pipeline at any scale, for whatever the row loops above do
@@ -1369,19 +1389,19 @@ static void BlitRows(const Source& source, uint8_t* target, int32_t targetWidth,
 {
     const int32_t bpp = source.bytesPerPixel;
     const int32_t stride = SourceStride(source);
-    const uint32_t xStep = ((uint32_t)source.width << 16) / (uint32_t)destWidth;
-    const uint32_t yStep = ((uint32_t)source.height << 16) / (uint32_t)destHeight;
+    const uint32_t xStep = (static_cast<uint32_t>(source.width) << 16) / static_cast<uint32_t>(destWidth);
+    const uint32_t yStep = (static_cast<uint32_t>(source.height) << 16) / static_cast<uint32_t>(destHeight);
 
     for (int32_t py = b.startY; py < b.endY; py++)
     {
-        const int32_t srcY = (int32_t)(((uint32_t)(py - destY) * yStep) >> 16);
+        const int32_t srcY = static_cast<int32_t>((static_cast<uint32_t>(py - destY) * yStep + ((yStep - 1) >> 1)) >> 16);
         const uint8_t* srcRow = source.pixels + srcY * stride;
-        const size_t rowIdx = (size_t)py * (size_t)targetWidth;
+        const size_t rowIdx = static_cast<size_t>(py) * static_cast<size_t>(targetWidth);
 
-        uint32_t acc = (uint32_t)(b.startX - destX) * xStep;
+        uint32_t acc = static_cast<uint32_t>(b.startX - destX) * xStep + ((xStep - 1) >> 1);
         for (int32_t px = b.startX; px < b.endX; px++)
         {
-            const int32_t srcX = (int32_t)(acc >> 16);
+            const int32_t srcX = static_cast<int32_t>(acc >> 16);
             acc += xStep;
             const uint8_t* sp;
             if constexpr (!Plain)
@@ -1583,9 +1603,10 @@ bool MakeCopy(ScaledCopy& e, const Source& s)
     const uint32_t yStep = (static_cast<uint32_t>(e.srcH) << 16) / static_cast<uint32_t>(e.h);
     for (int32_t y = 0; y < e.h; y++)
     {
-        const uint8_t* srcRow = s.pixels + static_cast<int32_t>((static_cast<uint32_t>(y) * yStep) >> 16) * e.stride;
+        const uint8_t* srcRow =
+            s.pixels + static_cast<int32_t>((static_cast<uint32_t>(y) * yStep + ((yStep - 1) >> 1)) >> 16) * e.stride;
         uint8_t* dst = e.pixels + static_cast<size_t>(y) * rowBytes;
-        uint32_t acc = 0;
+        uint32_t acc = (xStep - 1) >> 1;
         for (int32_t x = 0; x < e.w; x++, acc += xStep, dst += e.bpp)
         {
             std::memcpy(dst, srcRow + static_cast<int32_t>(acc >> 16) * e.bpp, static_cast<size_t>(e.bpp));
@@ -1795,14 +1816,15 @@ void BlitScaled(const Source& source, uint8_t* target, int32_t targetWidth, int3
         blit.bottom = bounds.endY;
         blit.originX = destX;
         blit.originY = destY;
-        blit.originSx = 0;
-        blit.originSy = 0;
         blit.dSxDx =
             static_cast<int32_t>((static_cast<uint32_t>(source.width) << 16) / static_cast<uint32_t>(destWidth));
         blit.dSyDx = 0;
         blit.dSxDy = 0;
         blit.dSyDy =
             static_cast<int32_t>((static_cast<uint32_t>(source.height) << 16) / static_cast<uint32_t>(destHeight));
+        // Just before the middle of the corner pixel, as the rows below sample.
+        blit.originSx = (blit.dSxDx - 1) >> 1;
+        blit.originSy = (blit.dSyDy - 1) >> 1;
         blit.sampleWidth = source.width;
         blit.sampleHeight = source.height;
         blit.repeatColumn = false;
@@ -1862,7 +1884,8 @@ void BlitScaled(const Source& source, uint8_t* target, int32_t targetWidth, int3
         (source.width == 1 || source.height == 1))
     {
         scope.path = BlitPath::StretchRows;
-        StretchRows_RGB565(source, (uint16_t*)target, targetWidth, destX, destY, destWidth, destHeight, bounds);
+        StretchRows_RGB565(source, reinterpret_cast<uint16_t*>(target), targetWidth, destX, destY, destWidth,
+                           destHeight, bounds);
         return;
     }
 
@@ -1878,7 +1901,7 @@ void BlitScaled(const Source& source, uint8_t* target, int32_t targetWidth, int3
         const bool plainSpans = plain && kind == SrcKind::RGB565A8 && source.hasAlpha && source.alphaRowSpans;
         if (!plainCopy && !plainSpans)
         {
-            uint16_t* target16 = (uint16_t*)target;
+            uint16_t* target16 = reinterpret_cast<uint16_t*>(target);
             scope.path = BlitPath::TintRows;
             if (kind == SrcKind::RGB565A8 && source.hasAlpha)
             {
@@ -1901,7 +1924,7 @@ void BlitScaled(const Source& source, uint8_t* target, int32_t targetWidth, int3
         targetFormat == Deki::ColorFormat::RGB565)
     {
         scope.path = BlitPath::AlphaRows;
-        uint16_t* target16 = (uint16_t*)target;
+        uint16_t* target16 = reinterpret_cast<uint16_t*>(target);
         if (p.hasAlphaTint)
         {
             AlphaRows_RGB565<true>(source, target16, targetWidth, destX, destY, bounds, p);
@@ -1938,7 +1961,7 @@ void BlitScaled(const Source& source, uint8_t* target, int32_t targetWidth, int3
         (kind == SrcKind::RGB565 || kind == SrcKind::RGB565A8))
     {
         scope.path = BlitPath::TintScaledRows;
-        uint16_t* target16 = (uint16_t*)target;
+        uint16_t* target16 = reinterpret_cast<uint16_t*>(target);
         if (kind == SrcKind::RGB565A8 && source.hasAlpha)
         {
             TintScaledRows_RGB565<true, 3>(source, target16, targetWidth, destX, destY, destWidth, destHeight, bounds,
@@ -1962,7 +1985,7 @@ void BlitScaled(const Source& source, uint8_t* target, int32_t targetWidth, int3
     {
         if (targetFormat == Deki::ColorFormat::RGB565)
         {
-            uint16_t* target16 = (uint16_t*)target;
+            uint16_t* target16 = reinterpret_cast<uint16_t*>(target);
             if (kind == SrcKind::RGB565 && p.hasKey && source.chromaRowSpans)
             {
                 scope.path = BlitPath::ChromaSpans;
@@ -2094,7 +2117,7 @@ static void RotatedBlitT(const Source& source, uint8_t* target, int32_t targetWi
 {
     const int32_t stride = SourceStride(source);
     const int32_t bpp = source.bytesPerPixel;
-    const uint32_t srcW = (uint32_t)DrawnWidth(source), srcH = (uint32_t)DrawnHeight(source);
+    const uint32_t srcW = static_cast<uint32_t>(DrawnWidth(source)), srcH = static_cast<uint32_t>(DrawnHeight(source));
     // A stretched strip's every column (or row) is its one.
     const int32_t keepX = source.stretchWidth > 0 ? 0 : -1;
     const int32_t keepY = source.stretchHeight > 0 ? 0 : -1;
@@ -2108,7 +2131,7 @@ static void RotatedBlitT(const Source& source, uint8_t* target, int32_t targetWi
             continue;
         }
         int32_t sx = StepsAlong(rowSx, a.dSxDx, k0), sy = StepsAlong(rowSy, a.dSyDx, k0);
-        const size_t rowIdx = (size_t)py * (size_t)targetWidth;
+        const size_t rowIdx = static_cast<size_t>(py) * static_cast<size_t>(targetWidth);
         for (int32_t px = a.startX + k0; px < a.startX + k1; px++, sx += a.dSxDx, sy += a.dSyDx)
         {
             int32_t ix = (sx >> 16) & keepX;
@@ -2138,7 +2161,7 @@ template <bool SourceAlpha, int32_t Bpp>
 {
     const TintTables& t = TintTablesFor(p.tintR, p.tintG, p.tintB);
     const int32_t stride = SourceStride(source);
-    const uint32_t srcW = (uint32_t)source.width, srcH = (uint32_t)source.height;
+    const uint32_t srcW = static_cast<uint32_t>(source.width), srcH = static_cast<uint32_t>(source.height);
     const bool alphaTint = p.hasAlphaTint;
     const uint32_t tintA = p.tintA;
 
@@ -2151,7 +2174,7 @@ template <bool SourceAlpha, int32_t Bpp>
             continue;
         }
         int32_t sx = StepsAlong(rowSx, a.dSxDx, k0), sy = StepsAlong(rowSy, a.dSyDx, k0);
-        uint16_t* dp = target16 + (size_t)py * (size_t)targetWidth + a.startX + k0;
+        uint16_t* dp = target16 + static_cast<size_t>(py) * static_cast<size_t>(targetWidth) + a.startX + k0;
         for (int32_t k = k0; k < k1; k++, dp++, sx += a.dSxDx, sy += a.dSyDx)
         {
             const uint8_t* sp = source.pixels + (sy >> 16) * stride + (sx >> 16) * Bpp;
@@ -2222,6 +2245,183 @@ bool CoversRect(const Source& source, int32_t screenX, int32_t screenY, float sc
     return !clip.IsSet() || (clip.left <= left && clip.top <= top && clip.right >= right && clip.bottom >= bottom);
 }
 
+bool VisibleBounds(const Source& source, int32_t& left, int32_t& top, int32_t& right, int32_t& bottom)
+{
+    const int32_t w = source.width, h = source.height;
+    // An alpha-only source (a shape's mask, drawn in its tint) holds just the
+    // alpha, at byte 0.
+    if (!source.pixels || w <= 0 || h <= 0 || source.bytesPerPixel < 1 || source.hasChromaKey || source.flipD ||
+        source.stretchWidth > 0 || source.stretchHeight > 0)
+    {
+        return false;
+    }
+    const size_t alphaAt = source.bytesPerPixel == 1 ? 0 : source.alphaOffset;
+    left = top = 0;
+    right = w;
+    bottom = h;
+    if (!source.hasAlpha && source.bytesPerPixel > 1)
+    {
+        return true;
+    }
+    const int32_t stride = SourceStride(source);
+    const int32_t bpp = source.bytesPerPixel;
+    int32_t minX = w, maxX = -1, minY = h, maxY = -1;
+    for (int32_t y = 0; y < h; ++y)
+    {
+        const uint8_t* row = source.pixels + static_cast<size_t>(y) * stride + alphaAt;
+        int32_t first = -1, last = -1;
+        for (int32_t x = 0; x < w; ++x)
+        {
+            if (row[static_cast<size_t>(x) * bpp] != 0)
+            {
+                first = x;
+                break;
+            }
+        }
+        if (first < 0)
+        {
+            continue;
+        }
+        for (int32_t x = w - 1; x >= first; --x)
+        {
+            if (row[static_cast<size_t>(x) * bpp] != 0)
+            {
+                last = x;
+                break;
+            }
+        }
+        minX = std::min(minX, first);
+        maxX = std::max(maxX, last);
+        minY = std::min(minY, y);
+        maxY = y;
+    }
+    if (maxY < 0)
+    {
+        left = right = top = bottom = 0;
+        return true;
+    }
+    left = minX;
+    right = maxX + 1;
+    top = minY;
+    bottom = maxY + 1;
+    if (source.flipH)
+    {
+        const int32_t l = w - right;
+        right = w - left;
+        left = l;
+    }
+    if (source.flipV)
+    {
+        const int32_t t = h - bottom;
+        bottom = h - top;
+        top = t;
+    }
+    return true;
+}
+
+bool OpaqueInterior(const Source& source, int32_t& left, int32_t& top, int32_t& right, int32_t& bottom)
+{
+    const int32_t w = source.width, h = source.height;
+    // An alpha-only source (a shape's mask, drawn in its tint) holds just the
+    // alpha, at byte 0.
+    if (!source.pixels || w <= 0 || h <= 0 || source.bytesPerPixel < 1 || source.hasChromaKey || source.flipD ||
+        source.stretchWidth > 0 || source.stretchHeight > 0)
+    {
+        return false;
+    }
+    const size_t alphaAt = source.bytesPerPixel == 1 ? 0 : source.alphaOffset;
+    if (!source.hasAlpha && source.bytesPerPixel > 1)
+    {
+        left = top = 0;
+        right = w;
+        bottom = h;
+        return true;
+    }
+
+    // Each row's longest run of opaque pixels, [start, end).
+    struct Runs
+    {
+        int16_t* data = nullptr;
+        ~Runs() { Deki::Memory::Free(data); }
+    } runs;
+    const int16_t* spans = source.alphaRowSpans;
+    if (!spans)
+    {
+        runs.data = static_cast<int16_t*>(
+            Deki::Memory::Allocate(static_cast<size_t>(h) * 2 * sizeof(int16_t), Deki::Memory::External));
+        if (!runs.data)
+        {
+            return false;
+        }
+        const int32_t stride = SourceStride(source);
+        const int32_t bpp = source.bytesPerPixel;
+        for (int32_t y = 0; y < h; ++y)
+        {
+            const uint8_t* row = source.pixels + static_cast<size_t>(y) * stride + alphaAt;
+            int32_t best = 0, bestStart = 0, start = -1;
+            for (int32_t x = 0; x <= w; ++x)
+            {
+                const bool opaque = x < w && row[static_cast<size_t>(x) * bpp] == 255;
+                if (opaque && start < 0)
+                {
+                    start = x;
+                }
+                else if (!opaque && start >= 0)
+                {
+                    if (x - start > best)
+                    {
+                        best = x - start;
+                        bestStart = start;
+                    }
+                    start = -1;
+                }
+            }
+            runs.data[static_cast<size_t>(y) * 2] = static_cast<int16_t>(bestStart);
+            runs.data[static_cast<size_t>(y) * 2 + 1] = static_cast<int16_t>(bestStart + best);
+        }
+        spans = runs.data;
+    }
+
+    // The rows taken together keep the columns every one of them covers: the
+    // biggest such block of consecutive rows.
+    int64_t bestArea = 0;
+    for (int32_t y0 = 0; y0 < h; ++y0)
+    {
+        int32_t lo = spans[y0 * 2], hi = spans[y0 * 2 + 1];
+        for (int32_t y1 = y0; y1 < h && hi > lo; ++y1)
+        {
+            lo = std::max<int32_t>(lo, spans[y1 * 2]);
+            hi = std::min<int32_t>(hi, spans[y1 * 2 + 1]);
+            const int64_t area = static_cast<int64_t>(hi - lo) * (y1 - y0 + 1);
+            if (hi > lo && area > bestArea)
+            {
+                bestArea = area;
+                left = lo;
+                right = hi;
+                top = y0;
+                bottom = y1 + 1;
+            }
+        }
+    }
+    if (bestArea == 0)
+    {
+        return false;
+    }
+    if (source.flipH)
+    {
+        const int32_t l = w - right;
+        right = w - left;
+        left = l;
+    }
+    if (source.flipV)
+    {
+        const int32_t t = h - bottom;
+        bottom = h - top;
+        top = t;
+    }
+    return true;
+}
+
 bool BlitArea(const Source& source, int32_t screenX, int32_t screenY, float scaleX, float scaleY, float rotation,
               float pivotX, float pivotY, int32_t& left, int32_t& top, int32_t& right, int32_t& bottom)
 {
@@ -2241,7 +2441,7 @@ bool BlitArea(const Source& source, int32_t screenX, int32_t screenY, float scal
         return right > left && bottom > top;
     }
     const float cosR = std::cos(rotation);
-    const float sinR = std::sin(rotation);
+    const float sinR = -std::sin(rotation);  // the screen's Y runs down
     const float pivotSX = destWidth * pivotX;
     const float pivotSY = destHeight * pivotY;
     const float xs[2] = { -pivotSX, destWidth - pivotSX };
@@ -2296,9 +2496,10 @@ void Blit(const Source& source, uint8_t* target, int32_t targetWidth, int32_t ta
         return;
     }
 
-    // Rotated. `rotation` is in radians, engine convention.
+    // Rotated. `rotation` is in radians, counter-clockwise on screen as
+    // everywhere in the engine; the screen's Y runs down.
     float cosR = std::cos(rotation);
-    float sinR = std::sin(rotation);
+    float sinR = -std::sin(rotation);
 
     float pivotSX = destWidth * pivotX;
     float pivotSY = destHeight * pivotY;
@@ -2356,7 +2557,9 @@ void Blit(const Source& source, uint8_t* target, int32_t targetWidth, int32_t ta
     p.keyG = source.keyG;
     p.keyB = source.keyB;
 
-    // Fixed-point inverse mapping. For destination pixel (px, py):
+    // Fixed-point inverse mapping. For destination pixel (px, py), at its
+    // centre (dx, dy = px, py - screen position + 0.5), so a turn reads the
+    // same pixels as the picture it turns:
     //   localX =  dx*cosR + dy*sinR + pivotSX
     //   localY = -dx*sinR + dy*cosR + pivotSY
     //   srcX   = localX * srcW / destWidth,  srcY = localY * srcH / destHeight
@@ -2366,8 +2569,8 @@ void Blit(const Source& source, uint8_t* target, int32_t targetWidth, int32_t ta
     // wherever the whole picture would be (RotatedBlitT).
     const float sxScale = DrawnWidth(source) / destWidth;
     const float syScale = DrawnHeight(source) / destHeight;
-    const float dx0 = static_cast<float>(startX - screenX);
-    const float dy0 = static_cast<float>(startY - screenY);
+    const float dx0 = static_cast<float>(startX - screenX) + 0.5f;
+    const float dy0 = static_cast<float>(startY - screenY) + 0.5f;
     const float localX0 = dx0 * cosR + dy0 * sinR + pivotSX;
     const float localY0 = -dx0 * sinR + dy0 * cosR + pivotSY;
 
@@ -2422,7 +2625,7 @@ void Blit(const Source& source, uint8_t* target, int32_t targetWidth, int32_t ta
         !p.hasKey && !p.dither && !p.flips && source.stretchWidth == 0 && source.stretchHeight == 0)
     {
         scope.path = BlitPath::TintRotatedRows;
-        uint16_t* target16 = (uint16_t*)target;
+        uint16_t* target16 = reinterpret_cast<uint16_t*>(target);
         if (kind == SrcKind::RGB565A8 && source.hasAlpha)
         {
             TintRotatedRows_RGB565<true, 3>(source, target16, targetWidth, args, p);

@@ -2,6 +2,7 @@
 #include <deki/assets/TextureFilter.h>
 #include <cstddef>
 #include <cstdint>
+#include <vector>
 #include <deki/assets/Texture2D.h>  // TextureFormat, for PixelLayout::FromTexture
 
 namespace Deki
@@ -50,6 +51,22 @@ void ClearClipStack();
 void SetTargetLimit(int32_t left, int32_t top, int32_t right, int32_t bottom);
 
 void ClearTargetLimit();
+
+/// The clip stack, the target limit and whether clipping is on: what
+/// SwapClipState sets aside.
+struct ClipState
+{
+    std::vector<ClipRect> stack;
+    ClipRect limit;
+    bool enabled = true;
+};
+
+/// Swaps the current clip stack, target limit and clip switch with `state`.
+/// Drawing into another buffer in the middle of a frame (a copy kept between
+/// frames, say): swap with an empty state, draw with clips of its own, and
+/// swap back, which leaves the frame's clips as they were. The stack's memory
+/// moves with it, so nothing is allocated once both have grown.
+void SwapClipState(ClipState& state);
 
 /// While false, blits ignore the clip stack.
 void SetClipEnabled(bool enabled);
@@ -284,8 +301,8 @@ void FindUniformRuns(const uint8_t* pixels, int32_t width, int32_t height, int32
 /// Blits `source` to the target with full 2D transforms.
 ///
 /// screenX/screenY: screen position, after WorldToScreen.
-/// scaleX/scaleY: world scale. rotation: world rotation in radians, engine
-/// convention.
+/// scaleX/scaleY: world scale. rotation: world rotation in radians, positive
+/// turning counter-clockwise on screen.
 /// pivotX/pivotY: 0 = left/top, 0.5 = centre, 1 = right/bottom.
 /// tintR/G/B: 255 means no tint. tintA: 255 opaque, 0 invisible.
 void Blit(const Source& source, uint8_t* target, int32_t targetWidth, int32_t targetHeight,
@@ -301,6 +318,22 @@ void Blit(const Source& source, uint8_t* target, int32_t targetWidth, int32_t ta
 /// around a strip): the blit's placement is checked, not the target's size.
 bool CoversRect(const Source& source, int32_t screenX, int32_t screenY, float scaleX, float scaleY, float rotation,
                 float pivotX, float pivotY, uint8_t tintA, int32_t left, int32_t top, int32_t right, int32_t bottom);
+
+/// The largest rectangle [left, right) x [top, bottom) of `source`'s pixels,
+/// as drawn (its flips applied), in which every pixel is fully opaque: drawn
+/// 1:1 there, it hides whatever was below. False when there is none, or when
+/// that is not certain (a colour key, a stretched strip, a transposed source).
+/// Walks the pixels (or their opaque row spans), so keep the answer for
+/// pixels that do not change.
+bool OpaqueInterior(const Source& source, int32_t& left, int32_t& top, int32_t& right, int32_t& bottom);
+
+/// The smallest rectangle [left, right) x [top, bottom) of `source`'s pixels,
+/// as drawn (its flips applied), outside which every pixel is fully
+/// transparent: drawn 1:1, nothing outside it is written. Empty (left ==
+/// right) when every pixel is transparent. False when that is not certain (a
+/// colour key, a stretched strip, a transposed source). Walks the pixels, so
+/// keep the answer for pixels that do not change.
+bool VisibleBounds(const Source& source, int32_t& left, int32_t& top, int32_t& right, int32_t& bottom);
 
 /// The target pixels [left, right) x [top, bottom) that Blit() with these
 /// arguments can write, whatever the clip and the target's size: a renderer
@@ -452,6 +485,12 @@ void DropPendingClear();
 /// true. The pass then draws that pixel wherever it draws nothing. False
 /// otherwise, and the pass calls BeforeWriting instead.
 bool TakePendingClear(const uint8_t* buffer, uint8_t* pixel);
+/// When `buffer` has a pending clear in one colour, whatever it covers (the
+/// whole frame, or RenderContext::redraw), writes its pixel (the frame's
+/// format, 4 bytes) to `pixel` and says true; the clear stays pending. A pass
+/// about to write every pixel the clear covers reads it, draws, and drops the
+/// clear (DropPendingClear).
+bool PendingClearColour(const uint8_t* buffer, uint8_t* pixel);
 /// Runs `buffer`'s pending clear, if it has one. A render pass that writes
 /// into the buffer other than through QuadBlit, and says so only after
 /// (RenderPass::WritesBuffer false, NoteWritten), calls it before it does.

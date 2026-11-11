@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <vector>
 #include <deki/Engine.h>
 #include <deki/providers/Rect.h>
 #include "FrameCamera.h"
@@ -25,12 +26,17 @@ class Lighting2D;
 /// bytes) and says true, when the clear is of the whole frame: a render pass
 /// that writes every pixel of the frame itself takes it instead
 /// (QuadBlit::TakePendingClear) and draws it where it draws nothing.
+/// colour, when given, writes the same pixel and says true whatever the clear
+/// covers: the whole frame, or the part of it being drawn
+/// (RenderContext::redraw). A pass that is about to write every pixel the
+/// clear covers reads it (QuadBlit::PendingClearColour) and drops the clear.
 struct DeferredClear
 {
     void (*run)(void* owner) = nullptr;
     void* owner = nullptr;
     void (*runLit)(void* owner, Lighting2D& light, int32_t viewLeft, int32_t viewTop) = nullptr;
     bool (*pixel)(void* owner, uint8_t* out) = nullptr;
+    bool (*colour)(void* owner, uint8_t* out) = nullptr;
 };
 
 /// Everything a renderer or render pass needs to produce a frame.
@@ -75,6 +81,14 @@ struct RenderContext
     // pixels. Nothing outside it is written, and the clear covers only it.
     // Empty (the default): all of `buffer`.
     Deki::Rect redraw = {};
+    // FindChanges: whether the caller can shift its frame (it keeps the last
+    // one whole), so a camera that moved by whole pixels need not redraw it.
+    bool scrollable = false;
+    // FindChanges, when it scrolls: how far the last frame's pixels move on
+    // screen this frame (right and down positive). A pass that reports its own
+    // changes sees it in AddChanges.
+    int32_t scrollX = 0;
+    int32_t scrollY = 0;
 };
 
 /// Base class for renderers. Subclass it for a custom rendering strategy;
@@ -142,6 +156,27 @@ public:
         (void)scene;
         (void)ctx;
         (void)changed;
+        return false;
+    }
+
+    /// After FindChanges with ctx.scrollable: true when the camera moved by
+    /// whole pixels and nothing else needs it redrawn, so the last frame's
+    /// pixels move by (dx, dy) on screen (right and down positive). The caller
+    /// shifts its frame by that much before drawing what `changed` holds: the
+    /// edge the move uncovers, and what changed besides. The default is no.
+    /// With ScrolledBy, the rects of the view whose pixels stay where they
+    /// are as the rest moves: what stays on screen (a HUD), opaque and drawn
+    /// the same, is already right there. Empty for none.
+    virtual const std::vector<Deki::Rect>& ScrollPins() const
+    {
+        static const std::vector<Deki::Rect> kNone;
+        return kNone;
+    }
+
+    virtual bool ScrolledBy(int32_t& dx, int32_t& dy) const
+    {
+        (void)dx;
+        (void)dy;
         return false;
     }
 };

@@ -1,7 +1,9 @@
 #pragma once
 
 #include "DekiRenderer.h"
+#include "ExternalAllocator.h"
 #include "DirtyRegion.h"
+#include "Fingerprint.h"
 #include "Lighting2D.h"
 #include "QuadBlit.h"
 #include "RenderPass.h"
@@ -73,6 +75,9 @@ public:
     /// order). Passes say for themselves (RenderPass::ReportsChanges). No when
     /// a pass has hooks other than Execute.
     bool FindChanges(Deki::Scene* scene, const RenderContext& ctx, DirtyRegion& changed) override;
+    ~Standard2DRenderer() override;
+    bool ScrolledBy(int32_t& dx, int32_t& dy) const override;
+    const std::vector<Deki::Rect>& ScrollPins() const override { return m_PinRects; }
 
     /// Adds a custom render pass. Not owned: the caller manages its lifetime.
     void AddPass(RenderPass* pass);
@@ -132,7 +137,9 @@ private:
         Deki::IClipProvider* clip;    // may be null
         int32_t order;
         uint32_t seq;
+        uint32_t piece = kNoPiece;  // which of the renderer's pieces (RendererComponent::GetPieceCount)
     };
+    static constexpr uint32_t kNoPiece = 0xFFFFFFFFu;
     // One scratch list per recursion depth. Must be a deque, not a vector of
     // vectors: Render() and RenderObject() hold a reference to their depth's
     // list while deeper levels are created, and growing a vector<vector> moves
@@ -170,9 +177,13 @@ private:
         int32_t areaLeft = 0, areaTop = 0, areaRight = 0, areaBottom = 0;
         // The renderer's content, made once for every part of the frame
         // (RenderContext::contentFrame). Content handed over with ownsPixels
-        // is freed after its blit, so it is made again for each.
+        // is freed after its blit, so it is made again for each. Where it is
+        // (ContentOf): above 0 the renderer's place in m_ReuseContent, from
+        // 1; below 0 its place in m_PlanContent, from -1. Not here: an
+        // entry is written for every object every frame, its content read
+        // only for the few a part draws.
         bool contentKnown = false;
-        CachedContent content;
+        int32_t contentAt = 0;
     };
 
     // A frame drawn strip by strip (RenderContext::contentFrame) is collected
@@ -200,7 +211,28 @@ private:
         Replaying
     };
     bool BuildingPlan() const { return m_PlanMode == PlanMode::Recording || m_PlanMode == PlanMode::Measuring; }
-    std::vector<PlanEntry> m_Plan;
+    // In external memory, as the lists below: written once a frame, and no
+    // size they pass through as they grow is taken from internal RAM.
+    std::vector<PlanEntry, ExternalAllocator<PlanEntry>> m_Plan;
+    // The frame's content of renderers with no place in m_ReuseContent.
+    std::vector<CachedContent, ExternalAllocator<CachedContent>> m_PlanContent;
+    const CachedContent& ContentOf(const BuiltinGeometry& g) const
+    {
+        return g.contentAt > 0 ? m_ReuseContent[g.contentAt - 1] : m_PlanContent[static_cast<size_t>(-g.contentAt) - 1];
+    }
+    // What replaying needs of each entry to pass it over: the pixels of the
+    // view it can draw in (PlanAreaOf), noted as the plan is built. A frame
+    // redrawn in parts replays the plan once a part, and most objects lie
+    // outside most parts. The plan's entries are large and, on a board, in
+    // external memory, where reading two lines of each to pass it over cost
+    // more than drawing the few that are inside; this list is a few lines
+    // for all of them.
+    std::vector<Deki::Rect, ExternalAllocator<Deki::Rect>> m_PlanAreas;
+    Deki::Rect PlanAreaOf(const PlanEntry& entry) const;
+    void FindPlanAreas();  // all of them, for a plan that has none
+    // Whether `area` (view pixels) lies outside what ctx draws: its strip, or
+    // the part of it redrawn.
+    static bool OutsidePart(const Deki::Rect& area, const RenderContext& ctx);
     uint32_t m_PlanRoots = 0;
     uint32_t m_PlanFrame = 0;
     PlanMode m_PlanMode = PlanMode::Off;
@@ -243,6 +275,7 @@ private:
     int32_t m_LitViewTop = 0;
     static void RunLitClear(void* owner);
     static bool LitClearPixel(void* owner, uint8_t* out);
+    static bool LitClearColour(void* owner, uint8_t* out);
     // Lights the frame now if `next` (null: the frame's end) is where it is due.
     void LightFrameIfDue(const SortItem* next, const RenderContext& ctx);
 
@@ -259,10 +292,66 @@ private:
     struct DrawRecord
     {
         uint64_t signature = 0;
-        Deki::Rect area = {};  // the pixels of the view it can write; empty for none
-        uint32_t seen = 0;     // the FindChanges call that met it last
+        Deki::Rect area = {};    // the pixels of the view it can write; empty for none
+        Deki::Rect reach = {};   // the same before it is cut to the view (still within its clip)
+        uint32_t seen = 0;       // the FindChanges call that met it last
+        uint32_t reuseSlot = 0;  // its ReuseEntry in m_Reuse, from 1; 0 for none
+        // The signature with the place on screen instead of in the world:
+        // equal while it stays put on screen as the camera scrolls.
+        uint64_t screenSignature = 0;
     };
-    std::unordered_map<const RendererComponent*, DrawRecord> m_Records;
+    // By renderer and piece (kNoPiece for a renderer's one drawing).
+    struct RecordKey
+    {
+        const RendererComponent* renderer;
+        uint32_t piece;
+        bool operator==(const RecordKey& o) const { return renderer == o.renderer && piece == o.piece; }
+    };
+    struct RecordKeyHash
+    {
+        size_t operator()(const RecordKey& k) const noexcept
+        {
+            const uint64_t h = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(k.renderer)) ^
+                               (static_cast<uint64_t>(k.piece) * 0x9E3779B97F4A7C15ull);
+            return static_cast<size_t>(h ^ (h >> 29));
+        }
+    };
+    std::unordered_map<RecordKey, DrawRecord, RecordKeyHash> m_Records;
+    // What FindChanges measured of a renderer's content, kept while its draw
+    // key (RendererComponent::GetDrawKey) stays the same: then it is reused,
+    // and only where the object is, is worked out. In external memory, a slot
+    // for each renderer with a key (DrawRecord::reuseSlot). What RenderContent
+    // gave is kept beside it (m_ReuseContent, the same slot): every renderer's
+    // entry is read every frame, and where memory is slow to read a short
+    // entry is most of what that costs.
+    struct ReuseEntry
+    {
+        bool valid = false;
+        bool hasExtents = false;
+        // The content, at this scale and rotation: the signature up to where
+        // it is drawn, and the blit's area from the whole pixel it is drawn
+        // at (relEmpty: none).
+        bool contentKnown = false;
+        bool relEmpty = false;
+        float extentW = 0.0f, extentH = 0.0f;
+        uint64_t key = 0;
+        float scaleX = 0.0f, scaleY = 0.0f, rotation = 0.0f;
+        Fingerprint partial;
+        int32_t relLeft = 0, relTop = 0, relRight = 0, relBottom = 0;
+    };
+    ReuseEntry* m_Reuse = nullptr;
+    CachedContent* m_ReuseContent = nullptr;
+    uint32_t m_ReuseCapacity = 0;
+    uint32_t m_ReuseUsed = 0;
+    std::vector<uint32_t> m_ReuseFree;
+    // This FindChanges may reuse (the view and the assets are as they were
+    // last time), and the asset epoch then.
+    bool m_ReuseOn = false;
+    uint64_t m_ReuseEpoch = 0;
+    // The record's entry, made when `create` and there is none (null when
+    // there is no memory for it).
+    ReuseEntry* ReuseFor(DrawRecord& record, bool create);
+    void ForgetReuse();
     uint32_t m_RecordCall = 0;
     bool m_HaveRecords = false;
     FrameCamera m_RecordCam;  // what the records were drawn through
@@ -271,8 +360,57 @@ private:
     DirtyRegion* m_Changes = nullptr;  // FindChanges' region while it walks
     uint32_t m_DrawIndex = 0;          // renderers met so far in the walk
     uint32_t m_AlwaysChanged = 0;      // makes signatures no other frame repeats
+    // Scrolling (RenderContext::scrollable): how far this frame moves the
+    // last one's pixels, and how far they have moved in all since the records
+    // were made. Signatures measure positions from there, so an object that
+    // stays put in the world compares equal while the camera scrolls.
+    int32_t m_ScrollX = 0, m_ScrollY = 0;
+    int32_t m_ScrollOriginX = 0, m_ScrollOriginY = 0;
+    // While scrolling: what stays put on screen, opaque and drawn the same,
+    // keeps its pixels (ScrollPins), in the order it is drawn. Anything drawn
+    // over a pin afterwards that is not the same on screen redraws it.
+    struct Pin
+    {
+        Deki::Rect rect;
+        uint32_t drawIndex = 0;
+    };
+    std::vector<Pin> m_Pins;
+    std::vector<Deki::Rect> m_PinRects;
+    // What renderers that stay put on screen changed, less every pin of the
+    // frame: worked out once the walk has found them all.
+    std::vector<Deki::Rect> m_StillChanges;
+    std::vector<Deki::Rect> m_StillPieces, m_StillNext;  // scratch for taking the pins out of them
+    // What a source's pixels say for themselves, unflipped, kept by their
+    // address and revision in a small table in external memory (internal RAM
+    // is the display's): its opaque interior (QuadBlit::OpaqueInterior) and
+    // its non-transparent box (QuadBlit::VisibleBounds). Pixels with no
+    // revision are not kept, and are not trimmed.
+    struct SourceFacts
+    {
+        const uint8_t* pixels = nullptr;
+        uint32_t revision = 0;
+        int32_t width = 0, height = 0, stride = 0;
+        uint8_t known = 0;  // bit 0: interior, bit 1: visible box
+        bool hasInterior = false, hasVisible = false;
+        Deki::Rect interior, visible;
+    };
+    static constexpr size_t kSourceFacts = 512;
+    static constexpr uint32_t kSourceFactWays = 4;  // places looked in for a source
+    uint32_t m_SourceFactTurn = 0;                  // which of them the next one with no place takes
+    SourceFacts* m_SourceFacts = nullptr;
+    SourceFacts* FactsOf(const QuadBlit::Source& source);
+    bool OpaqueInteriorOf(const QuadBlit::Source& source, Deki::Rect& rect);
+    bool VisibleBoundsOf(const QuadBlit::Source& source, Deki::Rect& rect);
+    // The source cut down to its box of non-transparent pixels, and where
+    // that box starts in the source as drawn (with its flips). False when
+    // nothing is known of the source, or there is nothing to cut.
+    bool VisiblePartOf(const QuadBlit::Source& source, QuadBlit::Source& part, int32_t& x, int32_t& y);
     // Compares one renderer's draw with its record and keeps this one.
-    void NoteDraw(const RendererComponent* renderer, uint64_t signature, const Deki::Rect& area);
+    // screenSignature and pin: see DrawRecord and m_Pins (0 and empty when
+    // not scrolling).
+    void NoteDraw(const RendererComponent* renderer, uint64_t signature, const Deki::Rect& area,
+                  const Deki::Rect& reach = Deki::Rect{}, uint64_t screenSignature = 0,
+                  const Deki::Rect& pin = Deki::Rect{}, uint32_t drawIndex = 0, DrawRecord* record = nullptr);
     void ForgetRecords();
     Lighting2D m_LightingRecord;  // the light of the last frame FindChanges compared
 };

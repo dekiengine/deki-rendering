@@ -6,6 +6,7 @@
 #include <cstring>
 #include <cstdint>
 #include "QuadBlit.h"
+#include "DekiRenderer.h"  // DeferredClear
 #include "PixelFormat.h"
 #include <deki/Engine.h>  // Deki::ColorFormat
 
@@ -125,6 +126,31 @@ TEST_F(QuadBlitClipTest, ClearClipStackReEnablesClipping)
     QuadBlit::SetClipEnabled(false);
     QuadBlit::ClearClipStack();
     EXPECT_TRUE(QuadBlit::IsClipEnabled());
+}
+
+TEST_F(QuadBlitClipTest, ASwappedClipStateComesBackAsItWas)
+{
+    QuadBlit::PushClipRect(10, 20, 30, 40);
+    QuadBlit::SetTargetLimit(0, 0, 25, 100);
+    QuadBlit::SetClipEnabled(false);
+
+    QuadBlit::ClipState aside;
+    QuadBlit::SwapClipState(aside);
+    EXPECT_TRUE(QuadBlit::IsClipEnabled());
+    EXPECT_FALSE(QuadBlit::GetCurrentClipRect().IsSet()) << "drawing elsewhere starts with no clips";
+    QuadBlit::PushClipRect(1, 2, 3, 4);
+    EXPECT_EQ(QuadBlit::GetCurrentClipRect().right, 3);
+    QuadBlit::PopClipRect();
+    QuadBlit::SwapClipState(aside);
+
+    EXPECT_FALSE(QuadBlit::IsClipEnabled());
+    QuadBlit::SetClipEnabled(true);
+    const QuadBlit::ClipRect rect = QuadBlit::GetCurrentClipRect();
+    EXPECT_EQ(rect.left, 10);
+    EXPECT_EQ(rect.top, 20);
+    EXPECT_EQ(rect.right, 25) << "the target limit came back too";
+    EXPECT_EQ(rect.bottom, 40);
+    EXPECT_EQ(QuadBlit::GetClipStackDepth(), 1);
 }
 
 // ============================================================================
@@ -935,14 +961,36 @@ TEST_F(QuadBlitSpanRegressionTest, RotationPath_HalfTurnRotatesThePattern)
     const int w = 5, h = 5;
     uint8_t target[w * h * 2] = { 0 };
     QuadBlit::Blit(s, target, w, h, Deki::ColorFormat::RGB565, 2, 2, 1.0f, 1.0f, 3.14159265f, 0.5f, 0.5f);
-    // Same corner-sampled geometry as the float version: the rotated quad
-    // lands on columns/rows 2..3 with the pattern turned by 180 degrees.
-    EXPECT_EQ(Read565(target, w, 2, 2), src[3]);
-    EXPECT_EQ(Read565(target, w, 3, 2), src[2]);
-    EXPECT_EQ(Read565(target, w, 2, 3), src[1]);
-    EXPECT_EQ(Read565(target, w, 3, 3), src[0]);
-    EXPECT_EQ(Read565(target, w, 1, 2), 0u);
+    // Pixels are read at their centres, so the turned quad covers columns and
+    // rows 1..2, where the unturned one would, with the pattern turned by 180
+    // degrees.
+    EXPECT_EQ(Read565(target, w, 1, 1), src[3]);
+    EXPECT_EQ(Read565(target, w, 2, 1), src[2]);
+    EXPECT_EQ(Read565(target, w, 1, 2), src[1]);
+    EXPECT_EQ(Read565(target, w, 2, 2), src[0]);
+    EXPECT_EQ(Read565(target, w, 3, 2), 0u);
     EXPECT_EQ(Read565(target, w, 0, 0), 0u);
+}
+
+TEST_F(QuadBlitSpanRegressionTest, RotationPath_PositiveTurnsCounterClockwiseOnScreen)
+{
+    // A bar, its right half red and its left half blue.
+    const int barW = 16, barH = 6;
+    uint16_t src[barW * barH];
+    for (int y = 0; y < barH; y++)
+    {
+        for (int x = 0; x < barW; x++)
+        {
+            src[y * barW + x] = x >= barW / 2 ? Pack565(255, 0, 0) : Pack565(0, 0, 255);
+        }
+    }
+    QuadBlit::Source s =
+        QuadBlit::MakeSource(reinterpret_cast<const uint8_t*>(src), barW, barH, QuadBlit::PixelLayout::RGB565(), false);
+    const int w = 20, h = 20;
+    uint8_t target[w * h * 2] = { 0 };
+    QuadBlit::Blit(s, target, w, h, Deki::ColorFormat::RGB565, 10, 10, 1.0f, 1.0f, 3.14159265f / 2.0f, 0.5f, 0.5f);
+    EXPECT_EQ(Read565(target, w, 10, 4), Pack565(255, 0, 0)) << "a quarter turn brings the right end to the top";
+    EXPECT_EQ(Read565(target, w, 10, 15), Pack565(0, 0, 255));
 }
 
 TEST_F(QuadBlitSpanRegressionTest, RotationPath_ARGBTargetMatchesRGB565)
@@ -1374,8 +1422,8 @@ TEST(QuadBlitTintScaledRows, EveryPixelMatchesThePipelinesArithmetic)
             {
                 for (int x = std::max(0, r[0]); x < std::min(kTW, r[0] + r[2]); ++x)
                 {
-                    const int sx = static_cast<int>((static_cast<uint32_t>(x - r[0]) * xStep) >> 16);
-                    const int sy = static_cast<int>((static_cast<uint32_t>(y - r[1]) * yStep) >> 16);
+                    const int sx = static_cast<int>((static_cast<uint32_t>(x - r[0]) * xStep + ((xStep - 1) >> 1)) >> 16);
+                    const int sy = static_cast<int>((static_cast<uint32_t>(y - r[1]) * yStep + ((yStep - 1) >> 1)) >> 16);
                     const uint8_t* sp = src + (sy * kSW + sx) * 3;
                     uint8_t* dp = expected + (y * kTW + x) * 3;
                     const uint8_t a = sp[2];
@@ -1456,4 +1504,211 @@ TEST_F(QuadBlitClipTest, CoversRect_OnlyOpaqueBlitsOverAllOfTheRect)
     // A rect above the target's first row (a later strip's whole view): only
     // where the blit lands counts.
     EXPECT_TRUE(QuadBlit::CoversRect(opaque, 0, -8, 4.0f, 4.0f, 0.0f, 0.0f, 0.0f, 255, 0, -8, 16, 8));
+}
+
+// ============================================================================
+// A frame inside a wider image (an atlas tile), turned
+// ============================================================================
+
+// A sprite's frame points into its image with the image's row stride. Every
+// quarter turn draws all of it.
+TEST(QuadBlitTurnedFrame, EveryQuarterTurnDrawsTheWholeFrame)
+{
+    const int imageW = 16, imageH = 4, frameX = 4, frameW = 4, frameH = 4;
+    std::vector<uint8_t> image(imageW * imageH * 3, 0);  // RGB565A8, all clear
+    const uint16_t red = MakeRGB565Free(255, 0, 0);
+    for (int y = 0; y < frameH; ++y)
+    {
+        for (int x = frameX; x < frameX + frameW; ++x)
+        {
+            uint8_t* p = &image[(y * imageW + x) * 3];
+            p[0] = static_cast<uint8_t>(red & 0xFF);
+            p[1] = static_cast<uint8_t>(red >> 8);
+            p[2] = 255;
+        }
+    }
+
+    for (int quarter = 0; quarter < 4; ++quarter)
+    {
+        QuadBlit::Source frame =
+            QuadBlit::MakeSource(&image[frameX * 3], frameW, frameH, QuadBlit::PixelLayout::RGB565A8(), false);
+        frame.stride = imageW * 3;
+
+        const int targetW = 16, targetH = 16;
+        std::vector<uint16_t> target(targetW * targetH, 0);
+        QuadBlit::Blit(frame, reinterpret_cast<uint8_t*>(target.data()), targetW, targetH, Deki::ColorFormat::RGB565, 8,
+                       8, 1.0f, 1.0f, quarter * 1.5707963f, 0.5f, 0.5f);
+
+        const int drawn = static_cast<int>(std::count(target.begin(), target.end(), red));
+        EXPECT_EQ(drawn, frameW * frameH) << "a turn of " << quarter * 90 << " degrees";
+
+        // Turned about its middle, it covers the same pixels: 6 to 9 each way.
+        int minX = targetW, minY = targetH, maxX = -1, maxY = -1;
+        for (int y = 0; y < targetH; ++y)
+        {
+            for (int x = 0; x < targetW; ++x)
+            {
+                if (target[y * targetW + x] == red)
+                {
+                    minX = std::min(minX, x);
+                    maxX = std::max(maxX, x);
+                    minY = std::min(minY, y);
+                    maxY = std::max(maxY, y);
+                }
+            }
+        }
+        EXPECT_EQ(minX, 6) << quarter * 90 << " degrees";
+        EXPECT_EQ(maxX, 9) << quarter * 90 << " degrees";
+        EXPECT_EQ(minY, 6) << quarter * 90 << " degrees";
+        EXPECT_EQ(maxY, 9) << quarter * 90 << " degrees";
+
+        // The area it reports holds every pixel it drew.
+        int32_t left = 0, top = 0, right = 0, bottom = 0;
+        ASSERT_TRUE(QuadBlit::BlitArea(frame, 8, 8, 1.0f, 1.0f, quarter * 1.5707963f, 0.5f, 0.5f, left, top, right,
+                                       bottom));
+        for (int y = 0; y < targetH; ++y)
+        {
+            for (int x = 0; x < targetW; ++x)
+            {
+                if (target[y * targetW + x] == red)
+                {
+                    EXPECT_TRUE(x >= left && x < right && y >= top && y < bottom)
+                        << "pixel " << x << "," << y << " outside the area at " << quarter * 90 << " degrees";
+                }
+            }
+        }
+    }
+}
+
+// A scaled picture reads the source pixel under each drawn pixel's middle, as
+// a turned one does and as Tiled does; exactly between two it takes the first.
+TEST(QuadBlitScaled, SamplesUnderThePixelsMiddle)
+{
+    const uint16_t src[6] = { 0x1111, 0x2222, 0x3333, 0x4444, 0x5555, 0x6666 };
+    const QuadBlit::Source source =
+        QuadBlit::MakeSource(reinterpret_cast<const uint8_t*>(src), 6, 1, QuadBlit::PixelLayout::RGB565());
+    // A third of the size: the middle of each group of three.
+    uint16_t third[2] = {};
+    QuadBlit::BlitScaled(source, reinterpret_cast<uint8_t*>(third), 2, 1, Deki::ColorFormat::RGB565, 0, 0, 2, 1, 255,
+                         255, 255, 255);
+    EXPECT_EQ(DekiPixel::FromMemory565(third[0]), 0x2222);
+    EXPECT_EQ(DekiPixel::FromMemory565(third[1]), 0x5555);
+
+    // Half the size: each middle falls between two pixels, and takes the first.
+    uint16_t half[3] = {};
+    QuadBlit::BlitScaled(source, reinterpret_cast<uint8_t*>(half), 3, 1, Deki::ColorFormat::RGB565, 0, 0, 3, 1, 255,
+                         255, 255, 255);
+    EXPECT_EQ(DekiPixel::FromMemory565(half[0]), 0x1111);
+    EXPECT_EQ(DekiPixel::FromMemory565(half[1]), 0x3333);
+    EXPECT_EQ(DekiPixel::FromMemory565(half[2]), 0x5555);
+
+    // Twice as big: each pixel twice.
+    uint16_t big[12] = {};
+    QuadBlit::BlitScaled(source, reinterpret_cast<uint8_t*>(big), 12, 1, Deki::ColorFormat::RGB565, 0, 0, 12, 1, 255,
+                         255, 255, 255);
+    EXPECT_EQ(DekiPixel::FromMemory565(big[0]), 0x1111);
+    EXPECT_EQ(DekiPixel::FromMemory565(big[1]), 0x1111);
+    EXPECT_EQ(DekiPixel::FromMemory565(big[2]), 0x2222);
+    EXPECT_EQ(DekiPixel::FromMemory565(big[11]), 0x6666);
+}
+
+// ============================================================================
+// OpaqueInterior, VisibleBounds
+// ============================================================================
+
+// A rounded mask (alpha only, drawn in its tint): its opaque interior is the
+// biggest block of fully opaque pixels, its visible box everything not clear.
+TEST(QuadBlitFacts, AMasksInteriorAndVisibleBox)
+{
+    // 8 x 6: a clear border, soft corners, opaque inside.
+    std::vector<uint8_t> mask(8 * 6, 0);
+    for (int y = 1; y < 5; ++y)
+    {
+        for (int x = 1; x < 7; ++x)
+        {
+            const bool corner = (x == 1 || x == 6) && (y == 1 || y == 4);
+            mask[static_cast<size_t>(y) * 8 + x] = corner ? 90 : 255;
+        }
+    }
+    QuadBlit::Source s = QuadBlit::MakeSource(mask.data(), 8, 6, QuadBlit::PixelLayout::Alpha8());
+    int32_t l = 0, t = 0, r = 0, b = 0;
+    ASSERT_TRUE(QuadBlit::OpaqueInterior(s, l, t, r, b));
+    EXPECT_EQ((r - l) * (b - t), 16) << "6 x 2 across the middle rows, or 4 x 4";
+    for (int y = t; y < b; ++y)
+    {
+        for (int x = l; x < r; ++x)
+        {
+            EXPECT_EQ(mask[static_cast<size_t>(y) * 8 + x], 255) << x << ", " << y;
+        }
+    }
+    ASSERT_TRUE(QuadBlit::VisibleBounds(s, l, t, r, b));
+    EXPECT_EQ(l, 1);
+    EXPECT_EQ(t, 1);
+    EXPECT_EQ(r, 7);
+    EXPECT_EQ(b, 5);
+
+
+    // Flipped, the boxes are mirrored with it.
+    mask[1 * 8 + 1] = 0;  // the top-left corner gone: the box keeps its size
+    s.flipH = true;
+    ASSERT_TRUE(QuadBlit::VisibleBounds(s, l, t, r, b));
+    EXPECT_EQ(l, 1);
+    EXPECT_EQ(r, 7);
+
+    // Nothing to see: an empty box.
+    std::fill(mask.begin(), mask.end(), 0);
+    ASSERT_TRUE(QuadBlit::VisibleBounds(s, l, t, r, b));
+    EXPECT_EQ(l, r);
+    EXPECT_FALSE(QuadBlit::OpaqueInterior(s, l, t, r, b));
+}
+
+// ============================================================================
+// The pending clear's colour
+// ============================================================================
+
+namespace
+{
+struct ColourClear
+{
+    int runs = 0;
+    DekiRendering::DeferredClear clear;
+    ColourClear()
+    {
+        clear.owner = this;
+        clear.run = [](void* o) { ++static_cast<ColourClear*>(o)->runs; };
+        clear.colour = [](void*, uint8_t* out)
+        {
+            out[0] = 0x34;
+            out[1] = 0x12;
+            return true;
+        };
+    }
+};
+}  // namespace
+
+// A pass reads the colour of a clear still pending, whatever it covers, and
+// the clear stays pending until the pass drops it or a blit runs it.
+TEST(QuadBlitPendingClear, ItsColourIsReadWithoutRunningIt)
+{
+    uint8_t frame[4] = {}, other[4] = {};
+    ColourClear c;
+    QuadBlit::SetPendingClear(frame, &c.clear);
+    uint8_t pixel[4] = {};
+    ASSERT_TRUE(QuadBlit::PendingClearColour(frame, pixel));
+    EXPECT_EQ(pixel[0], 0x34);
+    EXPECT_EQ(pixel[1], 0x12);
+    EXPECT_FALSE(QuadBlit::PendingClearColour(other, pixel)) << "another buffer has no clear pending";
+    EXPECT_EQ(c.runs, 0);
+    EXPECT_EQ(QuadBlit::PendingClear(), &c.clear);
+
+    QuadBlit::DropPendingClear();
+    EXPECT_FALSE(QuadBlit::PendingClearColour(frame, pixel));
+    EXPECT_EQ(c.runs, 0);
+
+    // A clear that cannot say its colour says nothing.
+    c.clear.colour = nullptr;
+    QuadBlit::SetPendingClear(frame, &c.clear);
+    EXPECT_FALSE(QuadBlit::PendingClearColour(frame, pixel));
+    QuadBlit::BeforeWriting(frame);
+    EXPECT_EQ(c.runs, 1);
 }

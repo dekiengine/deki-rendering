@@ -643,6 +643,8 @@ TEST(StripFeatures, WholeFramesUnderAFullScreenBackgroundAreNotCleared)
             eagerSystem.SetRenderer(&eager);
             lazySystem.SetRedrawChanges(redraw);
             eagerSystem.SetRedrawChanges(redraw);
+            lazySystem.SetPartCostPixels(0);  // where each sprite was: two parts
+            eagerSystem.SetPartCostPixels(0);
 
             Deki::Object* back = f.Sprite("back", 0.0f, 0.0f, 0x001F);
             auto* sprite = back->GetComponent<StripSprite>();

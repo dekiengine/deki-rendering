@@ -345,10 +345,10 @@ struct Expected
     uint64_t hash;
 };
 const Expected kExpected[] = {
-    { Deki::ColorFormat::RGB565, "RGB565", 0x79c6614a3e8aacdcULL },
-    { Deki::ColorFormat::RGB888, "RGB888", 0x12fb24a6f3313de8ULL },
-    { Deki::ColorFormat::ARGB8888, "ARGB8888", 0x16a807f5f8def5afULL },
-    { Deki::ColorFormat::RGB565A8, "RGB565A8", 0xd96445b85fc8f3a6ULL },
+    { Deki::ColorFormat::RGB565, "RGB565", 0x48484cf35873602dULL },
+    { Deki::ColorFormat::RGB888, "RGB888", 0x3c0180847fbba000ULL },
+    { Deki::ColorFormat::ARGB8888, "ARGB8888", 0xa8bd9deb85a52619ULL },
+    { Deki::ColorFormat::RGB565A8, "RGB565A8", 0xe9d85c123537502cULL },
 };
 
 }  // namespace
@@ -484,10 +484,10 @@ uint64_t RunRandomBlits(Deki::ColorFormat dst)
 }
 
 const Expected kRandomExpected[] = {
-    { Deki::ColorFormat::RGB565, "RGB565", 0x49c0c3271d20da1cULL },
-    { Deki::ColorFormat::RGB888, "RGB888", 0x25d4de1180107d25ULL },
-    { Deki::ColorFormat::ARGB8888, "ARGB8888", 0x8ee2ca046f60e290ULL },
-    { Deki::ColorFormat::RGB565A8, "RGB565A8", 0xcf06214e98df65e8ULL },
+    { Deki::ColorFormat::RGB565, "RGB565", 0x0487ee46136233e1ULL },
+    { Deki::ColorFormat::RGB888, "RGB888", 0xdb2bf1b635355b16ULL },
+    { Deki::ColorFormat::ARGB8888, "ARGB8888", 0xc4ae01081957f848ULL },
+    { Deki::ColorFormat::RGB565A8, "RGB565A8", 0xf70f0e17c584adf7ULL },
 };
 }  // namespace
 

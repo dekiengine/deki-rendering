@@ -91,7 +91,7 @@ inline uint8_t BayerThreshold(int32_t px, int32_t py)
 // ---------------------------------------------------------------------------
 
 #if defined(__XTENSA__)
-typedef uint16_t __attribute__((may_alias)) UnalignedU16;
+using UnalignedU16 __attribute__((may_alias)) = uint16_t;
 #endif
 
 inline uint16_t LoadU16(const uint8_t* p)
@@ -241,7 +241,7 @@ inline void ReadDstPixel(const uint8_t* target, size_t idx, uint8_t& r, uint8_t&
 {
     if constexpr (F == Deki::ColorFormat::RGB565)
     {
-        UnpackRGB565(FromMemory565(((const uint16_t*)target)[idx]), r, g, b);
+        UnpackRGB565(FromMemory565(reinterpret_cast<const uint16_t*>(target)[idx]), r, g, b);
         a = 255;
     }
     else if constexpr (F == Deki::ColorFormat::RGB888)
@@ -253,7 +253,7 @@ inline void ReadDstPixel(const uint8_t* target, size_t idx, uint8_t& r, uint8_t&
     }
     else if constexpr (F == Deki::ColorFormat::ARGB8888)
     {
-        const uint32_t v = ((const uint32_t*)target)[idx];
+        const uint32_t v = reinterpret_cast<const uint32_t*>(target)[idx];
         r = (v >> 16) & 0xFF;
         g = (v >> 8) & 0xFF;
         b = v & 0xFF;
@@ -272,7 +272,7 @@ inline void WriteDstPixel(uint8_t* target, size_t idx, uint8_t r, uint8_t g, uin
 {
     if constexpr (F == Deki::ColorFormat::RGB565)
     {
-        ((uint16_t*)target)[idx] = ToMemory565(PackRGB565(r, g, b));
+        reinterpret_cast<uint16_t*>(target)[idx] = ToMemory565(PackRGB565(r, g, b));
         (void)a;
     }
     else if constexpr (F == Deki::ColorFormat::RGB888)
@@ -284,7 +284,8 @@ inline void WriteDstPixel(uint8_t* target, size_t idx, uint8_t r, uint8_t g, uin
     }
     else if constexpr (F == Deki::ColorFormat::ARGB8888)
     {
-        ((uint32_t*)target)[idx] = (0xFFu << 24) | ((uint32_t)r << 16) | ((uint32_t)g << 8) | b;
+        reinterpret_cast<uint32_t*>(target)[idx] =
+            (0xFFu << 24) | (static_cast<uint32_t>(r) << 16) | (static_cast<uint32_t>(g) << 8) | b;
         (void)a;
     }
     else

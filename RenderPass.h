@@ -156,6 +156,17 @@ public:
         (void)ctx;
         (void)changed;
     }
+
+    /// With ReportsChanges: whether AddChanges handles a camera that only
+    /// scrolled (RenderContext::scrollX and scrollY nonzero), so that its
+    /// drawing moves on screen by exactly that much, or it adds where it does
+    /// not (SetFull will do). Until every pass that reports changes says yes,
+    /// a moving camera redraws the whole frame. The default is no.
+    virtual bool FollowsScroll() const { return false; }
+
+    /// What the profiler calls this pass in its breakdown of a scene
+    /// (RenderProfiler::TakeObjects). Static storage.
+    virtual const char* Name() const { return "Render pass"; }
 };
 
 /// Custom sorting: returns true if the object is a sortable render item, and

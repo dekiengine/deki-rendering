@@ -419,10 +419,10 @@ struct Expected
     uint64_t hash;
 };
 const Expected kExpected[] = {
-    { Deki::ColorFormat::RGB565, "RGB565", 0x1d8eb3cd8824484dULL },
-    { Deki::ColorFormat::RGB888, "RGB888", 0x57549d41cf335c9bULL },
-    { Deki::ColorFormat::ARGB8888, "ARGB8888", 0x99d8e38d9ca41e9fULL },
-    { Deki::ColorFormat::RGB565A8, "RGB565A8", 0xb9a61fd457e7a6cfULL },
+    { Deki::ColorFormat::RGB565, "RGB565", 0x6c5dd0c706494910ULL },
+    { Deki::ColorFormat::RGB888, "RGB888", 0x570e717ce44f36abULL },
+    { Deki::ColorFormat::ARGB8888, "ARGB8888", 0xac9a9ddd2f97809cULL },
+    { Deki::ColorFormat::RGB565A8, "RGB565A8", 0x55494efe5c70be5fULL },
 };
 
 }  // namespace

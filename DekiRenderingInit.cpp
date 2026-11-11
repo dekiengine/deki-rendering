@@ -117,7 +117,7 @@ void DekiRenderingInitSystem()
     if (s_Renderer)
     {
         s_RenderSystem->SetRenderer(s_Renderer);
-        DEKI_LOG_INTERNAL("DekiRendering: Created renderer '%s' (%p)", rendererName, (void*)s_Renderer);
+        DEKI_LOG_INTERNAL("DekiRendering: Created renderer '%s' (%p)", rendererName, static_cast<void*>(s_Renderer));
     }
     else
     {
@@ -185,13 +185,14 @@ void DekiRenderingInitSystem()
         }
         if (!sortingCallbacks.empty())
         {
-            DEKI_LOG_INTERNAL("DekiRendering: Added %d sorting callbacks", (int)sortingCallbacks.size());
+            DEKI_LOG_INTERNAL("DekiRendering: Added %d sorting callbacks", static_cast<int>(sortingCallbacks.size()));
         }
     }
 
     // 5. Hand the render system to the engine.
     Deki::Engine::GetInstance().SetRenderSystem(s_RenderSystem);
-    DEKI_LOG_INTERNAL("DekiRendering: Init complete (renderer=%p, %d passes)", (void*)s_Renderer, (int)s_Passes.size());
+    DEKI_LOG_INTERNAL("DekiRendering: Init complete (renderer=%p, %d passes)", static_cast<void*>(s_Renderer),
+                      static_cast<int>(s_Passes.size()));
 }
 
 void DekiRenderingShutdownSystem()

@@ -333,8 +333,8 @@ bool DekiRenderSystem::Setup(int32_t width, int32_t height, Deki::ColorFormat fo
     // Setup must leave a usable buffer or fail; returning true with a null
     // buffer would draw nothing and report no error.
     int bytesPerPixel = GetBytesPerPixel(format);
-    size_t bufferSize = (size_t)width * (size_t)height * (size_t)bytesPerPixel;
-    m_RenderBuffer = (uint8_t*)Deki::Memory::Allocate(bufferSize, Deki::Memory::Internal);
+    size_t bufferSize = static_cast<size_t>(width) * static_cast<size_t>(height) * static_cast<size_t>(bytesPerPixel);
+    m_RenderBuffer = static_cast<uint8_t*>(Deki::Memory::Allocate(bufferSize, Deki::Memory::Internal));
     if (!m_RenderBuffer)
     {
         DEKI_LOG_ERROR("DekiRenderSystem::Setup: failed to allocate %zu-byte framebuffer (%dx%d)", bufferSize, width,
@@ -518,7 +518,7 @@ void DekiRenderSystem::Render(Deki::Scene* currentScene)
     m_ClearColor = camera->clearColor;
     m_ClearRects = nullptr;
     const DeferredClear deferred{ &DekiRenderSystem::ClearFrame, this, &DekiRenderSystem::ClearFrameLit,
-                                  &DekiRenderSystem::ClearPixel };
+                                  &DekiRenderSystem::ClearPixel, &DekiRenderSystem::ClearColour };
     const bool lazily = camera->clearEveryFrame && m_Renderer->ClearsLazily();
     if (camera->clearEveryFrame && !lazily)
     {
@@ -562,12 +562,14 @@ bool DekiRenderSystem::RenderOnSink(Deki::Scene* scene, CameraComponent* camera)
     return true;
 }
 
-const DirtyRegion* DekiRenderSystem::FindFrameChanges(Deki::Scene* scene, CameraComponent* camera, bool clearChanged)
+const DirtyRegion* DekiRenderSystem::FindFrameChanges(Deki::Scene* scene, CameraComponent* camera, bool clearChanged,
+                                                      bool scrollable)
 {
     // A camera that does not clear draws each frame over the last, so what
     // did not change is drawn again on purpose.
     RenderContext whole{ camera, nullptr, m_ScreenWidth, m_ScreenHeight, m_ColorFormat };
     whole.contentFrame = m_ContentFrame;
+    whole.scrollable = scrollable;
     if (!m_RedrawChanges || !camera->clearEveryFrame)
     {
         m_Owed.clear();
@@ -593,6 +595,112 @@ const DirtyRegion* DekiRenderSystem::FindFrameChanges(Deki::Scene* scene, Camera
     return &m_Changed;
 }
 
+void DekiRenderSystem::ScrollFrame(int32_t dx, int32_t dy)
+{
+    // Rows moved down are copied bottom first, rows moved up top first, so
+    // none is overwritten before it is read. Two rows never overlap, so each
+    // is a plain memcpy (memmove's backward copy is a byte loop on some C
+    // libraries: 7.7 ms for a 320x240 frame on an ESP32-S3); a row moved
+    // only across goes through a copy of itself.
+    const size_t bpp = static_cast<size_t>(GetBytesPerPixel(m_ColorFormat));
+    const size_t pitch = static_cast<size_t>(m_ScreenWidth) * bpp;
+    const int32_t fromX = std::max<int32_t>(0, -dx);
+    const int32_t toX = std::max<int32_t>(0, dx);
+    const int32_t width = m_ScreenWidth - std::abs(dx);
+    if (width <= 0 || std::abs(dy) >= m_ScreenHeight)
+    {
+        return;
+    }
+    const size_t rowBytes = static_cast<size_t>(width) * bpp;
+    // What stays put on screen keeps its pixels (DekiRenderer::ScrollPins):
+    // the row is copied around it.
+    const std::vector<Deki::Rect>& pins = m_Renderer->ScrollPins();
+    // The pins a row crosses are found again only where a pin starts or ends:
+    // the rows between cross the same ones.
+    int32_t keepFrom = 0, keepUntil = 0;  // the rows m_ScrollKeep holds for
+    auto findKeep = [&](int32_t y)
+    {
+        keepFrom = 0;
+        keepUntil = m_ScreenHeight;
+        m_ScrollKeep.clear();
+        for (const Deki::Rect& pin : pins)
+        {
+            const int32_t l = std::max<int32_t>(pin.left, toX) - toX;
+            const int32_t r = std::min<int32_t>(pin.right, toX + width) - toX;
+            if (l >= r || pin.top >= pin.bottom)
+            {
+                continue;
+            }
+            if (pin.top <= y && y < pin.bottom)
+            {
+                m_ScrollKeep.push_back(Deki::Rect{ l, 0, r, 1 });
+                keepFrom = std::max(keepFrom, pin.top);
+                keepUntil = std::min(keepUntil, pin.bottom);
+            }
+            else if (pin.top > y)
+            {
+                keepUntil = std::min(keepUntil, pin.top);
+            }
+            else
+            {
+                keepFrom = std::max(keepFrom, pin.bottom);
+            }
+        }
+        std::sort(m_ScrollKeep.begin(), m_ScrollKeep.end(),
+                  [](const Deki::Rect& a, const Deki::Rect& b) { return a.left < b.left; });
+    };
+    auto moveRow = [&](int32_t y)
+    {
+        const int32_t from = y - dy;
+        uint8_t* to = m_RenderBuffer + static_cast<size_t>(y) * pitch + static_cast<size_t>(toX) * bpp;
+        const uint8_t* src = m_RenderBuffer + static_cast<size_t>(from) * pitch + static_cast<size_t>(fromX) * bpp;
+        if (from == y)
+        {
+            m_ScrollRow.resize(rowBytes);
+            std::memcpy(m_ScrollRow.data(), src, rowBytes);
+            src = m_ScrollRow.data();
+        }
+        if (y < keepFrom || y >= keepUntil)
+        {
+            findKeep(y);
+        }
+        if (m_ScrollKeep.empty())
+        {
+            std::memcpy(to, src, rowBytes);
+            return;
+        }
+        int32_t x = 0;
+        for (const Deki::Rect& keep : m_ScrollKeep)
+        {
+            if (keep.left > x)
+            {
+                std::memcpy(to + static_cast<size_t>(x) * bpp, src + static_cast<size_t>(x) * bpp,
+                            static_cast<size_t>(keep.left - x) * bpp);
+            }
+            x = std::max(x, keep.right);
+        }
+        if (x < width)
+        {
+            std::memcpy(to + static_cast<size_t>(x) * bpp, src + static_cast<size_t>(x) * bpp,
+                        static_cast<size_t>(width - x) * bpp);
+        }
+    };
+    if (dy > 0)
+    {
+        for (int32_t y = m_ScreenHeight - 1; y >= dy; --y)
+        {
+            moveRow(y);
+        }
+    }
+    else
+    {
+        for (int32_t y = 0; y < m_ScreenHeight + dy; ++y)
+        {
+            moveRow(y);
+        }
+    }
+}
+
 bool DekiRenderSystem::MostOfScreen(const DirtyRegion& region) const
 {
     return region.IsFull() ||
@@ -616,7 +724,7 @@ bool DekiRenderSystem::RenderChanges(Deki::Scene* scene, CameraComponent* camera
         m_Owed.clear();
         return false;
     }
-    const DirtyRegion* changed = FindFrameChanges(scene, camera, false);
+    const DirtyRegion* changed = FindFrameChanges(scene, camera, false, true);
     if (!changed)
     {
         return false;
@@ -624,6 +732,30 @@ bool DekiRenderSystem::RenderChanges(Deki::Scene* scene, CameraComponent* camera
     if (ClearChanged(*camera))
     {
         m_Changed.SetFull();
+    }
+
+    // A camera that only scrolled: the last frame's pixels move, and only
+    // what that uncovers and what changed besides is drawn. Only a buffer
+    // that holds the last frame, owing nothing, can be moved.
+    int32_t scrollX = 0, scrollY = 0;
+    bool scrolled = m_Renderer->ScrolledBy(scrollX, scrollY);
+    if (scrolled)
+    {
+        if (m_RenderBuffer && m_Owed.size() == 1 && m_Owed[0].buffer == m_RenderBuffer && m_Owed[0].owed.IsEmpty() &&
+            !m_Changed.IsFull())
+        {
+            const uint64_t start = RenderProfiler::IsEnabled() ? RenderProfiler::Now() : 0;
+            ScrollFrame(scrollX, scrollY);
+            if (RenderProfiler::IsEnabled())
+            {
+                RenderProfiler::AddContent(RenderProfiler::kScroll, RenderProfiler::Now() - start, "Scroll");
+            }
+        }
+        else
+        {
+            m_Changed.SetFull();
+            scrolled = false;
+        }
     }
 
     // Every buffer is owed this frame's changes; the one drawn now is brought
@@ -647,6 +779,7 @@ bool DekiRenderSystem::RenderChanges(Deki::Scene* scene, CameraComponent* camera
         redraw.Reset(m_ScreenWidth, m_ScreenHeight);
         redraw.SetFull();
     }
+    redraw.MergeCheaperThan(m_PartCostPixels);
     const bool whole = MostOfScreen(redraw);
 
     RenderProfiler::CountFrame();
@@ -659,7 +792,7 @@ bool DekiRenderSystem::RenderChanges(Deki::Scene* scene, CameraComponent* camera
     QuadBlit::NextFrame();
     m_ClearColor = camera->clearColor;
     const DeferredClear deferred{ &DekiRenderSystem::ClearFrame, this, &DekiRenderSystem::ClearFrameLit,
-                                  &DekiRenderSystem::ClearPixel };
+                                  &DekiRenderSystem::ClearPixel, &DekiRenderSystem::ClearColour };
     const bool lazily = m_Renderer->ClearsLazily();
     RenderContext ctx{ camera, m_RenderBuffer, m_ScreenWidth, m_ScreenHeight, m_ColorFormat };
     ctx.contentFrame = m_ContentFrame;
@@ -692,8 +825,9 @@ bool DekiRenderSystem::RenderChanges(Deki::Scene* scene, CameraComponent* camera
         }
     }
 
-    // Sent: what this frame changed. The screen shows the rest already.
-    if (MostOfScreen(*changed))
+    // Sent: what this frame changed. The screen shows the rest already, but
+    // not where it has moved to.
+    if (MostOfScreen(*changed) || scrolled)
     {
         m_PresentCount = -1;
     }
@@ -1206,6 +1340,17 @@ bool DekiRenderSystem::ClearPixel(void* owner, uint8_t* out)
     return true;
 }
 
+bool DekiRenderSystem::ClearColour(void* owner, uint8_t* out)
+{
+    const DekiRenderSystem* self = static_cast<const DekiRenderSystem*>(owner);
+    if (!self->m_RenderBuffer)
+    {
+        return false;
+    }
+    WritePixel(out, self->m_ColorFormat, self->m_ClearColor.r, self->m_ClearColor.g, self->m_ClearColor.b);
+    return true;
+}
+
 void DekiRenderSystem::ClearBuffer(uint8_t r, uint8_t g, uint8_t b)
 {
     ClearRect(0, 0, m_ScreenWidth, m_ScreenHeight, r, g, b);
@@ -1261,7 +1406,7 @@ DEKI_FAST_ATTR void DekiRenderSystem::GetPixel(int32_t x, int32_t y, uint8_t* r,
         case Deki::ColorFormat::ARGB8888:
         {
             size_t pixel_index = (y * m_ScreenWidth + x) * 4;
-            uint32_t pixel = *((uint32_t*)(frame + pixel_index));
+            uint32_t pixel = *reinterpret_cast<const uint32_t*>(frame + pixel_index);
             *r = (pixel >> 16) & 0xFF;
             *g = (pixel >> 8) & 0xFF;
             *b = pixel & 0xFF;

@@ -8,6 +8,130 @@ breaking change bumps the minor across the editor, the engine and every
 package together, so a package with no changes of its own is still released
 alongside one that has them.
 
+## Unreleased
+
+### Added
+- **The profiler breaks a frame down by object.** While it is on, each
+  renderer, and each render pass on each object, has a row
+  (`RenderProfiler::TakeObjects`): its path and type, its share of finding
+  what changed, of making and of drawing its pixels, how many times it was
+  drawn, and why its area was drawn again (new, changed, still on screen while
+  the world scrolled, drawn over a pin). Off, nothing is counted. The
+  **Render Profiler** window (Tools > Rendering) shows the rows for the Play
+  view, or for a board on a serial port. Render passes name themselves for it
+  (`RenderPass::Name`, "Render pass" unless they say otherwise).
+- **Redraw Changes moves the last frame when the camera scrolls.** A camera
+  that moved by whole pixels, and sits on whole pixels, used to redraw the
+  whole frame; now the frame's pixels are moved and only the edge it uncovers
+  and what changed besides are drawn. Frames match ones drawn whole. A scene
+  with 2D lights, a frame drawn in strips, a camera between pixels, and a
+  render pass that reports its own changes but not
+  `RenderPass::FollowsScroll` still redraw whole frames.
+  `DekiRenderer::ScrolledBy` and `RenderContext::scrollable`, `scrollX` and
+  `scrollY` carry it; a custom renderer needs no change. New virtuals on
+  `DekiRenderer` and `RenderPass`: packages built against the old headers
+  must be rebuilt.
+- **What stays on screen keeps its pixels while the camera scrolls.** A
+  renderer drawn the same at the same place on screen, such as a HUD panel
+  under the camera, keeps the pixels of its opaque middle as the frame moves
+  (`DekiRenderer::ScrollPins`); only its see-through edge and the band it
+  leaves are drawn again. Anything drawn over it that moved redraws it.
+- **A drawing's area is only what it can write.** A sprite, shape or other
+  renderer drawn 1:1 and unturned counts only the box of its non-transparent
+  pixels as changed: an animation frame's empty margin is not redrawn.
+  `QuadBlit::VisibleBounds` and `QuadBlit::OpaqueInterior` work them out;
+  they are kept, by pixels and revision, in a small table in external
+  memory. Pixels with no `Source::revision` are not trimmed.
+- **Changed parts close together are drawn as one.** Each part redrawn walks
+  the scene and sets up every render pass again, so parts are merged while a
+  merge adds fewer pixels than that costs (`DirtyRegion::MergeCheaperThan`,
+  `DekiRenderSystem::SetPartCostPixels`, 4096 by default).
+- `DeferredClear::colour` and `QuadBlit::PendingClearColour`: the colour of
+  a clear still pending, whatever it covers, for a render pass about to write
+  every pixel the clear covers in a frame or a redrawn part of one, which then
+  drops the clear (`DeferredClear::pixel` stays for whole frames only).
+  `DekiRenderSystem` and the lit clear of 2D lights give it.
+- `QuadBlit::SwapClipState` sets the clip stack, the target limit and the
+  clip switch aside, for a pass drawing into a buffer of its own in the
+  middle of a frame.
+- **Finding what changed reuses what it measured.** A renderer can give a
+  draw key (`RendererComponent::GetDrawKey`): a value from its own fields
+  that changes whenever its content could. While the key, the object's scale
+  and its turn stay the same, what was measured of its content (its size,
+  pixels, area and the signature they make) is reused, and only where it is
+  drawn is worked out again; a renderer with no key is measured in full each
+  frame as before. Kept in a table in external memory. A new virtual on
+  `RendererComponent`: packages built against the old headers must be
+  rebuilt. On a LilyGO T-Deck, finding the changes of the "Your first game"
+  farm went from 7.6 to 6.2 ms a frame.
+
+### Changed
+- **A frame redrawn in parts costs less with many sprites moving.** On a
+  LilyGO T-Deck, the "Your first game" farm with the camera following the
+  farmer and villagers walking about went from 18.1 to 16.6 ms a frame with 4
+  villagers, 20.6 to 16.7 ms with 8 (both now the display's 60 fps) and 26.3
+  to 18.6 ms with 16. The pixels are the same: checked on the board, each
+  frame drawn in parts against the same frame drawn whole. What changed:
+  - A sprite drawn 1:1 and unturned blits only its box of non-transparent
+    pixels, as only that box already counted as its area. An animation
+    frame's empty margin is no longer read.
+  - What is known of a source's pixels (its visible box, its opaque
+    interior) is kept in a few places for each source, not one: sources that
+    shared a place pushed each other out every frame, and each time the
+    pixels were walked again.
+  - Each part passes over the objects outside it from a short list of their
+    areas, made as the frame's plan is built, without reading the plan.
+  - A renderer's content is kept beside what is reused of it from frame to
+    frame, not copied into the plan for every object every frame.
+  - `DirtyRegion` keeps the sum of its areas as rectangles are added, and
+    merging looks again only at the pairs a merge changed. The pairs merged
+    are the same (new tests compare them with comparing every pair again).
+  - A scrolled frame's rows find the pins they cross only where a pin
+    starts or ends.
+- `DirtyRegion::Add` joins a rectangle to one already there when their
+  bounding box is no larger than the two together: a sprite that moved a
+  pixel is one rectangle, not two. Above the merge threshold the set is
+  merged down to a quarter under it, not to it, so the next rectangles are
+  added without merging again.
+- Parts are drawn as one when closer than 2048 pixels of extra area
+  (`kPartCostPixels`, was 4096): a part costs less than it did.
+- The frame's plan and its lists are in external memory (`ExternalAllocator`)
+  where the target has it. They came from the C library, which on a board
+  put them, or the sizes they grew through, in internal RAM.- Redrawn parts cost less. Taking what stays on screen out of what changed
+  allocates nothing (1.85 to 0.2 ms a frame on the T-Deck farm), and a part
+  passes over an object outside it that has nothing else to draw before
+  setting anything up for it.
+- Finding what changed no longer allocates every frame. `DirtyRegion::Align`
+  folded its rectangles back through a new list each time and threw the old
+  one away, so the region grew its list again from nothing: five allocations
+  a frame on a T-Deck. It keeps both lists now.
+
+### Breaking
+- **Positive rotation now draws counter-clockwise.** `QuadBlit` applied the
+  angle in screen space, where Y runs down, so a sprite turned clockwise while
+  its children, lights, 3D and physics turned counter-clockwise. A rotated
+  sprite now turns the same way as the rest of the engine, and a child stays
+  fixed to a rotated parent. A scene or script that set a rotation by eye
+  needs the sign of that rotation flipped.
+- **A turned sprite no longer moves by a pixel.** `QuadBlit` read each pixel
+  of a rotated draw at its corner instead of its centre, so a sprite turned
+  by a half turn or a quarter turn landed one pixel right of, or below, where
+  it stands unturned. It now covers the same pixels, as Tiled and other
+  editors draw it. Rotated sprites placed by eye may sit a pixel off.
+- **A scaled sprite reads the source pixel under each drawn pixel's middle.**
+  `QuadBlit::BlitScaled` read the one under its left or top edge. A sprite
+  drawn at a whole multiple of its size looks the same; one shrunk, or grown
+  by a fraction, shows some different edge pixels: a 6-pixel strip drawn 2
+  wide now shows its second and fifth pixels, not its first and fourth.
+  Exactly between two pixels it takes the first, so halving still takes every
+  other pixel from the first. This matches turned sprites and Tiled. The cost
+  is the same.
+
+### Fixed
+- The profiler's kinds of component kept no name for draws whose content
+  was reused, so a board's `DEKI:PROFILE` listed them as "?": `AddBlit` takes
+  the name too.
+
 ## 0.30.0
 
 ### Declares the capabilities it uses
