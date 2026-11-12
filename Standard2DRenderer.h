@@ -394,10 +394,6 @@ private:
         uint8_t known = 0;  // bit 0: interior, bit 1: visible box
         bool hasInterior = false, hasVisible = false;
         Deki::Rect interior, visible;
-        // The visible box's runs in m_Packed, or null when it has none, as
-        // of that generation of the runs (0: not asked yet).
-        const uint8_t* runs = nullptr;
-        uint32_t runsGeneration = 0;
     };
     PackedPixels m_Packed;
     // The asset epoch and the scene its runs were made in.
@@ -410,12 +406,17 @@ private:
     SourceFacts* FactsOf(const QuadBlit::Source& source);
     bool OpaqueInteriorOf(const QuadBlit::Source& source, Deki::Rect& rect);
     bool VisibleBoundsOf(const QuadBlit::Source& source, Deki::Rect& rect);
-    // The source cut down to its box of non-transparent pixels, that box's
-    // runs when it has them (else null), and where the box starts in the
-    // source as drawn (with its flips). False when nothing is known of the
-    // source, or the whole source is as good.
-    bool VisiblePartOf(const QuadBlit::Source& source, QuadBlit::Source& part, int32_t& x, int32_t& y,
-                       const uint8_t*& runs);
+    // The source cut down to its box of non-transparent pixels, and where
+    // that box starts in the source as drawn (with its flips). False when
+    // nothing is known of the source, or there is nothing to cut.
+    bool VisiblePartOf(const QuadBlit::Source& source, QuadBlit::Source& part, int32_t& x, int32_t& y);
+    // The picture's runs in m_Packed, or null when it cannot have any.
+    const uint8_t* RunsOf(const QuadBlit::Source& picture);
+    // Draws a source 1:1 and unturned with its corner at (left, top) the
+    // cheapest way it can: from its runs, or only its visible box. False,
+    // with nothing drawn, when the usual blit of the whole source is as good.
+    bool BlitUnscaled(const QuadBlit::Source& source, const RenderContext& ctx, int32_t left, int32_t top,
+                      uint8_t tintR, uint8_t tintG, uint8_t tintB, uint8_t tintA, bool useOrderedDither);
     // Compares one renderer's draw with its record and keeps this one.
     // screenSignature and pin: see DrawRecord and m_Pins (0 and empty when
     // not scrolling).

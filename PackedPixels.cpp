@@ -15,84 +15,86 @@ PackedPixels::~PackedPixels()
     {
         Deki::Memory::Free(m_Blocks[i]);
     }
-    if (m_Pictures)
+    if (m_Kept)
     {
-        Deki::Memory::Free(m_Pictures);
+        Deki::Memory::Free(m_Kept);
     }
 }
 
-const uint8_t* PackedPixels::RunsOf(const uint8_t* first, uint32_t revision, int32_t width, int32_t height,
-                                    int32_t stride)
+const uint8_t* PackedPixels::RunsOf(const Picture& picture)
 {
-    if (!first || width <= 0 || height <= 0 ||
-        static_cast<size_t>(width) * static_cast<size_t>(height) > kLargestPicture)
+    if (!picture.first || picture.width <= 0 || picture.height <= 0 ||
+        static_cast<size_t>(picture.width) * static_cast<size_t>(picture.height) > kLargestPicture)
     {
         return nullptr;
     }
-    if (!m_Pictures)
+    if (!m_Kept)
     {
-        m_Pictures = static_cast<Picture*>(Deki::Memory::Allocate(sizeof(Picture) * kPlaces, Deki::Memory::External));
-        if (!m_Pictures)
+        m_Kept = static_cast<Kept*>(Deki::Memory::Allocate(sizeof(Kept) * kPlaces, Deki::Memory::External));
+        if (!m_Kept)
         {
             return nullptr;
         }
         for (size_t i = 0; i < kPlaces; ++i)
         {
-            new (&m_Pictures[i]) Picture();
+            new (&m_Kept[i]) Kept();
         }
     }
-    Picture* place = PlaceOf(first, revision, width, height, stride);
-    if (place->first)
+    Kept* place = PlaceOf(picture);
+    if (place->runs)
     {
         return place->runs;
     }
-    if (m_PictureCount == kMostPictures)
+    if (m_Full || m_KeptCount == kMostPictures)
     {
         return nullptr;
     }
-    const uint8_t* runs = Add(first, width, height, stride);
+    const uint8_t* runs = Add(picture);
     if (runs)
     {
-        *place = Picture{ first, revision, width, height, stride, runs };
-        ++m_PictureCount;
+        *place = Kept{ picture, runs };
+        ++m_KeptCount;
     }
     return runs;
 }
 
-PackedPixels::Picture* PackedPixels::PlaceOf(const uint8_t* first, uint32_t revision, int32_t width, int32_t height,
-                                             int32_t stride)
+PackedPixels::Kept* PackedPixels::PlaceOf(const Picture& picture)
 {
     // From where the picture's address and revision point, to the first
     // place that is its own or free. There is always a free one: the table
     // holds more places than pictures.
-    uint32_t at = static_cast<uint32_t>(reinterpret_cast<uintptr_t>(first)) * 2654435761u;
-    at ^= revision * 0x9E3779B1u;
+    uint32_t at = static_cast<uint32_t>(reinterpret_cast<uintptr_t>(picture.first)) * 2654435761u;
+    at ^= picture.revision * 0x9E3779B1u;
     at ^= at >> 15;
     for (;; ++at)
     {
-        Picture& p = m_Pictures[at % kPlaces];
-        if (!p.first || (p.first == first && p.revision == revision && p.width == width && p.height == height &&
-                         p.stride == stride))
+        Kept& kept = m_Kept[at % kPlaces];
+        if (!kept.runs || kept.picture == picture)
         {
-            return &p;
+            return &kept;
         }
     }
 }
 
-const uint8_t* PackedPixels::Add(const uint8_t* first, int32_t width, int32_t height, int32_t stride)
+const uint8_t* PackedPixels::Add(const Picture& picture)
 {
     // In the block being filled, or in a new one when it has no room left.
     if (m_BlockCount > 0)
     {
-        if (const uint8_t* runs = AddToLastBlock(first, width, height, stride))
+        if (const uint8_t* runs = AddToLastBlock(picture))
         {
             return runs;
         }
     }
-    return TakeBlock() ? AddToLastBlock(first, width, height, stride) : nullptr;
+    if (!TakeBlock())
+    {
+        m_Full = true;
+        return nullptr;
+    }
+    return AddToLastBlock(picture);
 }
 
-const uint8_t* PackedPixels::AddToLastBlock(const uint8_t* first, int32_t width, int32_t height, int32_t stride)
+const uint8_t* PackedPixels::AddToLastBlock(const Picture& picture)
 {
     const size_t at = (m_UsedInLast + 1) & ~static_cast<size_t>(1);  // the offsets are 16-bit
     if (at >= kBlockBytes)
@@ -100,7 +102,8 @@ const uint8_t* PackedPixels::AddToLastBlock(const uint8_t* first, int32_t width,
         return nullptr;
     }
     uint8_t* block = m_Blocks[m_BlockCount - 1];
-    const size_t bytes = QuadBlit::PackRuns(first, width, height, stride, block + at, kBlockBytes - at);
+    const size_t bytes = QuadBlit::PackRuns(picture.first, picture.width, picture.height, picture.stride, picture.flipH,
+                                            picture.flipV, block + at, kBlockBytes - at);
     if (bytes == 0)
     {
         return nullptr;
@@ -145,15 +148,12 @@ void PackedPixels::Clear()
         Deki::Memory::Free(m_Blocks[--m_BlockCount]);
     }
     m_UsedInLast = 0;
-    for (size_t i = 0; m_Pictures && i < kPlaces; ++i)
+    for (size_t i = 0; m_Kept && i < kPlaces; ++i)
     {
-        m_Pictures[i] = Picture{};
+        m_Kept[i] = Kept{};
     }
-    m_PictureCount = 0;
-    if (++m_Generation == 0)
-    {
-        m_Generation = 1;
-    }
+    m_KeptCount = 0;
+    m_Full = false;
 }
 
 }  // namespace DekiRendering

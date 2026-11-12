@@ -703,38 +703,13 @@ void Standard2DRenderer::ExecuteBuiltins(const SortItem& item, RenderContext& ct
             }
 
             const uint64_t blitStart = profiling ? RenderProfiler::Now() : 0;
-            // Drawn 1:1 and unturned, only its box of non-transparent pixels
-            // is blitted, as only that box counts as its area: the empty
-            // margin of an animation frame, a character in the middle of its
-            // cell, is then not read at all. Where the pixels are slow to
-            // read (a sprite sheet in external memory) reading them is most
-            // of a blit.
-            QuadBlit::Source visible;
-            const uint8_t* visibleRuns = nullptr;
-            int32_t visibleX = 0, visibleY = 0;
             int32_t blitLeft = 0, blitTop = 0, blitRight = 0, blitBottom = 0;
-            if (!m_SinkFrame && drawScaleX == 1.0f && drawScaleY == 1.0f && wt.rotation == 0.0f &&
-                VisiblePartOf(source, visible, visibleX, visibleY, visibleRuns) &&
+            const bool unscaled =
+                !m_SinkFrame && drawScaleX == 1.0f && drawScaleY == 1.0f && wt.rotation == 0.0f &&
                 QuadBlit::BlitArea(source, intScreenX, intScreenY, drawScaleX, drawScaleY, wt.rotation, pivotX, pivotY,
-                                   blitLeft, blitTop, blitRight, blitBottom))
-            {
-                // Plain, onto RGB565: from its runs, when it has them.
-                const bool plain = tintR == 255 && tintG == 255 && tintB == 255 && tintA == 255 && !useOrderedDither &&
-                                   !visible.flipH && !visible.flipV && !visible.flipD;
-                const bool empty = visible.width <= 0 || visible.height <= 0;
-                if (!empty && visibleRuns && plain && ctx.format == Deki::ColorFormat::RGB565)
-                {
-                    QuadBlit::BlitRuns(visibleRuns, visible.width, visible.height, ctx.buffer, ctx.width, ctx.height,
-                                       blitLeft + visibleX, blitTop + visibleY);
-                }
-                else if (!empty)
-                {
-                    QuadBlit::BlitScaled(visible, ctx.buffer, ctx.width, ctx.height, ctx.format, blitLeft + visibleX,
-                                         blitTop + visibleY, visible.width, visible.height, tintR, tintG, tintB, tintA,
-                                         useOrderedDither);
-                }
-            }
-            else
+                                   blitLeft, blitTop, blitRight, blitBottom);
+            if (!unscaled ||
+                !BlitUnscaled(source, ctx, blitLeft, blitTop, tintR, tintG, tintB, tintA, useOrderedDither))
             {
                 QuadBlit::Blit(source, ctx.buffer, ctx.width, ctx.height, ctx.format, intScreenX, intScreenY,
                                drawScaleX, drawScaleY, wt.rotation, pivotX, pivotY, tintR, tintG, tintB, tintA,
@@ -1592,10 +1567,63 @@ bool Standard2DRenderer::VisibleBoundsOf(const QuadBlit::Source& source, Deki::R
     return f->hasVisible;
 }
 
-bool Standard2DRenderer::VisiblePartOf(const QuadBlit::Source& source, QuadBlit::Source& part, int32_t& x, int32_t& y,
-                                       const uint8_t*& runs)
+bool Standard2DRenderer::BlitUnscaled(const QuadBlit::Source& source, const RenderContext& ctx, int32_t left,
+                                      int32_t top, uint8_t tintR, uint8_t tintG, uint8_t tintB, uint8_t tintA,
+                                      bool useOrderedDither)
 {
-    runs = nullptr;
+    // Only its box of non-transparent pixels, as only that box counts as its
+    // area: the empty margin of an animation frame, a character in the
+    // middle of its cell, is then not read at all.
+    QuadBlit::Source picture = source;
+    int32_t x = 0, y = 0;
+    const bool cut = VisiblePartOf(source, picture, x, y);
+    if (cut && (picture.width <= 0 || picture.height <= 0))
+    {
+        return true;  // nothing in it to draw
+    }
+    // From its runs, when it has them: none of its transparent pixels read.
+    if (ctx.format == Deki::ColorFormat::RGB565 && !useOrderedDither)
+    {
+        if (const uint8_t* runs = RunsOf(picture))
+        {
+            QuadBlit::BlitRuns(runs, picture.width, picture.height, ctx.buffer, ctx.width, ctx.height, left + x,
+                               top + y, tintR, tintG, tintB, tintA);
+            return true;
+        }
+    }
+    if (!cut)
+    {
+        return false;  // the whole source, the usual way
+    }
+    QuadBlit::BlitScaled(picture, ctx.buffer, ctx.width, ctx.height, ctx.format, left + x, top + y, picture.width,
+                         picture.height, tintR, tintG, tintB, tintA, useOrderedDither);
+    return true;
+}
+
+const uint8_t* Standard2DRenderer::RunsOf(const QuadBlit::Source& picture)
+{
+    // Pictures of RGB565 with an alpha a pixel, kept by revision, which says
+    // their pixels stay as they are; and only where there is external
+    // memory, which is where pictures are and where reading them is slow.
+    if (!picture.isRGB565 || picture.bytesPerPixel != 3 || !picture.hasAlpha || picture.hasChromaKey || picture.flipD ||
+        picture.stretchWidth > 0 || picture.stretchHeight > 0 || picture.revision == 0 ||
+        !Deki::Memory::IsExternalAvailable())
+    {
+        return nullptr;
+    }
+    PackedPixels::Picture kept;
+    kept.first = picture.pixels;
+    kept.revision = picture.revision;
+    kept.width = picture.width;
+    kept.height = picture.height;
+    kept.stride = picture.stride > 0 ? picture.stride : picture.width * picture.bytesPerPixel;
+    kept.flipH = picture.flipH;
+    kept.flipV = picture.flipV;
+    return m_Packed.RunsOf(kept);
+}
+
+bool Standard2DRenderer::VisiblePartOf(const QuadBlit::Source& source, QuadBlit::Source& part, int32_t& x, int32_t& y)
+{
     // Rows that already say what to skip (spans, runs, one colour a row) are
     // left whole: their tables are laid out for the whole source.
     if (!source.hasAlpha || source.alphaRowSpans || source.chromaRowSpans || source.clearRowSpans ||
@@ -1617,8 +1645,10 @@ bool Standard2DRenderer::VisiblePartOf(const QuadBlit::Source& source, QuadBlit:
         x = y = 0;
         return true;
     }
-    const bool whole =
-        drawn.left == 0 && drawn.top == 0 && drawn.right == source.width && drawn.bottom == source.height;
+    if (drawn.left == 0 && drawn.top == 0 && drawn.right == source.width && drawn.bottom == source.height)
+    {
+        return false;  // nothing to leave out
+    }
     // The box in the pixels as stored; drawn, a flip mirrors it inside the
     // source, and mirrors the part the same way.
     const Deki::Rect& stored = f->visible;
@@ -1632,20 +1662,7 @@ bool Standard2DRenderer::VisiblePartOf(const QuadBlit::Source& source, QuadBlit:
     part.ownsPixels = false;
     x = drawn.left;
     y = drawn.top;
-
-    // A small RGB565A8 box is also kept as runs (PackedPixels), made the
-    // first time it is drawn, for a blit that can draw from them: where
-    // there is external memory, which is where pictures are and where
-    // reading them is slow.
-    if (f->runsGeneration != m_Packed.Generation())
-    {
-        f->runsGeneration = m_Packed.Generation();
-        f->runs = part.isRGB565 && part.bytesPerPixel == 3 && Deki::Memory::IsExternalAvailable()
-                      ? m_Packed.RunsOf(part.pixels, part.revision, part.width, part.height, stride)
-                      : nullptr;
-    }
-    runs = f->runs;
-    return runs || !whole;
+    return true;
 }
 void Standard2DRenderer::LightFrameIfDue(const SortItem* next, const RenderContext& ctx)
 {

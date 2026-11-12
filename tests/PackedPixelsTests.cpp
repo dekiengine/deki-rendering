@@ -1,5 +1,6 @@
 // Pictures kept as runs: QuadBlit::PackRuns and BlitRuns draw what BlitScaled
-// draws of the picture itself, and PackedPixels keeps them.
+// draws of the picture itself, mirrored and tinted too, and PackedPixels
+// keeps them.
 
 #include <cstdint>
 #include <cstring>
@@ -59,13 +60,26 @@ std::vector<uint16_t> Target(int32_t width, int32_t height)
     }
     return pixels;
 }
+
+// The picture at the start of a sheet `sheetWidth` pixels wide.
+PackedPixels::Picture PictureOf(const std::vector<uint8_t>& sheet, int32_t sheetWidth, int32_t width, int32_t height,
+                                uint32_t revision = 1)
+{
+    PackedPixels::Picture picture;
+    picture.first = sheet.data();
+    picture.revision = revision;
+    picture.width = width;
+    picture.height = height;
+    picture.stride = sheetWidth * 3;
+    return picture;
+}
 }  // namespace
 
 TEST(PackedPixels, RunsDrawWhatThePictureDraws)
 {
     s_Seed = 2463534242u;
     constexpr int32_t kTargetW = 64, kTargetH = 48;
-    for (int round = 0; round < 300; ++round)
+    for (int round = 0; round < 600; ++round)
     {
         // A box inside a wider sheet.
         const int32_t sheetW = 40 + Next(60), sheetH = 30 + Next(40);
@@ -74,8 +88,16 @@ TEST(PackedPixels, RunsDrawWhatThePictureDraws)
         const int32_t x = Next(sheetW - w), y = Next(sheetH - h);
         const uint8_t* first = sheet.data() + (static_cast<size_t>(y) * sheetW + x) * 3;
 
+        // As it is or mirrored; plain, tinted, faded or both.
+        const bool flipH = round % 4 == 1 || round % 4 == 3, flipV = round % 4 >= 2;
+        const int32_t tinted = Next(4);
+        const uint8_t tintR = tinted & 1 ? static_cast<uint8_t>(Next(256)) : 255;
+        const uint8_t tintG = tinted & 1 ? static_cast<uint8_t>(Next(256)) : 255;
+        const uint8_t tintB = tinted & 1 ? static_cast<uint8_t>(Next(256)) : 255;
+        const uint8_t tintA = tinted & 2 ? static_cast<uint8_t>(1 + Next(254)) : 255;
+
         std::vector<uint8_t> runs(static_cast<size_t>(w) * h * 5 + static_cast<size_t>(h) * 2 + 16);
-        const size_t bytes = QuadBlit::PackRuns(first, w, h, sheetW * 3, runs.data(), runs.size());
+        const size_t bytes = QuadBlit::PackRuns(first, w, h, sheetW * 3, flipH, flipV, runs.data(), runs.size());
         ASSERT_GT(bytes, 0u) << "round " << round;
 
         // Drawn anywhere, partly off the target, inside a clip or not.
@@ -88,20 +110,23 @@ TEST(PackedPixels, RunsDrawWhatThePictureDraws)
 
         QuadBlit::Source source = QuadBlit::MakeSource(first, w, h, QuadBlit::PixelLayout::RGB565A8());
         source.stride = sheetW * 3;
+        source.flipH = flipH;
+        source.flipV = flipV;
         if (clipped)
         {
             QuadBlit::PushClipRect(cl, ct, cr, cb);
         }
         QuadBlit::BlitScaled(source, reinterpret_cast<uint8_t*>(fromPicture.data()), kTargetW, kTargetH,
-                             Deki::ColorFormat::RGB565, destX, destY, w, h);
+                             Deki::ColorFormat::RGB565, destX, destY, w, h, tintR, tintG, tintB, tintA);
         QuadBlit::BlitRuns(runs.data(), w, h, reinterpret_cast<uint8_t*>(fromRuns.data()), kTargetW, kTargetH, destX,
-                           destY);
+                           destY, tintR, tintG, tintB, tintA);
         if (clipped)
         {
             QuadBlit::PopClipRect();
         }
         ASSERT_EQ(std::memcmp(fromPicture.data(), fromRuns.data(), fromRuns.size() * sizeof(uint16_t)), 0)
-            << "round " << round << ": " << w << "x" << h << " at " << destX << "," << destY;
+            << "round " << round << ": " << w << "x" << h << " at " << destX << "," << destY << " flips " << flipH
+            << flipV << " tint " << int(tintR) << "," << int(tintG) << "," << int(tintB) << "," << int(tintA);
     }
 }
 
@@ -110,38 +135,52 @@ TEST(PackedPixels, RunsThatDoNotFitAreNotWritten)
     s_Seed = 88172645u;
     const std::vector<uint8_t> sheet = Sheet(20, 20);
     std::vector<uint8_t> runs(4096);
-    const size_t bytes = QuadBlit::PackRuns(sheet.data(), 20, 20, 60, runs.data(), runs.size());
+    const size_t bytes = QuadBlit::PackRuns(sheet.data(), 20, 20, 60, false, false, runs.data(), runs.size());
     ASSERT_GT(bytes, 0u);
-    EXPECT_EQ(QuadBlit::PackRuns(sheet.data(), 20, 20, 60, runs.data(), bytes - 1), 0u);
-    EXPECT_EQ(QuadBlit::PackRuns(sheet.data(), 20, 20, 60, runs.data(), 10), 0u);
+    EXPECT_EQ(QuadBlit::PackRuns(sheet.data(), 20, 20, 60, false, false, runs.data(), bytes - 1), 0u);
+    EXPECT_EQ(QuadBlit::PackRuns(sheet.data(), 20, 20, 60, false, false, runs.data(), 10), 0u);
 }
 
-TEST(PackedPixels, KeepsEachPicturesRunsApart)
+TEST(PackedPixels, APictureAskedForAgainHasTheSameRuns)
 {
-    s_Seed = 123456789u;
+    s_Seed = 886756453u;
     const std::vector<uint8_t> sheet = Sheet(64, 64);
     PackedPixels packed;
-    const uint8_t* a = packed.RunsOf(sheet.data(), 1, 16, 16, 64 * 3);
-    const uint8_t* b = packed.RunsOf(sheet.data() + 16 * 3, 1, 15, 17, 64 * 3);
-    ASSERT_NE(a, nullptr);
-    ASSERT_NE(b, nullptr);
-    EXPECT_NE(a, b);
+    const PackedPixels::Picture picture = PictureOf(sheet, 64, 20, 20, 7);
+    const uint8_t* runs = packed.RunsOf(picture);
+    ASSERT_NE(runs, nullptr);
+    const size_t used = packed.Used();
+    EXPECT_EQ(packed.RunsOf(picture), runs);
+    EXPECT_EQ(packed.Used(), used);
 
-    // The first still draws as it did before the second was added.
+    // Another revision, size, place or mirror is another picture.
+    PackedPixels::Picture other = picture;
+    other.revision = 8;
+    EXPECT_NE(packed.RunsOf(other), runs);
+    other = picture;
+    other.height = 19;
+    EXPECT_NE(packed.RunsOf(other), runs);
+    other = picture;
+    other.first += 3;
+    EXPECT_NE(packed.RunsOf(other), runs);
+    other = picture;
+    other.flipH = true;
+    EXPECT_NE(packed.RunsOf(other), runs);
+    EXPECT_GT(packed.Used(), used);
+    // And the first is still as it was.
     std::vector<uint8_t> alone(4096);
-    const size_t bytes = QuadBlit::PackRuns(sheet.data(), 16, 16, 64 * 3, alone.data(), alone.size());
+    const size_t bytes = QuadBlit::PackRuns(sheet.data(), 20, 20, 64 * 3, false, false, alone.data(), alone.size());
     ASSERT_GT(bytes, 0u);
-    EXPECT_EQ(std::memcmp(a, alone.data(), bytes), 0);
-    EXPECT_GE(packed.Used(), bytes);
+    EXPECT_EQ(std::memcmp(runs, alone.data(), bytes), 0);
 }
 
 TEST(PackedPixels, LeavesAPictureLargerThanTheLargest)
 {
     s_Seed = 362436069u;
-    const std::vector<uint8_t> sheet = Sheet(80, 80);
+    const std::vector<uint8_t> sheet = Sheet(140, 130);
     PackedPixels packed;
-    EXPECT_EQ(packed.RunsOf(sheet.data(), 1, 65, 64, 80 * 3), nullptr);
-    EXPECT_NE(packed.RunsOf(sheet.data(), 1, 64, 64, 80 * 3), nullptr);
+    EXPECT_EQ(packed.RunsOf(PictureOf(sheet, 140, 129, 128)), nullptr);
+    EXPECT_NE(packed.RunsOf(PictureOf(sheet, 140, 128, 128)), nullptr);
 }
 
 TEST(PackedPixels, TakesAnotherBlockWhenOneIsFull)
@@ -150,7 +189,7 @@ TEST(PackedPixels, TakesAnotherBlockWhenOneIsFull)
     const std::vector<uint8_t> sheet = Sheet(64, 64);
     PackedPixels packed;
     uint32_t revision = 1;
-    const uint8_t* first = packed.RunsOf(sheet.data(), revision++, 64, 64, 64 * 3);
+    const uint8_t* first = packed.RunsOf(PictureOf(sheet, 64, 64, 64, revision++));
     ASSERT_NE(first, nullptr);
     std::vector<uint8_t> alone(packed.Used());
     std::memcpy(alone.data(), first, alone.size());
@@ -159,7 +198,7 @@ TEST(PackedPixels, TakesAnotherBlockWhenOneIsFull)
     // where it was, as it was.
     while (packed.Used() <= PackedPixels::kBlockBytes)
     {
-        ASSERT_NE(packed.RunsOf(sheet.data(), revision++, 64, 64, 64 * 3), nullptr);
+        ASSERT_NE(packed.RunsOf(PictureOf(sheet, 64, 64, 64, revision++)), nullptr);
     }
     EXPECT_EQ(std::memcmp(first, alone.data(), alone.size()), 0);
 }
@@ -169,37 +208,20 @@ TEST(PackedPixels, AddsNoMoreAtTheMostBlocksUntilItIsCleared)
     s_Seed = 521288629u;
     const std::vector<uint8_t> sheet = Sheet(64, 64);
     PackedPixels packed;
-    int added = 0;
-    while (packed.RunsOf(sheet.data(), static_cast<uint32_t>(added + 1), 64, 64, 64 * 3) && added < 100000)
+    uint32_t added = 0;
+    while (packed.RunsOf(PictureOf(sheet, 64, 64, 64, added + 1)) && added < 100000)
     {
         ++added;
     }
-    EXPECT_GT(added, static_cast<int>(PackedPixels::kMostBlocks));
-    EXPECT_LT(added, 100000);
+    EXPECT_GT(added, PackedPixels::kMostBlocks);
+    EXPECT_LT(added, 100000u);
     EXPECT_LE(packed.Used(), PackedPixels::kBlockBytes * PackedPixels::kMostBlocks);
+    // Full: not even a small one, until it is emptied.
+    EXPECT_EQ(packed.RunsOf(PictureOf(sheet, 64, 4, 4, 200000)), nullptr);
 
-    const uint32_t before = packed.Generation();
     packed.Clear();
-    EXPECT_NE(packed.Generation(), before);
     EXPECT_EQ(packed.Used(), 0u);
-    EXPECT_NE(packed.RunsOf(sheet.data(), 1, 64, 64, 64 * 3), nullptr);
-}
-
-TEST(PackedPixels, APictureAskedForAgainHasTheSameRuns)
-{
-    s_Seed = 886756453u;
-    const std::vector<uint8_t> sheet = Sheet(64, 64);
-    PackedPixels packed;
-    const uint8_t* runs = packed.RunsOf(sheet.data(), 7, 20, 20, 64 * 3);
-    ASSERT_NE(runs, nullptr);
-    const size_t used = packed.Used();
-    EXPECT_EQ(packed.RunsOf(sheet.data(), 7, 20, 20, 64 * 3), runs);
-    EXPECT_EQ(packed.Used(), used);
-    // Another revision, size or place is another picture.
-    EXPECT_NE(packed.RunsOf(sheet.data(), 8, 20, 20, 64 * 3), runs);
-    EXPECT_NE(packed.RunsOf(sheet.data(), 7, 20, 19, 64 * 3), runs);
-    EXPECT_NE(packed.RunsOf(sheet.data() + 3, 7, 20, 20, 64 * 3), runs);
-    EXPECT_GT(packed.Used(), used);
+    EXPECT_NE(packed.RunsOf(PictureOf(sheet, 64, 4, 4, 200000)), nullptr);
 }
 
 TEST(PackedPixels, KeepsNoMoreThanTheMostPictures)
@@ -209,9 +231,9 @@ TEST(PackedPixels, KeepsNoMoreThanTheMostPictures)
     PackedPixels packed;
     for (uint32_t i = 0; i < PackedPixels::kMostPictures; ++i)
     {
-        ASSERT_NE(packed.RunsOf(sheet.data(), i + 1, 4, 4, 8 * 3), nullptr) << "picture " << i;
+        ASSERT_NE(packed.RunsOf(PictureOf(sheet, 8, 4, 4, i + 1)), nullptr) << "picture " << i;
     }
-    EXPECT_EQ(packed.RunsOf(sheet.data(), 100000, 4, 4, 8 * 3), nullptr);
+    EXPECT_EQ(packed.RunsOf(PictureOf(sheet, 8, 4, 4, 100000)), nullptr);
     // One it holds is still found.
-    EXPECT_NE(packed.RunsOf(sheet.data(), 1, 4, 4, 8 * 3), nullptr);
+    EXPECT_NE(packed.RunsOf(PictureOf(sheet, 8, 4, 4, 1)), nullptr);
 }

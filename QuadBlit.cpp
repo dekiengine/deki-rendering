@@ -2045,7 +2045,8 @@ void BlitScaled(const Source& source, uint8_t* target, int32_t targetWidth, int3
 // Pictures kept as runs
 // ============================================================================
 
-size_t PackRuns(const uint8_t* pixels, int32_t width, int32_t height, int32_t stride, uint8_t* out, size_t capacity)
+size_t PackRuns(const uint8_t* pixels, int32_t width, int32_t height, int32_t stride, bool flipH, bool flipV,
+                uint8_t* out, size_t capacity)
 {
     if (!pixels || !out || width <= 0 || height <= 0)
     {
@@ -2056,17 +2057,6 @@ size_t PackRuns(const uint8_t* pixels, int32_t width, int32_t height, int32_t st
     {
         return 0;
     }
-    // How many pixels from x on have an alpha for which `same` holds, up to
-    // what one count holds.
-    auto run = [width](const uint8_t* row, int32_t x, bool (*same)(uint8_t))
-    {
-        int32_t count = 0;
-        while (x + count < width && count < 255 && same(row[(x + count) * 3 + 2]))
-        {
-            ++count;
-        }
-        return count;
-    };
     for (int32_t y = 0; y < height; ++y)
     {
         if (used > UINT16_MAX)
@@ -2074,18 +2064,25 @@ size_t PackRuns(const uint8_t* pixels, int32_t width, int32_t height, int32_t st
             return 0;
         }
         StoreU16(out + static_cast<size_t>(y) * 2, static_cast<uint16_t>(used));
-        const uint8_t* row = pixels + static_cast<size_t>(y) * static_cast<size_t>(stride);
+        // The row as drawn: the picture's, or its mirror.
+        const uint8_t* row = pixels + static_cast<size_t>(flipV ? height - 1 - y : y) * static_cast<size_t>(stride);
+        auto pixel = [row, width, flipH](int32_t x) { return row + (flipH ? width - 1 - x : x) * 3; };
+        // How many pixels from x on have an alpha for which `same` holds, up
+        // to what one count holds.
+        auto run = [&pixel, width](int32_t x, bool (*same)(uint8_t))
+        {
+            int32_t count = 0;
+            while (x + count < width && count < 255 && same(pixel(x + count)[2]))
+            {
+                ++count;
+            }
+            return count;
+        };
         for (int32_t x = 0; x < width;)
         {
-            const int32_t pass = run(row, x, [](uint8_t a) { return a == 0; });
-            x += pass;
-            const int32_t copy = run(row, x, [](uint8_t a) { return a == 255; });
-            const uint8_t* copied = row + x * 3;
-            x += copy;
-            const int32_t blend = run(row, x, [](uint8_t a) { return a != 0 && a != 255; });
-            const uint8_t* blended = row + x * 3;
-            x += blend;
-
+            const int32_t pass = run(x, [](uint8_t a) { return a == 0; });
+            const int32_t copy = run(x + pass, [](uint8_t a) { return a == 255; });
+            const int32_t blend = run(x + pass + copy, [](uint8_t a) { return a != 0 && a != 255; });
             if (used + 3 + static_cast<size_t>(copy) * 2 + static_cast<size_t>(blend) * 3 > capacity)
             {
                 return 0;
@@ -2093,18 +2090,21 @@ size_t PackRuns(const uint8_t* pixels, int32_t width, int32_t height, int32_t st
             out[used++] = static_cast<uint8_t>(pass);
             out[used++] = static_cast<uint8_t>(copy);
             out[used++] = static_cast<uint8_t>(blend);
-            for (int32_t i = 0; i < copy; ++i)
+            x += pass;
+            for (int32_t i = 0; i < copy; ++i, ++x)
             {
-                out[used++] = copied[i * 3];
-                out[used++] = copied[i * 3 + 1];
+                out[used++] = pixel(x)[0];
+                out[used++] = pixel(x)[1];
             }
-            std::memcpy(out + used, blended, static_cast<size_t>(blend) * 3);
-            used += static_cast<size_t>(blend) * 3;
+            for (int32_t i = 0; i < blend; ++i, ++x)
+            {
+                std::memcpy(out + used, pixel(x), 3);
+                used += 3;
+            }
         }
     }
     return used;
 }
-
 // The rows of BlitRuns. Not inlined into its caller, which runs from flash:
 // the loop must stay in IRAM.
 [[gnu::noinline]] static DEKI_FAST_ATTR void RunRows_RGB565(const uint8_t* runs, uint16_t* target16,
@@ -2147,10 +2147,73 @@ size_t PackRuns(const uint8_t* pixels, int32_t width, int32_t height, int32_t st
     }
 }
 
-void BlitRuns(const uint8_t* runs, int32_t width, int32_t height, uint8_t* target, int32_t targetWidth,
-              int32_t targetHeight, int32_t destX, int32_t destY)
+// The rows of BlitRuns with a tint: each pixel copied goes through the
+// tint's tables, or with an alpha tint is blended at the tint's alpha, as
+// TintRows_RGB565 draws them. Not inlined, as RunRows_RGB565.
+template <bool AlphaTint>
+[[gnu::noinline]] static DEKI_FAST_ATTR void
+TintRunRows_RGB565(const uint8_t* runs, uint16_t* target16, int32_t targetWidth, int32_t destX, int32_t destY,
+                   int32_t width, const BlitBounds& b, const BlitParams& tint)
 {
-    if (!runs || !target || width <= 0 || height <= 0)
+    const TintTables& t = TintTablesFor(tint.tintR, tint.tintG, tint.tintB);
+    const uint32_t tintA = tint.tintA;
+    const int32_t rowEnd = std::min(destX + width, b.endX);
+    for (int32_t py = b.startY; py < b.endY; py++)
+    {
+        const uint8_t* p = runs + LoadU16(runs + static_cast<size_t>(py - destY) * 2);
+        uint16_t* dstRow = target16 + py * targetWidth;
+        for (int32_t x = destX; x < rowEnd;)
+        {
+            x += p[0];
+            const int32_t copy = p[1];
+            const int32_t blend = p[2];
+            p += 3;
+
+            const int32_t left = std::max(x, b.startX);
+            const int32_t right = std::min(x + copy, b.endX);
+            for (int32_t px = left; px < right; ++px)
+            {
+                const uint32_t v = Load565(p + static_cast<size_t>(px - x) * 2);
+                if constexpr (AlphaTint)
+                {
+                    dstRow[px] = TintBlend565(t, v, tintA, dstRow[px]);  // opaque, at the tint's alpha
+                }
+                else
+                {
+                    dstRow[px] = static_cast<uint16_t>(t.pr[v >> 11] | t.pg[(v >> 5) & 0x3F] | t.pb[v & 0x1F]);
+                }
+            }
+            p += static_cast<size_t>(copy) * 2;
+            x += copy;
+
+            for (int32_t i = 0; i < blend; ++i, p += 3)
+            {
+                const int32_t px = x + i;
+                if (px < b.startX || px >= b.endX)
+                {
+                    continue;
+                }
+                uint32_t a = p[2];
+                if constexpr (AlphaTint)
+                {
+                    a = Div255(a * tintA);
+                    if (a == 0)
+                    {
+                        continue;
+                    }
+                }
+                dstRow[px] = TintBlend565(t, Load565(p), a, dstRow[px]);
+            }
+            x += blend;
+        }
+    }
+}
+
+void BlitRuns(const uint8_t* runs, int32_t width, int32_t height, uint8_t* target, int32_t targetWidth,
+              int32_t targetHeight, int32_t destX, int32_t destY, uint8_t tintR, uint8_t tintG, uint8_t tintB,
+              uint8_t tintA)
+{
+    if (!runs || !target || width <= 0 || height <= 0 || tintA == 0)
     {
         return;
     }
@@ -2163,7 +2226,25 @@ void BlitRuns(const uint8_t* runs, int32_t width, int32_t height, uint8_t* targe
     PathScope scope(static_cast<uint64_t>(bounds.endX - bounds.startX) *
                     static_cast<uint64_t>(bounds.endY - bounds.startY));
     scope.path = BlitPath::RunRows;
-    RunRows_RGB565(runs, reinterpret_cast<uint16_t*>(target), targetWidth, destX, destY, width, bounds);
+    uint16_t* target16 = reinterpret_cast<uint16_t*>(target);
+    if (tintR == 255 && tintG == 255 && tintB == 255 && tintA == 255)
+    {
+        RunRows_RGB565(runs, target16, targetWidth, destX, destY, width, bounds);
+        return;
+    }
+    BlitParams tint;
+    tint.tintR = tintR;
+    tint.tintG = tintG;
+    tint.tintB = tintB;
+    tint.tintA = tintA;
+    if (tintA != 255)
+    {
+        TintRunRows_RGB565<true>(runs, target16, targetWidth, destX, destY, width, bounds, tint);
+    }
+    else
+    {
+        TintRunRows_RGB565<false>(runs, target16, targetWidth, destX, destY, width, bounds, tint);
+    }
 }
 
 // ============================================================================

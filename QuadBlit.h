@@ -367,20 +367,25 @@ void BlitScaled(const Source& source, uint8_t* target, int32_t targetWidth, int3
 /// reads none of its transparent pixels and tests no alpha: where a picture
 /// is slow to read, a character in a frame is mostly pixels not drawn.
 ///
-/// `pixels` is `height` rows of `width` pixels, `stride` bytes apart. The
-/// runs are `height` 16-bit offsets, one a row, from their start; then each
-/// row as groups of three counts (pass, copy, blend: a byte each), `copy`
-/// pixels of 2 bytes and `blend` pixels of 3, until the row is used up.
+/// `pixels` is `height` rows of `width` pixels, `stride` bytes apart;
+/// `flipH` and `flipV` write the runs of its mirror, as Source::flipH and
+/// flipV draw it. The runs are `height` 16-bit offsets, one a row, from
+/// their start; then each row as groups of three counts (pass, copy, blend:
+/// a byte each), `copy` pixels of 2 bytes and `blend` pixels of 3, until the
+/// row is used up.
 ///
 /// Returns the bytes written to `out`, or 0 when they do not fit `capacity`
 /// or a 16-bit offset.
-size_t PackRuns(const uint8_t* pixels, int32_t width, int32_t height, int32_t stride, uint8_t* out, size_t capacity);
+size_t PackRuns(const uint8_t* pixels, int32_t width, int32_t height, int32_t stride, bool flipH, bool flipV,
+                uint8_t* out, size_t capacity);
 
 /// Draws runs made by PackRuns onto an RGB565 target with their corner at
-/// (destX, destY): the pixels BlitScaled draws of the picture itself, 1:1
-/// and untinted, within the clip.
+/// (destX, destY): the pixels BlitScaled draws of the picture itself, 1:1,
+/// with the same tint, within the clip. The tint is applied as it is drawn,
+/// so one picture's runs serve every tint.
 void BlitRuns(const uint8_t* runs, int32_t width, int32_t height, uint8_t* target, int32_t targetWidth,
-              int32_t targetHeight, int32_t destX, int32_t destY);
+              int32_t targetHeight, int32_t destX, int32_t destY, uint8_t tintR = 255, uint8_t tintG = 255,
+              uint8_t tintB = 255, uint8_t tintA = 255);
 
 // ============================================================================
 // Blit sink: the frame's blits drawn by something else, a GPU

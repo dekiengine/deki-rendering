@@ -11,24 +11,27 @@ alongside one that has them.
 ## Unreleased
 
 ### Added
-- **Small sprites are drawn from runs.** A sprite drawn 1:1, unturned and
-  untinted onto RGB565 keeps its box of non-transparent pixels as runs: for
-  each row, how many pixels to pass over, how many to copy and how many to
-  blend, with only those pixels kept (`QuadBlit::PackRuns`, `BlitRuns`,
-  `PackedPixels`). Drawn from the picture, every pixel of an animation
-  frame was read, three bytes each, to find the ones to draw; where pictures
-  are in external memory that reading was most of what a character cost.
-  Nothing to set: the runs are made the first time a sprite of up to 64x64
-  pixels is drawn, on targets that have external memory, in 64 KB blocks of
-  it taken as they fill: up to eight, and never the last half megabyte the
-  target has free. A character's frame takes about 1.2 KB. Any other
-  sprite, or one there is no room for, is drawn as before, and another
+- **Sprites are drawn from runs.** A sprite drawn 1:1 and unturned onto
+  RGB565 keeps its box of non-transparent pixels as runs: for each row, how
+  many pixels to pass over, how many to copy and how many to blend, with
+  only those pixels kept (`QuadBlit::PackRuns`, `BlitRuns`, `PackedPixels`).
+  Drawn from the picture, every pixel of an animation frame was read, three
+  bytes each, to find the ones to draw; where pictures are in external
+  memory that reading was most of what a character cost. A sprite mirrored
+  across or down has runs of its own, and a tint or a fade is applied as the
+  runs are drawn, so it can change every frame. Nothing to set: the runs are
+  made the first time a sprite of up to 128x128 pixels is drawn, on targets
+  that have external memory, in 64 KB blocks of it taken as they fill: up to
+  eight, and never the last half megabyte the target has free. A
+  character's frame takes about 1.2 KB. A sprite scaled, turned or
+  dithered, or one there is no room for, is drawn as before, and another
   scene starts with the store empty. The pixels are the same, checked
-  against the plain blit over random pictures, positions and clips, and on
-  a board frame by frame. On a LilyGO T-Deck the "Your first game" farm
-  with 16 villagers walking went from 18.6 to 16.7 ms a frame, the
-  display's 60 fps, as with none; with each villager on a sheet of its own
-  (256 frames, about 300 KB of runs) it holds 16.9 ms.- **The profiler breaks a frame down by object.** While it is on, each
+  against the plain blit over random pictures, mirrors, tints, positions
+  and clips, and on a board frame by frame. On a LilyGO T-Deck the "Your
+  first game" farm with 16 villagers walking went from 18.6 to 16.7 ms a
+  frame, the display's 60 fps, as with none; it holds 16.9 ms with each
+  villager on a sheet of its own (256 frames, about 300 KB of runs), and 17
+  ms with half of them mirrored, a quarter tinted and a quarter faded.- **The profiler breaks a frame down by object.** While it is on, each
   renderer, and each render pass on each object, has a row
   (`RenderProfiler::TakeObjects`): its path and type, its share of finding
   what changed, of making and of drawing its pixels, how many times it was
