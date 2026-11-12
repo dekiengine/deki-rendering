@@ -58,7 +58,7 @@ private:
     // each only across them. Past kRedrawWholeAbove of the screen, or when
     // the renderer cannot tell, the frame is drawn whole as usual.
     static constexpr int32_t kRedrawWholeAbove = 75;  // percent of the screen; a policy
-    static constexpr int32_t kRedrawAlign = 8;        // part alignment in px: pairs of rows, the dither's tile
+    static constexpr int32_t kRedrawAlign = 4;        // part alignment in px: pairs of rows and columns
     // Each part redrawn replays the frame's plan and has each render pass
     // draw again: measured on a board, about what drawing 2000 more pixels
     // costs. Parts closer than that are drawn as one. A policy

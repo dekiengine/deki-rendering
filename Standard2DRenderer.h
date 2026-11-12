@@ -2,6 +2,7 @@
 
 #include "DekiRenderer.h"
 #include "ExternalAllocator.h"
+#include "PackedPixels.h"
 #include "DirtyRegion.h"
 #include "Fingerprint.h"
 #include "Lighting2D.h"
@@ -393,7 +394,15 @@ private:
         uint8_t known = 0;  // bit 0: interior, bit 1: visible box
         bool hasInterior = false, hasVisible = false;
         Deki::Rect interior, visible;
+        // The visible box's runs in m_Packed, or null when it has none, as
+        // of that generation of the runs (0: not asked yet).
+        const uint8_t* runs = nullptr;
+        uint32_t runsGeneration = 0;
     };
+    PackedPixels m_Packed;
+    // The asset epoch and the scene its runs were made in.
+    uint64_t m_PackedEpoch = 0;
+    uint32_t m_PackedScene = 0;
     static constexpr size_t kSourceFacts = 512;
     static constexpr uint32_t kSourceFactWays = 4;  // places looked in for a source
     uint32_t m_SourceFactTurn = 0;                  // which of them the next one with no place takes
@@ -401,10 +410,12 @@ private:
     SourceFacts* FactsOf(const QuadBlit::Source& source);
     bool OpaqueInteriorOf(const QuadBlit::Source& source, Deki::Rect& rect);
     bool VisibleBoundsOf(const QuadBlit::Source& source, Deki::Rect& rect);
-    // The source cut down to its box of non-transparent pixels, and where
-    // that box starts in the source as drawn (with its flips). False when
-    // nothing is known of the source, or there is nothing to cut.
-    bool VisiblePartOf(const QuadBlit::Source& source, QuadBlit::Source& part, int32_t& x, int32_t& y);
+    // The source cut down to its box of non-transparent pixels, that box's
+    // runs when it has them (else null), and where the box starts in the
+    // source as drawn (with its flips). False when nothing is known of the
+    // source, or the whole source is as good.
+    bool VisiblePartOf(const QuadBlit::Source& source, QuadBlit::Source& part, int32_t& x, int32_t& y,
+                       const uint8_t*& runs);
     // Compares one renderer's draw with its record and keeps this one.
     // screenSignature and pin: see DrawRecord and m_Pins (0 and empty when
     // not scrolling).

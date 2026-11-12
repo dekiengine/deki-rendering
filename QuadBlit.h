@@ -14,7 +14,7 @@ namespace DekiRendering
 class DirtyRegion;
 class Lighting2D;
 struct DeferredClear;
-}
+}  // namespace DekiRendering
 
 /// Quad blitting with full 2D transforms: copies source pixels to a target
 /// buffer with position, scale, rotation and alpha blending. Renderers can
@@ -356,6 +356,31 @@ void BlitScaled(const Source& source, uint8_t* target, int32_t targetWidth, int3
                 Deki::ColorFormat targetFormat, int32_t destX, int32_t destY, int32_t destWidth, int32_t destHeight,
                 uint8_t tintR = 255, uint8_t tintG = 255, uint8_t tintB = 255, uint8_t tintA = 255,
                 bool useOrderedDither = false);
+
+// ============================================================================
+// Pictures kept as runs
+// ============================================================================
+
+/// Writes an RGB565A8 picture as runs: for each row, how many pixels to pass
+/// over (alpha 0), how many to copy (alpha 255) and how many to blend, with
+/// only the copied and blended pixels kept. A sprite drawn from its runs
+/// reads none of its transparent pixels and tests no alpha: where a picture
+/// is slow to read, a character in a frame is mostly pixels not drawn.
+///
+/// `pixels` is `height` rows of `width` pixels, `stride` bytes apart. The
+/// runs are `height` 16-bit offsets, one a row, from their start; then each
+/// row as groups of three counts (pass, copy, blend: a byte each), `copy`
+/// pixels of 2 bytes and `blend` pixels of 3, until the row is used up.
+///
+/// Returns the bytes written to `out`, or 0 when they do not fit `capacity`
+/// or a 16-bit offset.
+size_t PackRuns(const uint8_t* pixels, int32_t width, int32_t height, int32_t stride, uint8_t* out, size_t capacity);
+
+/// Draws runs made by PackRuns onto an RGB565 target with their corner at
+/// (destX, destY): the pixels BlitScaled draws of the picture itself, 1:1
+/// and untinted, within the clip.
+void BlitRuns(const uint8_t* runs, int32_t width, int32_t height, uint8_t* target, int32_t targetWidth,
+              int32_t targetHeight, int32_t destX, int32_t destY);
 
 // ============================================================================
 // Blit sink: the frame's blits drawn by something else, a GPU
