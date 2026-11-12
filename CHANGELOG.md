@@ -11,6 +11,15 @@ alongside one that has them.
 ## Unreleased
 
 ### Added
+- **Blits onto ARGB8888 at a whole-number scale take a fast path.** Every
+  fast path was for RGB565 screens, so on an ARGB8888 one every sprite and
+  tile, even at 1:1, was sampled pixel by pixel by the generic pipeline.
+  A plain blit (no tint, key, dither or flips) at 1x, 2x, 3x and so on now
+  reads each source pixel once and fills the block it covers
+  (`QuadBlit::WholeScaleRows_ARGB8888`), with the pipeline's pixels. Nothing
+  to set. On the Anbernic RG40XX H (640x480, a pixel-art farm drawn at 2x)
+  blits went from 12.3 to 6.4 ns a pixel and the game from 35-47 to 60
+  frames a second.
 - **A renderer can draw many pieces.** `RendererComponent::GetPieceCount`,
   `GetPiecePlace`, `GetPieceExtents`, `RenderPieceContent`, `GetPieceVersion`
   and `GetPieceDrawKey`: each piece is placed and sorted on its own, as a

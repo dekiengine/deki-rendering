@@ -3,6 +3,7 @@
 #include "PixelFormat.h"
 #include "DirtyRegion.h"
 #include "RenderProfiler.h"
+#include "WholeScaleRows.h"
 #include <cmath>
 #include <algorithm>
 #include <atomic>
@@ -110,6 +111,7 @@ enum class BlitPath : uint32_t
     StretchRows,
     TintRotatedRows,
     RunRows,
+    WholeScaleRows,
     None
 };
 
@@ -117,7 +119,7 @@ enum class BlitPath : uint32_t
 constexpr const char* kBlitPathNames[] = {
     "CopyRows",   "ChromaSpans", "BlendSpans",         "TintRows",      "TintScaledRows",
     "ExpandRows", "Rows565A8",   "GenericScaledPlain", "GenericScaled", "GenericRotated",
-    "AlphaRows",  "StretchRows", "TintRotatedRows",    "RunRows",
+    "AlphaRows",  "StretchRows", "TintRotatedRows",    "RunRows",       "WholeScaleRows",
 };
 
 struct PathScope
@@ -2024,6 +2026,18 @@ void BlitScaled(const Source& source, uint8_t* target, int32_t targetWidth, int3
             {
                 return;
             }
+        }
+    }
+
+    // Plain onto ARGB8888 at a whole-number scale, 1:1 included: each source
+    // pixel read once for the block it covers (WholeScaleRows.h).
+    if (plain && targetFormat == Deki::ColorFormat::ARGB8888)
+    {
+        scope.path = BlitPath::WholeScaleRows;
+        if (WholeScaleRows_ARGB8888(source, reinterpret_cast<uint32_t*>(target), targetWidth, destX, destY, destWidth,
+                                    destHeight, bounds.startX, bounds.startY, bounds.endX, bounds.endY))
+        {
+            return;
         }
     }
 
