@@ -11,6 +11,12 @@ alongside one that has them.
 ## Unreleased
 
 ### Added
+- **A renderer can draw many pieces.** `RendererComponent::GetPieceCount`,
+  `GetPiecePlace`, `GetPieceExtents`, `RenderPieceContent`, `GetPieceVersion`
+  and `GetPieceDrawKey`: each piece is placed and sorted on its own, as a
+  child object would be, and read from the one component. A renderer with no
+  pieces (the default) draws as before. deki-2d's `SpriteBatchComponent` uses
+  it.
 - **Sprites are drawn from runs.** A sprite drawn 1:1 and unturned onto
   RGB565 keeps its box of non-transparent pixels as runs: for each row, how
   many pixels to pass over, how many to copy and how many to blend, with
