@@ -1,4 +1,5 @@
 #include "CameraComponent.h"
+#include <algorithm>
 #include <deki/Object.h>
 #include <deki/Engine.h>
 #include <deki/ICamera.h>
@@ -70,18 +71,20 @@ FrameCamera CameraComponent::CaptureFrameCamera(int screenWidth, int screenHeigh
     fc.halfW = static_cast<float>(screenWidth) * 0.5f;
     fc.halfH = static_cast<float>(screenHeight) * 0.5f;
 
-    // Pixel Perfect: the camera sits on the art-pixel grid and the centre on a
-    // whole screen pixel, so every art pixel covers the same block of screen
-    // pixels however the camera moves. The scene view's fixed scale is not a
-    // screen and is not snapped.
+    // Pixel Perfect: the camera sits on its grid and the centre on a whole
+    // screen pixel, so what is on the art-pixel grid lands on whole pixels
+    // however the camera moves. The grid is the screen's pixels, or the art's
+    // (Pixel Grid). The scene view's fixed scale is not a screen and is not
+    // snapped.
     const float art = Deki::EngineSettings::Global().pixelsPerMeter;
     if (pixelPerfect && m_FixedPixelsPerMeter <= 0.0f && art > 0.0f && fc.ppm > 0.0f)
     {
-        fc.camX = std::round(fc.camX * art) / art;
-        fc.camY = std::round(fc.camY * art) / art;
+        const float grid = pixelGrid == PixelGrid::Art ? art : fc.ppm;
+        fc.camX = std::round(fc.camX * grid) / grid;
+        fc.camY = std::round(fc.camY * grid) / grid;
         fc.halfW = std::floor(fc.halfW);
         fc.halfH = std::floor(fc.halfH);
-        fc.snapStep = static_cast<int32_t>(std::lround(fc.ppm / art));
+        fc.snapStep = std::max<int32_t>(1, static_cast<int32_t>(std::lround(fc.ppm / grid)));
     }
     fc.valid = fc.ppm > 0.0f;
     return fc;

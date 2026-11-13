@@ -37,6 +37,10 @@ public:
             ui.PropertyField("orthoHeight");
             DrawScaleBadge(ui, *cam);
             ui.PropertyField("pixelPerfect");
+            if (cam->pixelPerfect)
+            {
+                ui.PropertyField("pixelGrid");
+            }
         }
         else
         {

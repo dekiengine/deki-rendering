@@ -20,20 +20,23 @@ namespace DekiRendering
 /// (relevant on Xtensa) applies to both equally.
 struct FrameCamera
 {
-    float camX = 0.0f;  // camera world position in metres, already snapped under Pixel Perfect
+    float camX = 0.0f;  // camera world position in metres, already on its grid under Pixel Perfect
     float camY = 0.0f;
     float ppm = 1.0f;    // framebuffer pixels per world metre
     float halfW = 0.0f;  // target centre in pixels: where world (camX, camY) lands
     float halfH = 0.0f;
-    // Pixel Perfect: screen pixels per art pixel (a whole number >= 1), and 0
-    // when off. The camera is then on the art-pixel grid and halfW/halfH are
-    // whole, so anything placed on that grid lands on whole multiples of it;
-    // renderers snap their draw positions to it (SnapToArtGrid).
+    // Pixel Perfect: the grid the camera and every draw sit on, in screen
+    // pixels, and 0 when off. 1 is the screen's own pixels (PixelGrid::Screen):
+    // the camera moves a screen pixel at a time, which is smooth on a screen
+    // that shows art larger. More is the art's pixels (PixelGrid::Art), that
+    // many screen pixels each. halfW/halfH are whole, so anything placed on
+    // the art-pixel grid lands on whole pixels either way; renderers snap
+    // their draw positions with SnapX and SnapY.
     int32_t snapStep = 0;
     bool valid = false;  // false until captured (RenderContext's default)
 
-    /// Under Pixel Perfect, rounds a screen position to the art-pixel grid
-    /// around the centre; otherwise returns it unchanged.
+    /// Under Pixel Perfect, rounds a screen position to the grid around the
+    /// centre; otherwise returns it unchanged.
     float SnapX(float screenX) const
     {
         return snapStep > 0 ? halfW + std::round((screenX - halfW) / snapStep) * snapStep : screenX;

@@ -485,7 +485,7 @@ void Standard2DRenderer::ExecuteBuiltins(const SortItem& item, RenderContext& ct
             const float drawScaleX = wt.scaleX * worldToScreen * invSourcePPM;
             const float drawScaleY = wt.scaleY * worldToScreen * invSourcePPM;
 
-            // Pixel Perfect: snap to the art-pixel grid, whatever the
+            // Pixel Perfect: snap to the camera's pixel grid, whatever the
             // renderer's own setting. Otherwise:
             // pixelSnap true: round to the nearest pixel (sharp sprite art).
             // pixelSnap false: truncate, so sub-pixel motion accumulates and

@@ -148,6 +148,7 @@ TEST(FrameCamera, PixelPerfectPutsTheCameraOnTheArtGrid)
     CameraFixture f;
     f.camera->orthoHeight = 15.0f;
     f.camera->pixelPerfect = true;
+    f.camera->pixelGrid = DekiRendering::PixelGrid::Art;
     f.owner->SetX(0.04f);                                           // 0.64 art px: snaps to 1
     f.owner->SetY(-0.02f);                                          // -0.32 art px: snaps to 0
     const FrameCamera fc = f.camera->CaptureFrameCamera(641, 481);  // 2x, odd size
@@ -157,6 +158,27 @@ TEST(FrameCamera, PixelPerfectPutsTheCameraOnTheArtGrid)
     EXPECT_EQ(fc.halfW, 320.0f);  // whole, so the grid lands on whole pixels
     EXPECT_EQ(fc.halfH, 240.0f);
     EXPECT_EQ(fc.SnapX(fc.halfW + 3.2f), fc.halfW + 4.0f);
+    ExpectSnapshotMatchesCamera(*f.camera, 641, 481);
+}
+
+TEST(FrameCamera, PixelPerfectPutsTheCameraOnScreenPixels)
+{
+    ScopedArtDensity art;
+    CameraFixture f;
+    f.camera->orthoHeight = 15.0f;
+    f.camera->pixelPerfect = true;
+    f.owner->SetX(0.04f);                                           // 1.28 screen px: snaps to 1
+    f.owner->SetY(-0.02f);                                          // -0.64 screen px: snaps to -1
+    const FrameCamera fc = f.camera->CaptureFrameCamera(641, 481);  // 2x, odd size
+    EXPECT_EQ(fc.camX, 1.0f / 32.0f);
+    EXPECT_EQ(fc.camY, -1.0f / 32.0f);
+    EXPECT_EQ(fc.snapStep, 1);
+    EXPECT_EQ(fc.SnapX(fc.halfW + 3.2f), fc.halfW + 3.0f);
+    // Something on the art-pixel grid lands on a whole pixel.
+    float screenX = 0.0f, screenY = 0.0f;
+    fc.WorldToScreen(3.0f / 16.0f, 2.0f / 16.0f, screenX, screenY);
+    EXPECT_EQ(screenX, fc.halfW + 5.0f);
+    EXPECT_EQ(screenY, fc.halfH - 5.0f);
     ExpectSnapshotMatchesCamera(*f.camera, 641, 481);
 }
 

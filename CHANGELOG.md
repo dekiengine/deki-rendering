@@ -11,6 +11,14 @@ alongside one that has them.
 ## Unreleased
 
 ### Added
+- **Pixel Grid on the camera: what Pixel Perfect snaps to.** `Screen`, the
+  default, keeps the camera and everything drawn on whole screen pixels. On
+  a screen that shows the art larger the camera then moves a screen pixel
+  at a time: a 2:1 isometric walk at 2x moves the map 2 pixels across and
+  1 down every frame, where it moved 2 down every other frame. `Art` is
+  the grid Pixel Perfect had: the art's own pixels, so nothing sits between
+  two of them. At 1x the two are the same. `FrameCamera::snapStep` is 1
+  for `Screen`.
 - **Blits onto ARGB8888 at a whole-number scale take a fast path.** Every
   fast path was for RGB565 screens, so on an ARGB8888 one every sprite and
   tile, even at 1:1, was sampled pixel by pixel by the generic pipeline.

@@ -11,6 +11,13 @@
 namespace DekiRendering
 {
 
+/// What a Pixel Perfect camera, and everything it draws, snaps to.
+enum class PixelGrid : uint8_t
+{
+    Screen = 0,  // Whole screen pixels
+    Art = 1      // The art's own pixels, each several screen pixels on a larger screen
+};
+
 /// The scene's camera: what part of the world the player sees.
 ///
 /// Every screen renders at its own native size; the camera decides how much
@@ -24,7 +31,7 @@ namespace DekiRendering
 ///                 still draw flat through the orthographic mapping.
 ///
 /// With Pixel Perfect on, the scale is a whole multiple of the art density and
-/// the camera sits on the art-pixel grid.
+/// the camera sits on whole pixels: the screen's, or the art's (Pixel Grid).
 DEKI_CATEGORY("Core")
 DEKI_DESCRIPTION("The view: position, how much world it shows, and clear color.")
 class CameraComponent : public Deki::Component, public Deki::ICamera
@@ -48,11 +55,18 @@ public:
     float orthoHeight = 15.0f;
 
     DEKI_TOOLTIP("For pixel art. Scales by whole numbers only, so every art pixel is the same size on screen, and "
-                 "snaps the camera to the art-pixel grid. Rounds down: the camera shows a little more than its ortho "
-                 "height, and a screen too small for 1x crops.")
+                 "keeps the camera and everything drawn on whole pixels. Rounds down: the camera shows a little more "
+                 "than its ortho height, and a screen too small for 1x crops.")
     DEKI_VISIBLE_WHEN(projection, Orthographic)
     DEKI_EXPORT
     bool pixelPerfect = false;
+
+    DEKI_TOOLTIP("What Pixel Perfect snaps the camera and everything drawn to. Screen: whole screen pixels, so "
+                 "movement is smooth on a screen that shows the art larger. Art: the art's own pixels, so nothing "
+                 "sits between two of them, and on a larger screen things move in steps of that size.")
+    DEKI_VISIBLE_WHEN(projection, Orthographic)
+    DEKI_EXPORT
+    PixelGrid pixelGrid = PixelGrid::Screen;
 
     DEKI_TOOLTIP("Vertical field of view in degrees. A wider screen sees more at the sides. 60 is a common default; "
                  "larger looks wider and more distorted at the edges.")
