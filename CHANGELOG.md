@@ -8,7 +8,7 @@ breaking change bumps the minor across the editor, the engine and every
 package together, so a package with no changes of its own is still released
 alongside one that has them.
 
-## Unreleased
+## 0.40.0
 
 ### Added
 - **Pixel Grid on the camera: what Pixel Perfect snaps to.** `Screen`, the
@@ -109,6 +109,8 @@ alongside one that has them.
   farm went from 7.6 to 6.2 ms a frame.
 
 ### Changed
+- `minEngine` 0.40.0: built against engine 0.40.0. A build of this package
+  from before does not load and is rebuilt.
 - **A frame redrawn in parts costs less with many sprites moving.** On a
   LilyGO T-Deck, the "Your first game" farm with the camera following the
   farmer and villagers walking about went from 18.1 to 16.6 ms a frame with 4
