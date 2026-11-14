@@ -36,14 +36,16 @@ var NAVTREE =
       [ "Rendering settings", "index.html#s-rendering-settings", null ]
     ] ],
     [ "Changelog", "index.html#changelog", [
-      [ "0.30.0", "index.html#autotoc_md0", null ],
-      [ "Declares the capabilities it uses", "index.html#autotoc_md1", null ],
+      [ "0.40.0", "index.html#autotoc_md0", null ],
+      [ "Added", "index.html#autotoc_md1", null ],
       [ "Changed", "index.html#autotoc_md2", null ],
-      [ "Added", "index.html#autotoc_md3", null ],
-      [ "Changed", "index.html#autotoc_md4", null ],
-      [ "0.22.0", "index.html#autotoc_md5", null ],
-      [ "Changed", "index.html#autotoc_md6", null ],
-      [ "Fixed", "index.html#autotoc_md7", null ]
+      [ "Breaking", "index.html#autotoc_md3", null ],
+      [ "Fixed", "index.html#autotoc_md4", null ],
+      [ "0.30.0", "index.html#autotoc_md5", null ],
+      [ "Declares the capabilities it uses", "index.html#autotoc_md6", null ],
+      [ "Changed", "index.html#autotoc_md7", null ],
+      [ "Added", "index.html#autotoc_md8", null ],
+      [ "Changed", "index.html#autotoc_md9", null ]
     ] ]
   ] ]
 ];

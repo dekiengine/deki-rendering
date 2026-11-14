@@ -10,6 +10,9 @@
 <meta name="generator" content="Doxygen 1.18.0"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>deki-rendering: deki-rendering</title>
+<link rel="icon" href="https://dekiengine.com/favicon.ico" sizes="16x16 32x32 48x48">
+<link rel="icon" href="https://dekiengine.com/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="https://dekiengine.com/apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap">
@@ -25,14 +28,51 @@
 <link href="doxygen-awesome.css" rel="stylesheet" type="text/css"/>
 <link href="doxygen-awesome-sidebar-only.css" rel="stylesheet" type="text/css"/>
 <link href="deki.css" rel="stylesheet" type="text/css"/>
+<script type="text/javascript">
+/* Pressing a group in the sidebar opens the page and its list too. The tree is
+   built after load, hence the retries. */
+window.addEventListener('load', function () {
+  var tries = 0;
+  var timer = setInterval(function () {
+    var closed = document.querySelector('#nav-tree-contents .selected .arrowhead.closed');
+    if (closed) {
+      closed.closest('a').click();
+    }
+    if (closed || ++tries > 30) {
+      clearInterval(timer);
+    }
+  }, 100);
+});
+</script>
 </head>
 <body>
 <div class="deki-bar">
   <a class="deki-brand" href="https://dekiengine.com/zh/">
-    <span class="deki-mark"><span class="deki-dot"></span></span>
+    <!-- The site's cat, hugo-dekiengine/layouts/partials/deki-cat.html, kept still by deki.css.
+         Its clip path is gone: only the entrance animation needs it. -->
+    <svg class="brand-mark deki-cat" aria-hidden="true" focusable="false" viewBox="0 0 16 9" width="32" height="18" shape-rendering="crispEdges"><style>.deki-cat .cat-paws{opacity:1}
+@keyframes deki-cat-paws-in{0%{opacity:0}30.77%{opacity:1}100%{opacity:1}}
+.deki-cat .cat-paws{animation:deki-cat-paws-in 1.3s step-end 0s both}
+.deki-cat .cat-peek{transform:none}
+@keyframes deki-cat-peek-in{0%{transform:translateY(8px)}46.15%{transform:translateY(7px)}53.85%{transform:translateY(6px)}61.54%{transform:translateY(5px)}69.23%{transform:translateY(4px)}76.92%{transform:translateY(3px)}84.62%{transform:translateY(2px)}92.31%{transform:translateY(1px)}100%{transform:none}}
+.deki-cat .cat-peek{animation:deki-cat-peek-in 1.3s step-end 0s both}
+.deki-cat .cat-shut{opacity:0}
+@keyframes deki-cat-shut-idle{0%{opacity:0}8.53%{opacity:1}8.81%{opacity:0}41.96%{opacity:1}42.24%{opacity:0}42.58%{opacity:1}42.87%{opacity:0}77.26%{opacity:1}79.82%{opacity:0}100%{opacity:0}}
+.deki-cat .cat-shut{animation:deki-cat-shut-idle 35.18s step-end 1.3s infinite}
+.deki-cat .cat-face{transform:none}
+@keyframes deki-cat-face-idle{0%{transform:none}18.76%{transform:translate(-1px,0px)}22.74%{transform:none}51.39%{transform:translate(1px,0px)}55.37%{transform:none}65.32%{transform:translate(0px,-1px)}68.73%{transform:none}88.35%{transform:translate(-1px,0px)}90.62%{transform:translate(1px,0px)}92.89%{transform:none}100%{transform:none}}
+.deki-cat .cat-face{animation:deki-cat-face-idle 35.18s step-end 1.3s infinite}
+.deki-cat .cat-ear{transform:none}
+@keyframes deki-cat-ear-idle{0%{transform:none}31.27%{transform:translateY(1px)}31.5%{transform:none}31.78%{transform:translateY(1px)}32.01%{transform:none}100%{transform:none}}
+.deki-cat .cat-ear{animation:deki-cat-ear-idle 35.18s step-end 1.3s infinite}
+@media (prefers-reduced-motion:reduce){.deki-cat *{animation:none!important}}</style><g><g><g class="cat-peek"><g class="cat-ear"><rect x="12" y="0" width="1" height="1" fill="#3bc3ff"/><rect x="11" y="1" width="2" height="1" fill="#3bc3ff"/></g><rect x="3" y="0" width="1" height="1" fill="#3bc3ff"/><rect x="3" y="1" width="2" height="1" fill="#3bc3ff"/><rect x="3" y="2" width="10" height="1" fill="#3bc3ff"/><rect x="2" y="3" width="12" height="1" fill="#3bc3ff"/><rect x="2" y="4" width="12" height="1" fill="#3bc3ff"/><rect x="2" y="5" width="12" height="1" fill="#3bc3ff"/><rect x="2" y="6" width="12" height="1" fill="#3bc3ff"/><rect x="2" y="7" width="12" height="1" fill="#3bc3ff"/><g class="cat-face"><rect x="4" y="4" width="1" height="1" fill="#0a0b0d"/><rect x="5" y="4" width="1" height="1" fill="#e8e6e1"/><rect x="10" y="4" width="1" height="1" fill="#0a0b0d"/><rect x="11" y="4" width="1" height="1" fill="#e8e6e1"/><rect x="4" y="5" width="2" height="1" fill="#0a0b0d"/><rect x="10" y="5" width="2" height="1" fill="#0a0b0d"/><rect x="7" y="6" width="2" height="1" fill="#ff8fb8"/><g class="cat-shut"><rect x="4" y="4" width="2" height="1" fill="#3bc3ff"/><rect x="10" y="4" width="2" height="1" fill="#3bc3ff"/></g></g></g></g><g class="cat-paws"><rect x="3" y="7" width="2" height="1" fill="#9de1ff"/><rect x="11" y="7" width="2" height="1" fill="#9de1ff"/></g><rect x="0" y="8" width="16" height="1" fill="#0c82bf"/></g></svg>
     <span class="deki-brand-name">DEKI<span class="deki-slash">/</span>ENGINE</span>
   </a>
   <span class="deki-bar-tag">文档</span>
+  <div class="deki-tabs">
+    <a class="deki-tab deki-tab-manual" href="https://dekiengine.github.io/docs/zh/index.html"><span class="deki-nav-label">手册</span></a>
+    <a class="deki-tab deki-tab-api" href="https://dekiengine.github.io/docs/annotated.html"><span class="deki-nav-label">API 参考</span></a>
+  </div>
   <div class="deki-bar-links">
     <a href="https://dekiengine.com/zh/"><span class="deki-nav-label">网站</span></a>
     <a href="https://dekiengine.com/zh/packages/"><span class="deki-nav-label">包</span></a>
@@ -40,7 +80,8 @@
     <span class="deki-bar-sep"></span>
     <a class="deki-chip" href="https://github.com/orgs/dekiengine/repositories" rel="noopener"><svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg><span>github</span></a>
     <a class="deki-chip deki-chip-accent" href="https://dekiengine.com/zh/discord/" rel="noopener"><svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor" aria-hidden="true"><path d="M20.317 4.3698a19.7913 19.7913 0 00-4.8851-1.5152.0741.0741 0 00-.0785.0371c-.211.3753-.4447.8648-.6083 1.2495-1.8447-.2762-3.68-.2762-5.4868 0-.1636-.3933-.4058-.8742-.6177-1.2495a.077.077 0 00-.0785-.037 19.7363 19.7363 0 00-4.8852 1.515.0699.0699 0 00-.0321.0277C.5334 9.0458-.319 13.5799.0992 18.0578a.0824.0824 0 00.0312.0561c2.0528 1.5076 4.0413 2.4228 5.9929 3.0294a.0777.0777 0 00.0842-.0276c.4616-.6304.8731-1.2952 1.226-1.9942a.076.076 0 00-.0416-.1057c-.6528-.2476-1.2743-.5495-1.8722-.8923a.077.077 0 01-.0076-.1277c.1258-.0943.2517-.1923.3718-.2914a.0743.0743 0 01.0776-.0105c3.9278 1.7933 8.18 1.7933 12.0614 0a.0739.0739 0 01.0785.0095c.1202.099.246.1981.3728.2924a.077.077 0 01-.0066.1276 12.2986 12.2986 0 01-1.873.8914.0766.0766 0 00-.0407.1067c.3604.698.7719 1.3628 1.225 1.9932a.076.076 0 00.0842.0286c1.961-.6067 3.9495-1.5219 6.0023-3.0294a.077.077 0 00.0313-.0552c.5004-5.177-.8382-9.6739-3.5485-13.6604a.061.061 0 00-.0312-.0286zM8.02 15.3312c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9555-2.4189 2.157-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.9555 2.4189-2.1569 2.4189zm7.9748 0c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9554-2.4189 2.1569-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.946 2.4189-2.1568 2.4189Z"/></svg><span>discord</span></a>
-    <a class="deki-chip deki-chip-solid" href="https://dekiengine.com/zh/donate/"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M12 20.5 3.9 12.4a4.8 4.8 0 0 1 0-6.8 4.8 4.8 0 0 1 6.8 0l1.3 1.3 1.3-1.3a4.8 4.8 0 0 1 6.8 0 4.8 4.8 0 0 1 0 6.8Z"/></svg><span>捐赠</span></a>
+    <a class="deki-chip deki-chip-solid" href="https://dekiengine.com/editor/#download"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v12m-5-5 5 5 5-5M5 20h14"/></svg><span>下载</span></a>
+    <a class="deki-chip" href="https://dekiengine.com/zh/donate/"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M12 20.5 3.9 12.4a4.8 4.8 0 0 1 0-6.8 4.8 4.8 0 0 1 6.8 0l1.3 1.3 1.3-1.3a4.8 4.8 0 0 1 6.8 0 4.8 4.8 0 0 1 0 6.8Z"/></svg><span>捐赠</span></a>
     <details class="deki-lang"><summary aria-label="语言: 简体中文"><span class="deki-nav-label">简体中文</span></summary><div class="deki-lang-menu"><a href="../index.html" data-deki-root="../" hreflang="en" lang="en">English</a><a href="../ja/index.html" data-deki-root="../ja/" hreflang="ja" lang="ja">日本語</a><a href="../zh/index.html" data-deki-root="../zh/" hreflang="zh" lang="zh" aria-current="true">简体中文</a><a href="../ko/index.html" data-deki-root="../ko/" hreflang="ko" lang="ko">한국어</a></div></details>
     <script>(function () {
       var page = location.pathname.split('/').pop() || 'index.html';
@@ -57,7 +98,7 @@
  <tbody>
  <tr id="projectrow">
   <td id="projectalign">
-   <div id="projectname">deki-rendering<span id="projectnumber">&#160;0.30.3</span>
+   <div id="projectname">deki-rendering<span id="projectnumber">&#160;0.40.0</span>
    </div>
    <div id="projectbrief">Deki 包参考</div>
   </td>
@@ -115,7 +156,7 @@ document.addEventListener('DOMContentLoaded',() => { initNavTree('index.html',''
 <img src="deki-rendering.png" alt=""/>
 </div>
     <p>核心渲染管线：相机、渲染系统、标准 2D 渲染器、QuadBlit、渲染通道和排序。</p>
-<p>仓库：<a href="https://github.com/dekiengine/deki-rendering">github.com/dekiengine/deki-rendering</a> · 最新版本：0.30.0 · 需要引擎 0.30.0 或更高版本</p>
+<p>仓库：<a href="https://github.com/dekiengine/deki-rendering">github.com/dekiengine/deki-rendering</a> · 最新版本：0.40.0 · 需要引擎 0.40.0 或更高版本</p>
 <p>使用 <span class="tt">DekiEditor --packages-add deki-rendering &lt;project&gt;</span> 或通过包管理器安装。引擎自身的组件和 C++ API 见 <a href="https://dekiengine.github.io/docs/zh/">Deki 文档</a>。</p>
 <p>在编辑器中显示为 **Rendering**。</p>
 <h1 class="doxsection"><a class="anchor" id="components"></a>
@@ -155,16 +196,18 @@ CameraComponent</h2>
 <tr class="markdownTableRowOdd">
 <td class="markdownTableBodyNone"><span class="tt">orthoHeight</span>  </td><td class="markdownTableBodyNone">float  </td><td class="markdownTableBodyNone"><span class="tt">15</span>  </td><td class="markdownTableBodyNone">0.01 到 100000；单位 m；<span class="tt">projection</span> 允许时显示  </td><td class="markdownTableBodyNone">相机从上到下显示的世界范围。每个屏幕都会缩放它以填满自身高度（旁边的 x）。  </td></tr>
 <tr class="markdownTableRowEven">
-<td class="markdownTableBodyNone"><span class="tt">pixelPerfect</span>  </td><td class="markdownTableBodyNone">bool  </td><td class="markdownTableBodyNone"><span class="tt">false</span>  </td><td class="markdownTableBodyNone"><span class="tt">projection</span> 允许时显示  </td><td class="markdownTableBodyNone">用于像素画。只按整数倍缩放，使每个美术像素在屏幕上大小相同，并将相机吸附到美术像素网格。向下取整：相机显示的范围会比正交高度略多，而小于 1x 的屏幕会被裁剪。  </td></tr>
+<td class="markdownTableBodyNone"><span class="tt">pixelPerfect</span>  </td><td class="markdownTableBodyNone">bool  </td><td class="markdownTableBodyNone"><span class="tt">false</span>  </td><td class="markdownTableBodyNone"><span class="tt">projection</span> 允许时显示  </td><td class="markdownTableBodyNone">用于像素画。只按整数倍缩放，使每个美术像素在屏幕上大小相同，并让相机和绘制的所有内容都落在整像素上。向下取整：相机显示的范围会比正交高度略多，而小于 1x 的屏幕会被裁剪。  </td></tr>
 <tr class="markdownTableRowOdd">
+<td class="markdownTableBodyNone"><span class="tt">pixelGrid</span>  </td><td class="markdownTableBodyNone">enum  </td><td class="markdownTableBodyNone"><span class="tt">"Screen"</span>  </td><td class="markdownTableBodyNone"><span class="tt">Screen</span>, <span class="tt">Art</span>；<span class="tt">projection</span> 允许时显示  </td><td class="markdownTableBodyNone">像素完美将相机和绘制的所有内容吸附到哪里。屏幕：整数屏幕像素，因此在放大显示美术的屏幕上移动也很平滑。美术：美术自身的像素，因此不会有东西落在两个像素之间，而在放大的屏幕上会按该大小一步步移动。  </td></tr>
+<tr class="markdownTableRowEven">
 <td class="markdownTableBodyNone"><span class="tt">fieldOfView</span>  </td><td class="markdownTableBodyNone">float  </td><td class="markdownTableBodyNone"><span class="tt">60</span>  </td><td class="markdownTableBodyNone">10 到 150；<span class="tt">projection</span> 允许时显示  </td><td class="markdownTableBodyNone">垂直视野角度。屏幕越宽，两侧看到的越多。60 是常用默认值；越大视野越广，边缘畸变也越明显。  </td></tr>
-<tr class="markdownTableRowEven">
+<tr class="markdownTableRowOdd">
 <td class="markdownTableBodyNone"><span class="tt">nearPlane</span>  </td><td class="markdownTableBodyNone">float  </td><td class="markdownTableBodyNone"><span class="tt">0.1</span>  </td><td class="markdownTableBodyNone"><span class="tt">projection</span> 允许时显示  </td><td class="markdownTableBodyNone">比此距离更近的内容不会绘制。调大它没有开销，还能提高深度精度，因此在场景允许的范围内尽量设大。  </td></tr>
-<tr class="markdownTableRowOdd">
-<td class="markdownTableBodyNone"><span class="tt">farPlane</span>  </td><td class="markdownTableBodyNone">float  </td><td class="markdownTableBodyNone"><span class="tt">100</span>  </td><td class="markdownTableBodyNone"><span class="tt">projection</span> 允许时显示  </td><td class="markdownTableBodyNone">比此距离更远的内容不会绘制。  </td></tr>
 <tr class="markdownTableRowEven">
-<td class="markdownTableBodyNone"><span class="tt">clearEveryFrame</span>  </td><td class="markdownTableBodyNone">bool  </td><td class="markdownTableBodyNone"><span class="tt">true</span>  </td><td class="markdownTableBodyNone"></td><td class="markdownTableBodyNone">每帧开始前清除屏幕。关闭时上一帧会保留在下方：当全屏背景覆盖一切时更快，有时也正好用于制作拖尾效果。  </td></tr>
+<td class="markdownTableBodyNone"><span class="tt">farPlane</span>  </td><td class="markdownTableBodyNone">float  </td><td class="markdownTableBodyNone"><span class="tt">100</span>  </td><td class="markdownTableBodyNone"><span class="tt">projection</span> 允许时显示  </td><td class="markdownTableBodyNone">比此距离更远的内容不会绘制。  </td></tr>
 <tr class="markdownTableRowOdd">
+<td class="markdownTableBodyNone"><span class="tt">clearEveryFrame</span>  </td><td class="markdownTableBodyNone">bool  </td><td class="markdownTableBodyNone"><span class="tt">true</span>  </td><td class="markdownTableBodyNone"></td><td class="markdownTableBodyNone">每帧开始前清除屏幕。关闭时上一帧会保留在下方：当全屏背景覆盖一切时更快，有时也正好用于制作拖尾效果。  </td></tr>
+<tr class="markdownTableRowEven">
 <td class="markdownTableBodyNone"><span class="tt">litUpToSortOrder</span>  </td><td class="markdownTableBodyNone">int32  </td><td class="markdownTableBodyNone"><span class="tt">2147483647</span>  </td><td class="markdownTableBodyNone"></td><td class="markdownTableBodyNone">光源（Light 组件）照亮此相机绘制的、排序顺序不超过此值的内容；绘制在其上的内容（如 UI）保持自己的颜色。默认照亮所有内容。  </td></tr>
 </table>
 <h2 class="doxsection"><a class="anchor" id="c-light"></a>
@@ -233,13 +276,62 @@ ScreenEffect</h2>
 更新日志</h1>
 <p>更新日志为英文。</p>
 <h2 class="doxsection"><a class="anchor" id="autotoc_md0"></a>
-0.30.0</h2>
+0.40.0</h2>
 <h2 class="doxsection"><a class="anchor" id="autotoc_md1"></a>
+Added</h2>
+<ul>
+<li><b>Pixel Grid on the camera: what Pixel Perfect snaps to.</b> <span class="tt">Screen</span>, the default, keeps the camera and everything drawn on whole screen pixels. On a screen that shows the art larger the camera then moves a screen pixel at a time: a 2:1 isometric walk at 2x moves the map 2 pixels across and 1 down every frame, where it moved 2 down every other frame. <span class="tt">Art</span> is the grid Pixel Perfect had: the art's own pixels, so nothing sits between two of them. At 1x the two are the same. <span class="tt">FrameCamera::snapStep</span> is 1 for <span class="tt">Screen</span>.</li>
+<li><b>Blits onto ARGB8888 at a whole-number scale take a fast path.</b> Every fast path was for RGB565 screens, so on an ARGB8888 one every sprite and tile, even at 1:1, was sampled pixel by pixel by the generic pipeline. A plain blit (no tint, key, dither or flips) at 1x, 2x, 3x and so on now reads each source pixel once and fills the block it covers (<span class="tt">QuadBlit::WholeScaleRows_ARGB8888</span>), with the pipeline's pixels. Nothing to set. On the Anbernic RG40XX H (640x480, a pixel-art farm drawn at 2x) blits went from 12.3 to 6.4 ns a pixel and the game from 35-47 to 60 frames a second.</li>
+<li><b>A renderer can draw many pieces.</b> <span class="tt">RendererComponent::GetPieceCount</span>, <span class="tt">GetPiecePlace</span>, <span class="tt">GetPieceExtents</span>, <span class="tt">RenderPieceContent</span>, <span class="tt">GetPieceVersion</span> and <span class="tt">GetPieceDrawKey</span>: each piece is placed and sorted on its own, as a child object would be, and read from the one component. A renderer with no pieces (the default) draws as before. deki-2d's <span class="tt">SpriteBatchComponent</span> uses it.</li>
+<li><b>Sprites are drawn from runs.</b> A sprite drawn 1:1 and unturned onto RGB565 keeps its box of non-transparent pixels as runs: for each row, how many pixels to pass over, how many to copy and how many to blend, with only those pixels kept (<span class="tt">QuadBlit::PackRuns</span>, <span class="tt">BlitRuns</span>, <span class="tt">PackedPixels</span>). Drawn from the picture, every pixel of an animation frame was read, three bytes each, to find the ones to draw; where pictures are in external memory that reading was most of what a character cost. A sprite mirrored across or down has runs of its own, and a tint or a fade is applied as the runs are drawn, so it can change every frame. Nothing to set: the runs are made the first time a sprite of up to 128x128 pixels is drawn, on targets that have external memory, in 64 KB blocks of it taken as they fill: up to eight, and never the last half megabyte the target has free. A character's frame takes about 1.2 KB. A sprite scaled, turned or dithered, or one there is no room for, is drawn as before, and another scene starts with the store empty. The pixels are the same, checked against the plain blit over random pictures, mirrors, tints, positions and clips, and on a board frame by frame. On a LilyGO T-Deck the "Your
+  first game" farm with 16 villagers walking went from 18.6 to 16.7 ms a frame, the display's 60 fps, as with none; it holds 16.9 ms with each villager on a sheet of its own (256 frames, about 300 KB of runs), and 17 ms with half of them mirrored, a quarter tinted and a quarter faded.- <b>The profiler breaks a frame down by object.</b> While it is on, each renderer, and each render pass on each object, has a row (<span class="tt">RenderProfiler::TakeObjects</span>): its path and type, its share of finding what changed, of making and of drawing its pixels, how many times it was drawn, and why its area was drawn again (new, changed, still on screen while the world scrolled, drawn over a pin). Off, nothing is counted. The <b>Render Profiler</b> window (Tools &gt; Rendering) shows the rows for the Play view, or for a board on a serial port. Render passes name themselves for it (<span class="tt">RenderPass::Name</span>, "Render pass" unless they say otherwise).</li>
+<li><b>Redraw Changes moves the last frame when the camera scrolls.</b> A camera that moved by whole pixels, and sits on whole pixels, used to redraw the whole frame; now the frame's pixels are moved and only the edge it uncovers and what changed besides are drawn. Frames match ones drawn whole. A scene with 2D lights, a frame drawn in strips, a camera between pixels, and a render pass that reports its own changes but not <span class="tt">RenderPass::FollowsScroll</span> still redraw whole frames. <span class="tt">DekiRenderer::ScrolledBy</span> and <span class="tt">RenderContext::scrollable</span>, <span class="tt">scrollX</span> and <span class="tt">scrollY</span> carry it; a custom renderer needs no change. New virtuals on <span class="tt">DekiRenderer</span> and <span class="tt">RenderPass</span>: packages built against the old headers must be rebuilt.</li>
+<li><b>What stays on screen keeps its pixels while the camera scrolls.</b> A renderer drawn the same at the same place on screen, such as a HUD panel under the camera, keeps the pixels of its opaque middle as the frame moves (<span class="tt">DekiRenderer::ScrollPins</span>); only its see-through edge and the band it leaves are drawn again. Anything drawn over it that moved redraws it.</li>
+<li><b>A drawing's area is only what it can write.</b> A sprite, shape or other renderer drawn 1:1 and unturned counts only the box of its non-transparent pixels as changed: an animation frame's empty margin is not redrawn. <span class="tt">QuadBlit::VisibleBounds</span> and <span class="tt">QuadBlit::OpaqueInterior</span> work them out; they are kept, by pixels and revision, in a small table in external memory. Pixels with no <span class="tt">Source::revision</span> are not trimmed.</li>
+<li><b>Changed parts close together are drawn as one.</b> Each part redrawn walks the scene and sets up every render pass again, so parts are merged while a merge adds fewer pixels than that costs (<span class="tt">DirtyRegion::MergeCheaperThan</span>, <span class="tt">DekiRenderSystem::SetPartCostPixels</span>, 4096 by default).</li>
+<li><span class="tt">DeferredClear::colour</span> and <span class="tt">QuadBlit::PendingClearColour</span>: the colour of a clear still pending, whatever it covers, for a render pass about to write every pixel the clear covers in a frame or a redrawn part of one, which then drops the clear (<span class="tt">DeferredClear::pixel</span> stays for whole frames only). <span class="tt">DekiRenderSystem</span> and the lit clear of 2D lights give it.</li>
+<li><span class="tt">QuadBlit::SwapClipState</span> sets the clip stack, the target limit and the clip switch aside, for a pass drawing into a buffer of its own in the middle of a frame.</li>
+<li><b>Finding what changed reuses what it measured.</b> A renderer can give a draw key (<span class="tt">RendererComponent::GetDrawKey</span>): a value from its own fields that changes whenever its content could. While the key, the object's scale and its turn stay the same, what was measured of its content (its size, pixels, area and the signature they make) is reused, and only where it is drawn is worked out again; a renderer with no key is measured in full each frame as before. Kept in a table in external memory. A new virtual on <span class="tt">RendererComponent</span>: packages built against the old headers must be rebuilt. On a LilyGO T-Deck, finding the changes of the "Your first game" farm went from 7.6 to 6.2 ms a frame.</li>
+</ul>
+<h2 class="doxsection"><a class="anchor" id="autotoc_md2"></a>
+Changed</h2>
+<ul>
+<li><span class="tt">minEngine</span> 0.40.0: built against engine 0.40.0. A build of this package from before does not load and is rebuilt.</li>
+<li><b>A frame redrawn in parts costs less with many sprites moving.</b> On a LilyGO T-Deck, the "Your first game" farm with the camera following the farmer and villagers walking about went from 18.1 to 16.6 ms a frame with 4 villagers, 20.6 to 16.7 ms with 8 (both now the display's 60 fps) and 26.3 to 18.6 ms with 16. The pixels are the same: checked on the board, each frame drawn in parts against the same frame drawn whole. What changed:<ul>
+<li>A sprite drawn 1:1 and unturned blits only its box of non-transparent pixels, as only that box already counted as its area. An animation frame's empty margin is no longer read.</li>
+<li>What is known of a source's pixels (its visible box, its opaque interior) is kept in a few places for each source, not one: sources that shared a place pushed each other out every frame, and each time the pixels were walked again.</li>
+<li>Each part passes over the objects outside it from a short list of their areas, made as the frame's plan is built, without reading the plan.</li>
+<li>A renderer's content is kept beside what is reused of it from frame to frame, not copied into the plan for every object every frame.</li>
+<li><span class="tt">DirtyRegion</span> keeps the sum of its areas as rectangles are added, and merging looks again only at the pairs a merge changed. The pairs merged are the same (new tests compare them with comparing every pair again).</li>
+<li>A scrolled frame's rows find the pins they cross only where a pin starts or ends.</li>
+</ul>
+</li>
+<li><span class="tt">DirtyRegion::Add</span> joins a rectangle to one already there when their bounding box is no larger than the two together: a sprite that moved a pixel is one rectangle, not two. Above the merge threshold the set is merged down to a quarter under it, not to it, so the next rectangles are added without merging again.</li>
+<li>Parts are drawn as one when closer than 2048 pixels of extra area (<span class="tt">kPartCostPixels</span>, was 4096): a part costs less than it did.</li>
+<li>Changed parts are rounded out to 4 pixels, not 8 (<span class="tt">kRedrawAlign</span>): fewer pixels are drawn again around a small sprite. A display rounds what it is sent for itself.</li>
+<li>The frame's plan and its lists are in external memory (<span class="tt">ExternalAllocator</span>) where the target has it. They came from the C library, which on a board put them, or the sizes they grew through, in internal RAM.- Redrawn parts cost less. Taking what stays on screen out of what changed allocates nothing (1.85 to 0.2 ms a frame on the T-Deck farm), and a part passes over an object outside it that has nothing else to draw before setting anything up for it.</li>
+<li>Finding what changed no longer allocates every frame. <span class="tt">DirtyRegion::Align</span> folded its rectangles back through a new list each time and threw the old one away, so the region grew its list again from nothing: five allocations a frame on a T-Deck. It keeps both lists now.</li>
+</ul>
+<h2 class="doxsection"><a class="anchor" id="autotoc_md3"></a>
+Breaking</h2>
+<ul>
+<li><b>Positive rotation now draws counter-clockwise.</b> <span class="tt">QuadBlit</span> applied the angle in screen space, where Y runs down, so a sprite turned clockwise while its children, lights, 3D and physics turned counter-clockwise. A rotated sprite now turns the same way as the rest of the engine, and a child stays fixed to a rotated parent. A scene or script that set a rotation by eye needs the sign of that rotation flipped.</li>
+<li><b>A turned sprite no longer moves by a pixel.</b> <span class="tt">QuadBlit</span> read each pixel of a rotated draw at its corner instead of its centre, so a sprite turned by a half turn or a quarter turn landed one pixel right of, or below, where it stands unturned. It now covers the same pixels, as Tiled and other editors draw it. Rotated sprites placed by eye may sit a pixel off.</li>
+<li><b>A scaled sprite reads the source pixel under each drawn pixel's middle.</b> <span class="tt">QuadBlit::BlitScaled</span> read the one under its left or top edge. A sprite drawn at a whole multiple of its size looks the same; one shrunk, or grown by a fraction, shows some different edge pixels: a 6-pixel strip drawn 2 wide now shows its second and fifth pixels, not its first and fourth. Exactly between two pixels it takes the first, so halving still takes every other pixel from the first. This matches turned sprites and Tiled. The cost is the same.</li>
+</ul>
+<h2 class="doxsection"><a class="anchor" id="autotoc_md4"></a>
+Fixed</h2>
+<ul>
+<li>The profiler's kinds of component kept no name for draws whose content was reused, so a board's <span class="tt">DEKI:PROFILE</span> listed them as "?": <span class="tt">AddBlit</span> takes the name too.</li>
+</ul>
+<h2 class="doxsection"><a class="anchor" id="autotoc_md5"></a>
+0.30.0</h2>
+<h2 class="doxsection"><a class="anchor" id="autotoc_md6"></a>
 Declares the capabilities it uses</h2>
 <ul>
 <li><span class="tt">package.json</span> has <span class="tt">"capabilityDefines": ["opengl"]</span> and <span class="tt">"filtersTexturesWith": ["opengl"]</span>: its GPU code tests <span class="tt">DEKI_CAPABILITY_OPENGL</span>, and its GL sprite sink draws textures filtered. The editor reads them instead of knowing <span class="tt">opengl</span> itself; needs the editor from this release.</li>
 </ul>
-<h2 class="doxsection"><a class="anchor" id="autotoc_md2"></a>
+<h2 class="doxsection"><a class="anchor" id="autotoc_md7"></a>
 Changed</h2>
 <ul>
 <li><span class="tt">minEngine</span> 0.30.0: built against engine 0.30.0. A build of this package from before does not load and is rebuilt.</li>
@@ -251,7 +343,7 @@ Changed</h2>
 <li>A render pass about to write every pixel of the frame itself can take the pending clear as one pixel (<span class="tt">QuadBlit::TakePendingClear</span>, <span class="tt">DeferredClear::pixel</span>), lit when the light came first, and draw it where it draws nothing: deki-3d's software rasteriser does, which saves the clear's own pass over the screen.</li>
 <li>The shader loader is registered once, as "Shader" (<span class="tt">ShaderAsset::kAssetTypeName</span>). Its second name, "ShaderAsset", was there because the reflection named an <span class="tt">AssetRef&lt;ShaderAsset&gt;</span> by its class; it no longer does (engine changelog).</li>
 </ul>
-<h2 class="doxsection"><a class="anchor" id="autotoc_md3"></a>
+<h2 class="doxsection"><a class="anchor" id="autotoc_md8"></a>
 Added</h2>
 <ul>
 <li><span class="tt">GL::GenerateMipmap</span>, <span class="tt">gl::LINEAR_MIPMAP_LINEAR</span> and <span class="tt">gl::NEAREST_MIPMAP_NEAREST</span>, for filtered textures.</li>
@@ -267,27 +359,14 @@ Added</h2>
 <li><span class="tt">RenderPass::WritesBuffer</span>: whether a pass writes into the buffer other than through QuadBlit. On a sink frame the renderer tells the sink after each hook of a pass that does (<span class="tt">QuadBlit::NoteWritten</span>), so what it wrote is composed in its place in the draw order. Yes by default; a pass that draws only through QuadBlit says no and saves a look through the buffer.</li>
 <li><span class="tt">QuadBlit::Source::revision</span> and <span class="tt">QuadBlit::NextRevision()</span>: a number for a source's pixels, new whenever they are written, so a sink keeps its upload until it changes. <span class="tt">ForgetScaled</span> tells the sink too.</li>
 </ul>
-<h2 class="doxsection"><a class="anchor" id="autotoc_md4"></a>
+<h2 class="doxsection"><a class="anchor" id="autotoc_md9"></a>
 Changed</h2>
 <ul>
 <li>QuadBlit's row loops stay where they are meant to on an ESP32. Each one <span class="tt">Blit</span> or <span class="tt">BlitScaled</span> calls is in IRAM and never inlined into those callers, which run from flash; before, the compiler inlined some of them and dropped their IRAM copy, and which ones changed with any edit nearby (the 1:1 alpha blend of RGB565A8 sprites ran from flash). The general per-pixel path (<span class="tt">BlitRows</span>) is in flash, as it was in every build: in IRAM it took 12 KB and drew Wyrdmoor on a T-Deck no faster. IRAM on a T-Deck build: 2.4 KB more.</li>
 </ul>
-<h2 class="doxsection"><a class="anchor" id="autotoc_md5"></a>
-0.22.0</h2>
-<h2 class="doxsection"><a class="anchor" id="autotoc_md6"></a>
-Changed</h2>
-<ul>
-<li>The frame buffer and the render strip are counted in the engine's memory figures. They came from <span class="tt">Memory::AllocateInternal</span>, which counts nothing, so the largest buffer on a board was missing from every total and from the editor's Memory panel. They now come from <span class="tt">Memory::Allocate</span> in the Internal region, as before in internal RAM.</li>
-<li><span class="tt">minEngine</span> 0.22.0: built against engine 0.22.0. A build of this package from before does not load and is rebuilt.</li>
-</ul>
-<h2 class="doxsection"><a class="anchor" id="autotoc_md7"></a>
-Fixed</h2>
-<ul>
-<li>A Linux desktop game no longer crashes as it exits. A package's render pass (deki-particles) was detached from a pass list that static destruction had already freed.</li>
-</ul>
 <p>更早的版本：<a href="https://github.com/dekiengine/deki-rendering/blob/master/CHANGELOG.md">CHANGELOG.md</a></p>
 <hr  />
-<p>由包的反射数据生成（引擎 0.30.3）。属性名就是场景文件中使用的键。重命名后会保留别名（<a href="https://github.com/dekiengine/deki-editor/blob/master/COMPATIBILITY.md">兼容性</a>）。 </p>
+<p>由包的反射数据生成（引擎 0.40.0）。属性名就是场景文件中使用的键。重命名后会保留别名（<a href="https://github.com/dekiengine/deki-editor/blob/master/COMPATIBILITY.md">兼容性</a>）。 </p>
 </div></div><!-- PageDoc -->
 <a href="doxygen_crawl.html"></a>
 </div><!-- contents -->
