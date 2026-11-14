@@ -25,8 +25,11 @@ Package Manager in the Deki Editor, or `DekiEditor --packages-add deki-rendering
 shows `orthoHeight` meters top to bottom and the width follows the screen: a
 bigger screen of the same shape shows the same world drawn bigger, a wider one
 shows more at the sides. Perspective, it shows a vertical `fieldOfView` for 3D
-meshes. `pixelPerfect` scales by whole numbers for pixel art. Every screen
-renders at its own resolution.
+meshes. `pixelPerfect` scales by whole numbers for pixel art, and
+`pixelGrid` says what it keeps everything on: `Screen` (the default), whole
+screen pixels, so on a screen that shows the art larger the camera moves a
+screen pixel at a time and a walk does not jitter; or `Art`, the art's own
+pixels. Every screen renders at its own resolution.
 
 ## Lights
 
