@@ -12,11 +12,15 @@ alongside one that has them.
 
 ### Added
 - **A splash screen with the Deki logo.** The `splash` feature shows the
-  logo for 1.5 seconds when the game starts, before its startup scene. It
-  is off until a project turns it on in its build features, and a build
-  without it leaves the splash out. The logo is drawn at a whole-number
-  scale for the screen (2x from 640 by 480, and so on) and is kept in
-  flash, about 24 KB. The engine opens it through `Deki::BootSplash`.
+  logo for 1.5 seconds when the game starts, before its startup scene: the
+  icon falls in with its eyes squeezed shut, lands, opens them and blinks,
+  and the landing makes the letters jump. It is off until a project turns
+  it on in its build features, and a build without it leaves the splash
+  out. The icon is drawn from the brand's shapes and the letters from
+  masks of about half a kilobyte, so it adds almost nothing to the
+  firmware; while it plays it uses about 19 KB of RAM, freed when the game
+  starts. It is drawn at a whole-number scale for the screen (2x from 640
+  by 480, and so on). The engine opens it through `Deki::BootSplash`.
 
 ## 0.40.0
 

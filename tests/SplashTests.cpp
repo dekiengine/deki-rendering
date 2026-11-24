@@ -1,5 +1,6 @@
-// The splash screen (Splash.cpp): the scene it makes draws the Deki logo,
-// centred on black, at the size the screen calls for.
+// The splash screen (Splash.cpp): the scene it makes drops the Deki logo in
+// from above the screen and comes to rest centred on black, at the size the
+// screen calls for.
 
 #include <gtest/gtest.h>
 
@@ -7,15 +8,18 @@
 #include "DekiRenderSystem.h"
 #include "QuadBlit.h"
 #include "Splash.h"
-#include "SplashImage.h"
+#include "SplashShapes.h"
 #include "Standard2DRenderer.h"
 
 #include <deki/BootSplash.h>
+#include <deki/Component.h>
 #include <deki/Engine.h>
 #include <deki/Object.h>
 #include <deki/Scene.h>
+#include <deki/Time.h>
 
 #include <algorithm>
+#include <cmath>
 #include <cstdlib>
 #include <cstring>
 #include <memory>
@@ -27,7 +31,10 @@ using namespace DekiRendering;
 namespace
 {
 
-// A screen of `width` x `height` with the splash scene drawn on it, RGB565.
+constexpr float kFrameMs = 1000.0f / 30.0f;
+
+// The screen `seconds` after the logo is first on it, `width` x `height`,
+// RGB565: the splash scene played frame by frame as a game plays it.
 struct SplashFrame
 {
     int width = 0;
@@ -35,7 +42,7 @@ struct SplashFrame
     std::vector<uint16_t> pixels;
     bool made = false;
 
-    SplashFrame(int w, int h)
+    SplashFrame(int w, int h, float seconds)
         : width(w),
           height(h),
           pixels(static_cast<size_t>(w) * h, 0xFFFF)
@@ -51,9 +58,20 @@ struct SplashFrame
         std::unique_ptr<Deki::Scene> scene(make ? make() : nullptr);
         if (scene)
         {
+            made = true;
+            // The first update is before the first frame; time counts from
+            // the second.
+            const int frames = 1 + static_cast<int>(std::lround(seconds * 1000.0f / kFrameMs));
+            for (int i = 0; i < frames; ++i)
+            {
+                Deki::Time::UpdateF(kFrameMs);
+                for (Deki::Component* component : scene->GetActiveComponents())
+                {
+                    component->Update();
+                }
+            }
             // Drawn as a game draws a frame: the render system clears to the
             // camera's colour, then the renderer draws.
-            made = true;
             Standard2DRenderer renderer;
             screen.SetRenderer(&renderer);
             screen.Render(scene.get());
@@ -67,15 +85,13 @@ struct SplashFrame
     }
 
     uint16_t At(int x, int y) const { return pixels[static_cast<size_t>(y) * width + x]; }
+
+    // How blue the pixel is, 0 to 31.
+    int Blue(int x, int y) const { return At(x, y) & 31; }
 };
 
-// The logo's own pixel at (x, y).
-uint16_t Logo(int x, int y)
-{
-    return SplashImage::kPixels[y * SplashImage::kWidth + x];
-}
-
-// Where the lit (not black) pixels are: the smallest box around them.
+// Where the lit (not black) pixels are, from row `fromY` down: the smallest
+// box around them.
 struct Box
 {
     int left = 1 << 30;
@@ -84,17 +100,17 @@ struct Box
     int bottom = -1;
     int Width() const { return right - left; }
     int Height() const { return bottom - top; }
+    bool Empty() const { return right < 0; }
 };
 
-template <typename Pixel>
-Box LitBox(int width, int height, Pixel pixel)
+Box LitBox(const SplashFrame& frame, int fromY = 0)
 {
     Box box;
-    for (int y = 0; y < height; ++y)
+    for (int y = fromY; y < frame.height; ++y)
     {
-        for (int x = 0; x < width; ++x)
+        for (int x = 0; x < frame.width; ++x)
         {
-            if (pixel(x, y) != 0)
+            if (frame.At(x, y) != 0)
             {
                 box.left = std::min(box.left, x);
                 box.top = std::min(box.top, y);
@@ -106,66 +122,96 @@ Box LitBox(int width, int height, Pixel pixel)
     return box;
 }
 
-Box FrameBox(const SplashFrame& frame)
-{
-    return LitBox(frame.width, frame.height, [&](int x, int y) { return frame.At(x, y); });
-}
-
-Box LogoBox()
-{
-    return LitBox(SplashImage::kWidth, SplashImage::kHeight, [](int x, int y) { return Logo(x, y); });
-}
+// At rest, on a 320 x 240 screen, the icon ends above row 136 and the
+// letters start below row 150; at the top of their jump they reach row 142.
+constexpr int kBelowIcon = 138;
+constexpr int kLettersFrom = 150;
 
 }  // namespace
 
-TEST(SplashTest, TheLogoIsDrawnOneToOneAndCentredOnBlack)
+TEST(SplashTest, ItComesToRestCentredOnBlack)
 {
-    const SplashFrame frame(320, 240);
+    const SplashFrame frame(320, 240, 1.4f);
     ASSERT_TRUE(frame.made);
-    const Box drawn = FrameBox(frame);
-    const Box logo = LogoBox();
-    ASSERT_EQ(drawn.Width(), logo.Width());
-    ASSERT_EQ(drawn.Height(), logo.Height());
-
-    // Centred to within the half pixel an odd size leaves.
-    const int left = drawn.left - logo.left;
-    const int top = drawn.top - logo.top;
-    EXPECT_LE(std::abs(left * 2 + SplashImage::kWidth - 320), 1);
-    EXPECT_LE(std::abs(top * 2 + SplashImage::kHeight - 240), 1);
-
-    int differ = 0;
-    for (int y = 0; y < SplashImage::kHeight; ++y)
-    {
-        for (int x = 0; x < SplashImage::kWidth; ++x)
-        {
-            differ += frame.At(left + x, top + y) != Logo(x, y) ? 1 : 0;
-        }
-    }
-    EXPECT_EQ(differ, 0);
+    const Box drawn = LitBox(frame);
+    ASSERT_FALSE(drawn.Empty());
+    // The logo's box, give or take the letters' side and the soft edges.
+    EXPECT_NEAR(drawn.Width(), SplashShapes::kWidth, 3);
+    EXPECT_NEAR(drawn.Height(), SplashShapes::kHeight, 3);
+    EXPECT_LE(std::abs(drawn.left + drawn.right - 320), 3);
+    EXPECT_LE(std::abs(drawn.top + drawn.bottom - 240), 3);
 }
 
 TEST(SplashTest, AScreenTwiceAsBigDrawsItTwiceAsBig)
 {
-    const SplashFrame frame(640, 480);
+    const SplashFrame small(320, 240, 1.4f);
+    const SplashFrame big(640, 480, 1.4f);
+    ASSERT_TRUE(big.made);
+    const Box one = LitBox(small);
+    const Box two = LitBox(big);
+    EXPECT_NEAR(two.Width(), one.Width() * 2, 2);
+    EXPECT_NEAR(two.Height(), one.Height() * 2, 2);
+    EXPECT_LE(std::abs(two.left + two.right - 640), 4);
+}
+
+TEST(SplashTest, ItStartsAboveTheScreen)
+{
+    const SplashFrame frame(320, 240, 0.0f);
     ASSERT_TRUE(frame.made);
-    const Box drawn = FrameBox(frame);
-    const Box logo = LogoBox();
-    EXPECT_EQ(drawn.Width(), logo.Width() * 2);
-    EXPECT_EQ(drawn.Height(), logo.Height() * 2);
-    EXPECT_LE(std::abs(drawn.left + drawn.right - 640), 2);
+    EXPECT_TRUE(LitBox(frame).Empty());
+}
+
+TEST(SplashTest, TheLettersWaitForTheIconToLand)
+{
+    const SplashFrame falling(320, 240, 0.3f);
+    ASSERT_TRUE(falling.made);
+    EXPECT_FALSE(LitBox(falling).Empty());               // the icon is on its way down
+    EXPECT_TRUE(LitBox(falling, kLettersFrom).Empty());  // no letters yet
+    const SplashFrame landed(320, 240, 1.4f);
+    EXPECT_FALSE(LitBox(landed, kLettersFrom).Empty());
+}
+
+TEST(SplashTest, TheLandingMakesTheLettersJump)
+{
+    // E and K are at the top of their jump about a quarter of a second after
+    // the landing.
+    const SplashFrame jumping(320, 240, 0.57f);
+    const SplashFrame resting(320, 240, 1.4f);
+    const Box up = LitBox(jumping, kBelowIcon);
+    const Box down = LitBox(resting, kBelowIcon);
+    ASSERT_FALSE(up.Empty());
+    EXPECT_LE(up.top, down.top - 8);
+}
+
+TEST(SplashTest, ItBlinksOnce)
+{
+    // A point in the left eye, above its middle: lit while the eye is open,
+    // dark while it is shut.
+    const SplashFrame open(320, 240, 1.4f);
+    const SplashFrame shut(320, 240, 1.125f);
+    const Box drawn = LitBox(open);
+    const int x = drawn.left + 37;
+    const int y = drawn.top + 34;
+    EXPECT_GT(open.Blue(x, y), 24);
+    EXPECT_LT(shut.Blue(x, y), 8);
 }
 
 TEST(SplashTest, AScreenSmallerThanTheLogoShowsAllOfIt)
 {
-    const SplashFrame frame(80, 64);
+    const SplashFrame frame(80, 64, 1.4f);
     ASSERT_TRUE(frame.made);
-    const Box drawn = FrameBox(frame);
+    const Box drawn = LitBox(frame);
     ASSERT_GT(drawn.Width(), 0);
     // Black all round the edge: nothing of the logo is cut off.
     EXPECT_GT(drawn.left, 0);
     EXPECT_GT(drawn.top, 0);
     EXPECT_LT(drawn.right, 80);
     EXPECT_LT(drawn.bottom, 64);
+}
+
+TEST(SplashTest, ItsShapesTakeUnderAKilobyte)
+{
+    EXPECT_LT(sizeof(SplashShapes::kLetterBits) + sizeof(SplashShapes::kLetters), 1024u);
 }
 
 TEST(SplashTest, NoScreenMeansNoSplash)
