@@ -27,7 +27,7 @@
       "id": "splash",
       "displayName": "Splash Screen",
       "buildDefine": "DEKI_FEATURE_SPLASH",
-      "defaultEnabled": true,
+      "defaultEnabled": false,
       "componentTypes": []
     }
   ]

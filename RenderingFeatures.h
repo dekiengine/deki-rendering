@@ -10,8 +10,9 @@
 // can tell it may leave it out.
 //
 // "splash" (DEKI_FEATURE_SPLASH): the Deki logo shown after the boot scene
-// while the startup scene loads (Splash.h). On unless the project's build
-// settings turn it off; off, Splash.cpp and its picture are left out.
+// while the startup scene loads (Splash.h). Off until the project turns it on
+// (set_build_feature, or the Package Manager); off, Splash.cpp and its picture
+// are left out.
 //
 // A build that does not configure features (the editor's) has them all.
 #if !defined(DEKI_PACKAGE_FEATURES_CONFIGURED) && !defined(DEKI_FEATURE_LIGHTS)
