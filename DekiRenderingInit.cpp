@@ -4,6 +4,7 @@
 #include "DekiRenderPassRegistry.h"
 #include "DekiSortingCallbackRegistry.h"
 #include "ShaderAsset.h"
+#include "Splash.h"
 #include "Standard2DRenderer.h"
 #include <deki/Engine.h>
 #include <deki/ProjectSettings.h>
@@ -191,12 +192,16 @@ void DekiRenderingInitSystem()
 
     // 5. Hand the render system to the engine.
     Deki::Engine::GetInstance().SetRenderSystem(s_RenderSystem);
+
+    // 6. The splash screen, shown after the boot scene when the feature is on.
+    RegisterSplash();
     DEKI_LOG_INTERNAL("DekiRendering: Init complete (renderer=%p, %d passes)", static_cast<void*>(s_Renderer),
                       static_cast<int>(s_Passes.size()));
 }
 
 void DekiRenderingShutdownSystem()
 {
+    UnregisterSplash();
     Deki::Engine::GetInstance().SetRenderSystem(nullptr);
 
     // Remove the late-attach hook, so a package registering after shutdown

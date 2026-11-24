@@ -9,7 +9,14 @@
 // Light includes Light.h only inside #ifdef DEKI_FEATURE_LIGHTS, so the build
 // can tell it may leave it out.
 //
+// "splash" (DEKI_FEATURE_SPLASH): the Deki logo shown after the boot scene
+// while the startup scene loads (Splash.h). On unless the project's build
+// settings turn it off; off, Splash.cpp and its picture are left out.
+//
 // A build that does not configure features (the editor's) has them all.
 #if !defined(DEKI_PACKAGE_FEATURES_CONFIGURED) && !defined(DEKI_FEATURE_LIGHTS)
 #define DEKI_FEATURE_LIGHTS
+#endif
+#if !defined(DEKI_PACKAGE_FEATURES_CONFIGURED) && !defined(DEKI_FEATURE_SPLASH)
+#define DEKI_FEATURE_SPLASH
 #endif
