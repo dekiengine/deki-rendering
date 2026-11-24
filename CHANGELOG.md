@@ -8,6 +8,16 @@ breaking change bumps the minor across the editor, the engine and every
 package together, so a package with no changes of its own is still released
 alongside one that has them.
 
+## Unreleased
+
+### Added
+- **A splash screen with the Deki logo.** The `splash` feature shows the
+  logo for 1.5 seconds when the game starts, before its startup scene. It
+  is off until a project turns it on in its build features, and a build
+  without it leaves the splash out. The logo is drawn at a whole-number
+  scale for the screen (2x from 640 by 480, and so on) and is kept in
+  flash, about 24 KB. The engine opens it through `Deki::BootSplash`.
+
 ## 0.40.0
 
 ### Added
