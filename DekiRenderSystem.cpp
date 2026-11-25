@@ -953,14 +953,17 @@ void DekiRenderSystem::RenderBands(Deki::Scene* scene, CameraComponent* camera, 
             {
                 continue;
             }
-            // The strip's whole length: a display may send more of a strip
-            // than it is told (a turned panel sends whole panel rows).
+            // The strip's whole length, since a display may send more of a
+            // strip than it is told: a turned panel sends whole panel rows,
+            // and a panel sent strips of rows as regions (no scan order: no
+            // tear-free sync) sends whole rows of them. What the strip's
+            // buffer holds beside the change is another strip's.
             if (scan && m_BandColumns)
             {
                 part.top = strip.top;
                 part.bottom = strip.bottom;
             }
-            else if (scan)
+            else
             {
                 part.left = strip.left;
                 part.right = strip.right;

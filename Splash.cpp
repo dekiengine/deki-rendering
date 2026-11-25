@@ -30,9 +30,11 @@ namespace DekiRendering
 namespace
 {
 
-// How long the logo stays at least. The startup scene loads after that, with
-// the logo still on screen, so a slow load shows it longer.
-constexpr float kShowSeconds = 1.5f;
+// The logo fades out from kFadeStart, over kFadeSeconds, and the startup
+// scene loads at kShowSeconds, on a black screen.
+constexpr float kFadeStart = 1.3f;
+constexpr float kFadeSeconds = 0.35f;
+constexpr float kShowSeconds = 1.7f;
 
 // ---------------------------------------------------------------------------
 // The icon, drawn from the brand's shapes. They are in brand units: the icon's
@@ -321,6 +323,18 @@ int EyesAt(float t)
     return static_cast<int>(units) * kSub;
 }
 
+// How bright the logo is at `t`, 255 to 0: it fades out at the end, fast
+// at first and gently into black.
+uint8_t LightAt(float t)
+{
+    if (t <= kFadeStart)
+    {
+        return 255;
+    }
+    const float k = std::min(1.0f, (t - kFadeStart) / kFadeSeconds);
+    return static_cast<uint8_t>(255.0f * (1.0f - k) * (1.0f - k));
+}
+
 // Whether letter `index` (D, E, K, I) shows at `t`, and how far it has jumped.
 bool LetterLift(int index, float t, float& outLift)
 {
@@ -367,6 +381,9 @@ public:
         ++m_Version;
     }
 
+    /// How bright it is drawn, 255 to 0 (not drawn).
+    void SetLight(uint8_t light) { m_Light = light; }
+
     bool GetContentExtents(float& outWidth, float& outHeight) const override
     {
         outWidth = static_cast<float>(kIconSize);
@@ -378,7 +395,7 @@ public:
                        uint8_t& outTintR, uint8_t& outTintG, uint8_t& outTintB, uint8_t& outTintA) override
     {
         (void)owner;
-        if (!m_Pixels)
+        if (!m_Pixels || m_Light == 0)
         {
             return false;
         }
@@ -391,7 +408,8 @@ public:
         // Its feet: it squashes and stretches from where it stands.
         outPivotX = 0.5f;
         outPivotY = 1.0f;
-        outTintR = outTintG = outTintB = outTintA = 255;
+        outTintR = outTintG = outTintB = m_Light;
+        outTintA = 255;
         return true;
     }
 
@@ -405,6 +423,7 @@ private:
     Deki::Buffer<uint8_t> m_Pixels;
     int m_Open = 0;
     uint32_t m_Version = 1;
+    uint8_t m_Light = 255;
 };
 
 /// One of the letters D, E, K and I: its face from SplashShapes and its blue
@@ -458,6 +477,9 @@ public:
         }
     }
 
+    /// How bright it is drawn, 255 to 0 (not drawn).
+    void SetLight(uint8_t light) { m_Light = light; }
+
     bool GetContentExtents(float& outWidth, float& outHeight) const override
     {
         outWidth = static_cast<float>(m_Letter.width + kSide);
@@ -469,7 +491,7 @@ public:
                        uint8_t& outTintR, uint8_t& outTintG, uint8_t& outTintB, uint8_t& outTintA) override
     {
         (void)owner;
-        if (!m_Pixels)
+        if (!m_Pixels || m_Light == 0)
         {
             return false;
         }
@@ -483,7 +505,8 @@ public:
         outSource.isRGB565 = true;
         outPivotX = 0.0f;  // its top left
         outPivotY = 0.0f;
-        outTintR = outTintG = outTintB = outTintA = 255;
+        outTintR = outTintG = outTintB = m_Light;
+        outTintA = 255;
         return true;
     }
 
@@ -505,10 +528,11 @@ private:
 
     SplashShapes::Letter m_Letter;
     Deki::Buffer<uint8_t> m_Pixels;
+    uint8_t m_Light = 255;
 };
 
-/// Plays the splash: moves the icon and the letters, and opens the startup
-/// scene once the logo has been on screen for kShowSeconds. Made only by
+/// Plays the splash: moves the icon and the letters, fades them out, and opens
+/// the startup scene once the logo has been on screen for kShowSeconds. Made only by
 /// MakeSplashScene, so the reflection codegen never sees it: it is in no menu
 /// and in no scene file.
 class SplashComponent : public Deki::Component
@@ -537,7 +561,7 @@ public:
         {
             const SplashShapes::Letter& letter = SplashShapes::kLetters[i];
             m_Letters[i] = scene.CreateDekiObject("Letter");
-            m_Letters[i]->AddComponent<SplashLetterComponent>(i);
+            m_LetterArt[i] = m_Letters[i]->AddComponent<SplashLetterComponent>(i);
             m_LetterX[i] = left + letter.x;
             m_LetterY[i] = top - letter.y;
         }
@@ -571,8 +595,11 @@ private:
         m_Icon->SetLocalPosition(m_FeetX, m_FeetY + pose.lift);
         m_Icon->SetScale(pose.scaleX, pose.scaleY);
         m_IconArt->SetEyes(EyesAt(t));
+        const uint8_t light = LightAt(t);
+        m_IconArt->SetLight(light);
         for (int i = 0; i < 4; ++i)
         {
+            m_LetterArt[i]->SetLight(light);
             float lift = 0.0f;
             const bool shown = LetterLift(i, t, lift);
             if (m_Letters[i]->IsActive() != shown)
@@ -586,6 +613,7 @@ private:
     Deki::Object* m_Icon = nullptr;
     SplashIconComponent* m_IconArt = nullptr;
     Deki::Object* m_Letters[4] = {};
+    SplashLetterComponent* m_LetterArt[4] = {};
     float m_LetterX[4] = {};
     float m_LetterY[4] = {};
     float m_FeetX = 0.0f;

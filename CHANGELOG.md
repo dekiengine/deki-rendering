@@ -12,15 +12,25 @@ alongside one that has them.
 
 ### Added
 - **A splash screen with the Deki logo.** The `splash` feature shows the
-  logo for 1.5 seconds when the game starts, before its startup scene: the
-  icon falls in with its eyes squeezed shut, lands, opens them and blinks,
-  and the landing makes the letters jump. It is off until a project turns
+  logo when the game starts, before its startup scene: the icon falls in
+  with its eyes squeezed shut, lands, opens them and blinks, the landing
+  makes the letters jump, and the logo fades to black; the startup scene
+  loads 1.7 seconds after it first shows. It is off until a project turns
   it on in its build features, and a build without it leaves the splash
   out. The icon is drawn from the brand's shapes and the letters from
   masks of about half a kilobyte, so it adds almost nothing to the
   firmware; while it plays it uses about 19 KB of RAM, freed when the game
   starts. It is drawn at a whole-number scale for the screen (2x from 640
   by 480, and so on). The engine opens it through `Deki::BootSplash`.
+
+### Fixed
+- **Drawing in strips while redrawing only what changed left old pieces
+  on a panel without tear-free sync.** A strip that changed in part was
+  drawn only across the change, in a buffer every strip shares, but such
+  a panel (deki-display's, on a PicoCalc for one) sends whole rows of what
+  it is told: the rest of each row went out with what another strip had
+  left there. A strip of rows that changed is now drawn across its whole
+  width.
 
 ## 0.40.0
 
