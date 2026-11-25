@@ -59,6 +59,10 @@ public:
     /// those with nothing changed are not sent at all.
     virtual void PresentStrip(const ScanStrip& strip) = 0;
 
+    /// The frame's last strip has been sent (called only when one was): a
+    /// display that puts strips together into frames shows the frame now.
+    virtual void EndStrips() {}
+
     /// The most pixels a strip can hold and still go out at full speed, or 0
     /// for any: a display that copies strips into memory it has little of
     /// says what it could get, and strips are cut no bigger from the next
@@ -68,6 +72,12 @@ public:
     /// Whether the display lends the buffers strips are drawn in
     /// (GetStripBuffer). The default is no.
     virtual bool LendsStripBuffers() const { return false; }
+
+    /// Whether the display sends only the part of a strip it is told
+    /// (ScanStrip::changed), of any width: a strip that changed in part is
+    /// then drawn only there. The default is no: a panel sent whole rows of
+    /// it (or whole columns, for strips of columns) is drawn them whole.
+    virtual bool SendsPartOfAStrip() const { return false; }
 
     /// A buffer of `bytes` to draw the next strip in, which that strip's
     /// PresentStrip then takes as it is, with no copy; or null: draw it in

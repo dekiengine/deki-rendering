@@ -375,6 +375,28 @@ void Standard2DRenderer::ExecuteBuiltins(const SortItem& item, RenderContext& ct
                     g.areaKnown = true;  // nothing, in every part drawn
                     NoteDraw(renderer, 0, Deki::Rect{}, Deki::Rect{}, 0, Deki::Rect{}, 0, record);
                 }
+                else if (geo && ctx.contentFrame != 0 && !g.areaKnown)
+                {
+                    // Outside this strip: the frame's other strips pass it
+                    // over outside its reach (outside the whole view, in
+                    // every one), until the strip it draws in finds its pixels.
+                    const float viewW = static_cast<float>(ctx.viewWidth > 0 ? ctx.viewWidth : ctx.width);
+                    const float viewH = static_cast<float>(ctx.viewHeight > 0 ? ctx.viewHeight : ctx.height);
+                    if (fScreenX + reach < 0.0f || fScreenX - reach > viewW || fScreenY + reach < 0.0f ||
+                        fScreenY - reach > viewH)
+                    {
+                        g.areaLeft = g.areaTop = g.areaRight = g.areaBottom = 0;
+                    }
+                    else
+                    {
+                        g.areaLeft = static_cast<int32_t>(std::floor(fScreenX - reach)) - 1;
+                        g.areaTop = static_cast<int32_t>(std::floor(fScreenY - reach)) - 1;
+                        g.areaRight = static_cast<int32_t>(std::ceil(fScreenX + reach)) + 1;
+                        g.areaBottom = static_cast<int32_t>(std::ceil(fScreenY + reach)) + 1;
+                        g.areaRough = true;
+                    }
+                    g.areaKnown = true;
+                }
                 return;
             }
         }
@@ -518,8 +540,9 @@ void Standard2DRenderer::ExecuteBuiltins(const SortItem& item, RenderContext& ct
 
             // What it writes, for the frame's other strips (their content is
             // this one: content made again for each strip may not be).
-            if (geo && !g.areaKnown && ctx.contentFrame != 0 && !source.ownsPixels)
+            if (geo && (!g.areaKnown || g.areaRough) && ctx.contentFrame != 0 && !source.ownsPixels)
             {
+                g.areaRough = false;
                 int32_t left = 0, top = 0, right = 0, bottom = 0;
                 if (sameShape)
                 {
@@ -645,7 +668,9 @@ void Standard2DRenderer::ExecuteBuiltins(const SortItem& item, RenderContext& ct
                         e->relBottom = g.areaBottom - intScreenY;
                     }
                 }
-                sig.Add(drawIndex);
+                // Not its place in the draw order: one object switched on or off
+                // moves every object after it one place. NoteDraw checks the
+                // order apart.
                 Fingerprint onScreen = sig;
                 sig.Add(intScreenX - m_ScrollOriginX);  // where it is in the world, as the frame scrolls
                 sig.Add(intScreenY - m_ScrollOriginY);
@@ -1177,6 +1202,8 @@ bool Standard2DRenderer::FindChanges(Deki::Scene* scene, const RenderContext& ct
     m_FrameBuffer = ctx.buffer;
     m_Changes = &changed;
     m_DrawIndex = 0;
+    m_OrderHigh = 0;
+    m_OrderAny = false;
     m_Pins.clear();
     m_PinRects.clear();
     m_StillChanges.clear();
@@ -1306,6 +1333,17 @@ void Standard2DRenderer::NoteDraw(const RendererComponent* renderer, uint64_t si
     DrawRecord& record = known ? *known : m_Records[RecordKey{ renderer, kNoPiece }];
     const bool met = record.seen != 0;
     const Deki::Rect& old = record.area;
+    // Its order among the renderers drawn both frames. Of two that swap, the
+    // one now later had the lower place last frame: it moved back, and is
+    // drawn again whole. One switched on or off, or new, or gone, moves no
+    // other: its own area is drawn again, and with it whatever lies over it.
+    bool movedBack = false;
+    if (met && !area.Empty() && record.drawIndex != kNoOrder)
+    {
+        movedBack = m_OrderAny && record.drawIndex < m_OrderHigh;
+        m_OrderHigh = std::max(m_OrderHigh, record.drawIndex);
+        m_OrderAny = true;
+    }
     auto same = [](const Deki::Rect& a, const Deki::Rect& b)
     { return a.left == b.left && a.top == b.top && a.right == b.right && a.bottom == b.bottom; };
     // While the frame scrolls, a renderer drawn the same, at the same place in
@@ -1317,8 +1355,8 @@ void Standard2DRenderer::NoteDraw(const RendererComponent* renderer, uint64_t si
     // Drawn the same at the same place on screen while the frame moves: its
     // pixels moved with the frame, so both places are drawn again, except the
     // pins, which keep their pixels.
-    const bool stillOnScreen =
-        scrolling && met && signature != 0 && screenSignature != 0 && record.screenSignature == screenSignature;
+    const bool stillOnScreen = scrolling && met && !movedBack && signature != 0 && screenSignature != 0 &&
+                               record.screenSignature == screenSignature;
     // Drawn over a pin met earlier: unless it too is the same on screen, its
     // pixels there are last frame's, where it was then.
     if (scrolling && met && !stillOnScreen)
@@ -1364,7 +1402,7 @@ void Standard2DRenderer::NoteDraw(const RendererComponent* renderer, uint64_t si
             m_PinRects.push_back(pin);
         }
     }
-    else if (!met || record.signature != signature || (!same(old, area) && !scrolledAlong))
+    else if (!met || movedBack || record.signature != signature || (!same(old, area) && !scrolledAlong))
     {
         RenderProfiler::AddObjectRedraw(renderer, met ? RenderProfiler::Redraw::Changed : RenderProfiler::Redraw::New);
         if (met)
@@ -1378,6 +1416,7 @@ void Standard2DRenderer::NoteDraw(const RendererComponent* renderer, uint64_t si
     record.reach = reach;
     record.seen = m_RecordCall;
     record.screenSignature = screenSignature;
+    record.drawIndex = area.Empty() ? kNoOrder : drawIndex;
 }
 
 namespace
@@ -1702,6 +1741,11 @@ void Standard2DRenderer::LightFrameIfDue(const SortItem* next, const RenderConte
             s_Told = true;
             DEKI_LOG_ERROR("Lights: the GPU drawing this frame cannot light it, so it is drawn unlit");
         }
+        return;
+    }
+    if (QuadBlit::IsRecording(ctx.buffer))
+    {
+        QuadBlit::AbandonRecording("the frame is lit");
         return;
     }
     m_Lighting.Apply(ctx.buffer, ctx.width, ctx.height, ctx.format, ctx.redraw, ctx.viewLeft, ctx.viewTop);

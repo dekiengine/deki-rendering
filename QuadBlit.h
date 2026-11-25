@@ -281,6 +281,11 @@ void NextFrame();
 void ForgetScaled(const uint8_t* begin, size_t bytes);
 /// Drops every copy.
 void ClearScaledCache();
+/// How much the copies may hold in all, and how many sizes are tracked: 256
+/// KB and 64 unless a platform with memory to spare raises them (a sprite
+/// animated through many frames then keeps a copy of each). Lowering them
+/// drops the oldest copies as they no longer fit.
+void SetScaledCacheLimits(size_t bytes, size_t entries);
 /// The bytes the copies hold, and how many there are (made or waiting for
 /// their second frame).
 size_t ScaledCacheBytes();
@@ -562,5 +567,110 @@ void RegisterKernel(KernelOp op, RowKernelFn fn);
 
 // The kernel registered for `op`, or nullptr. Public mainly for tests.
 RowKernelFn GetKernel(KernelOp op);
+
+// A large blit drawn on two cores: the platform runs its lower rows on
+// another core while the calling core draws the upper ones. The rows never
+// overlap, so the pixels are the same as drawn on one.
+//
+// RowsJob draws rows [startY, endY) of the blit `context` describes.
+using RowsJob = void (*)(void* context, int32_t startY, int32_t endY);
+// Runs job(context, splitY, endY) on another core while running
+// job(context, startY, splitY) on this one, and returns once both are done.
+// False, having run nothing, when it cannot hand work over now (called from
+// that other core, say); the caller then draws every row itself.
+using ParallelRowsFn = bool (*)(RowsJob job, void* context, int32_t startY, int32_t splitY, int32_t endY);
+
+// Registers the split, used for the plain copy, scaled and blended row paths
+// onto RGB565 when a blit covers at least `minPixels`; nullptr clears it.
+// Below that, handing work over costs more than it saves.
+void RegisterParallelRows(ParallelRowsFn fn, int32_t minPixels);
+
+// The split registered, or nullptr. Public mainly for tests.
+ParallelRowsFn GetParallelRows();
+
+// ============================================================================
+// Recorded frames: drawn once, played back in strips, two at once
+// ============================================================================
+//
+// A frame drawn in strips walks the scene once a strip. Recorded, it is
+// walked once: every Blit, BlitScaled and BlitRuns into the recording's
+// target is kept instead of drawn, worked out as far as the scaled cache,
+// with the clip it was drawn under; the frame's clear is kept as a fill
+// (RecordFill). Playing it back draws those blits into one strip's rows,
+// through the same paths, and touches nothing of QuadBlit's shared state:
+// two strips can be played back at once, on two cores (RegisterParallelRows'
+// split, with the strips as its "rows").
+//
+// Anything written into the target another way gives the recording up
+// (BeforeWriting, NoteWritten, AbandonRecording): the frame is then drawn as
+// it would have been.
+
+/// The blits of a frame, until the next recording.
+struct RecordedFrame;
+
+/// Starts recording blits into `target`, a whole frame of `width` x `height`
+/// in `format`. The target must be a buffer of that size: what is written
+/// into it otherwise lands there, and gives the recording up.
+bool BeginRecording(uint8_t* target, int32_t width, int32_t height, Deki::ColorFormat format);
+/// Whether blits into `buffer` are being recorded.
+bool IsRecording(const uint8_t* buffer);
+/// Keeps a fill of [left, right) x [top, bottom) with `pixel` (the target's
+/// format, as stored), in its place among the blits.
+void RecordFill(int32_t left, int32_t top, int32_t right, int32_t bottom, const uint8_t* pixel);
+/// Gives the recording going on up, saying why (a string literal).
+void AbandonRecording(const char* why);
+/// Ends the recording: its blits, or null when it was given up, with why.
+const RecordedFrame* EndRecording(const char** why = nullptr);
+/// The blits and fills a recording kept.
+size_t RecordedCount(const RecordedFrame& frame);
+
+/// Draws rows [top, bottom) of the recorded frame into `rows`: those rows
+/// only, as many pixels across as the frame, one after another. `lane` (0 or
+/// 1) is this thread's: two threads at once play on different lanes, and
+/// different rows. Only columns [left, right) of them are drawn; the rest of
+/// `rows` is left as it is.
+void PlayRecording(const RecordedFrame& frame, uint8_t* rows, int32_t top, int32_t bottom, int lane,
+                   int32_t left = 0, int32_t right = INT32_MAX);
+/// Adds what the playing back drew to the render profiler's paths. On one
+/// thread, once both lanes are done.
+void FlushPlayStats();
+
+// A whole-rectangle RGB565 copy, 1:1, for a platform whose DMA copies memory
+// faster than its CPU (the ESP32-P4's, which does not read the destination
+// before writing it): `height` rows of `width` pixels, from `src` (the first
+// pixel, rows `srcStrideBytes` apart) to `dst` (the first pixel, rows
+// `dstStridePixels` apart). It may be given pixels the CPU has just written.
+//
+// Done: the copy is there. Refused: nothing was copied, and the rows are
+// copied as usual. Running (only when `mayRun`, which is when the copy covers
+// whole rows of the target): the copy goes on while the CPU draws, its rows
+// arriving top to bottom; anything written into the target afterwards first
+// waits (RectCopyWaitFn) until the copy has passed the rows it touches, and
+// the render system waits for the rest before the frame is shown
+// (FinishCopies).
+enum class RectCopyResult : uint8_t
+{
+    Refused,
+    Done,
+    Running
+};
+using RectCopyFn = RectCopyResult (*)(const uint8_t* src, int32_t srcStrideBytes, uint16_t* dst,
+                                      int32_t dstStridePixels, int32_t width, int32_t height, bool mayRun);
+// Waits until at least `rows` rows of the copy running are there (every row
+// for INT32_MAX). The CPU may then read and write them.
+using RectCopyWaitFn = void (*)(int32_t rows);
+
+// Registers the rectangle copy, used for copies of at least `minPixels`;
+// nullptr clears it. Below that, setting up the transfer costs more than it
+// saves.
+void RegisterRectCopy(RectCopyFn fn, RectCopyWaitFn wait, int32_t minPixels);
+
+// The rectangle copy registered, or nullptr. Public mainly for tests.
+RectCopyFn GetRectCopy();
+
+// Waits for a copy still running (RectCopyResult::Running) to finish. The
+// render system calls it before a frame is shown; BeforeWriting calls it
+// for the buffer the copy goes into.
+void FinishCopies();
 
 }  // namespace QuadBlit

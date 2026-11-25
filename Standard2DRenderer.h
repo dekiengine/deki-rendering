@@ -176,6 +176,9 @@ private:
         // other strips outside them skip the object's blit.
         bool areaKnown = false;
         int32_t areaLeft = 0, areaTop = 0, areaRight = 0, areaBottom = 0;
+        // The area is only the reach's box, noted by a strip the object was
+        // outside of; the strip it draws in works the pixels out.
+        bool areaRough = false;
         // The renderer's content, made once for every part of the frame
         // (RenderContext::contentFrame). Content handed over with ownsPixels
         // is freed after its blit, so it is made again for each. Where it is
@@ -300,7 +303,16 @@ private:
         // The signature with the place on screen instead of in the world:
         // equal while it stays put on screen as the camera scrolls.
         uint64_t screenSignature = 0;
+        // Where in that frame's walk it drew pixels (kNoOrder: none), for the
+        // order check in NoteDraw.
+        uint32_t drawIndex = kNoOrder;
     };
+    static constexpr uint32_t kNoOrder = 0xFFFFFFFFu;
+    // The order check: the highest last-frame drawIndex of the renderers this
+    // walk has met so far that drew pixels both times. One met after it with
+    // a lower one drew before it last frame and after it now: it moved back.
+    uint32_t m_OrderHigh = 0;
+    bool m_OrderAny = false;
     // By renderer and piece (kNoPiece for a renderer's one drawing).
     struct RecordKey
     {

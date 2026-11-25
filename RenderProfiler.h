@@ -37,6 +37,8 @@ constexpr uint32_t kPresent = 2;
 constexpr uint32_t kChanges = 3;
 constexpr uint32_t kScroll = 4;  // moving the last frame for a camera that scrolled
 constexpr uint32_t kPasses = 5;  // render passes' Execute, their blits included
+constexpr uint32_t kRecord = 6;  // a frame recorded to draw its strips on two cores
+constexpr uint32_t kPlay = 7;    // its strips drawn, on two cores
 
 struct Entry
 {
@@ -68,7 +70,8 @@ struct PathEntry
     uint64_t us = 0;
 };
 
-DEKI_RENDERING_API void AddPath(uint32_t path, const char* name, uint64_t us, uint64_t pixels);
+DEKI_RENDERING_API void AddPath(uint32_t path, const char* name, uint64_t us, uint64_t pixels,
+                                uint32_t blits = 1);
 
 /// The paths measured since the last call, most expensive first; then starts
 /// again. Call it before Take, which counts the frames for both.

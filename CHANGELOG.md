@@ -22,6 +22,86 @@ alongside one that has them.
   firmware; while it plays it uses about 19 KB of RAM, freed when the game
   starts. It is drawn at a whole-number scale for the screen (2x from 640
   by 480, and so on). The engine opens it through `Deki::BootSplash`.
+- Scaled sprites onto RGB565 at a whole-number scale (2x, 3x... up to 8x),
+  flipped across or down or not, take a path of their own
+  (`WholeScaleRows_RGB565`): each source pixel is decoded and tinted once for
+  the block it covers, and a source row's runs are worked out once for every
+  target row it covers; opaque stretches are copied, translucent pixels
+  blended. The same pixels as before (checked against the pipeline at 2x,
+  3x, mixed scales, flipped and clipped). On an ESP32-P4 the farm's 2x
+  sprites went from 13 to 9.8 ms. Every RGB565 board takes it; not yet
+  measured on the T-Deck.
+- `QuadBlit::RegisterParallelRows`: a platform with a core to spare draws the
+  lower half of a large blit's rows there while the calling core draws the
+  upper half, for the copy, tinted, scaled, whole-scale and blended row paths
+  onto RGB565. Rows never overlap, so the pixels are the same (checked with
+  the halves on two threads at once). deki-esp32-integration registers it on
+  the ESP32-P4.
+- `QuadBlit::RegisterRectCopy`: a platform whose DMA copies memory faster than
+  its CPU copies a large plain RGB565 copy as one rectangle. Over whole rows
+  of the target it may go on while the CPU draws: a blit then waits only
+  until the copy has passed the rows it touches, a pass writing on its own
+  (`BeforeWriting`) for all of it, and the render system for the rest before
+  the frame is shown (`QuadBlit::FinishCopies`). deki-esp32-integration
+  registers it on the ESP32-P4, where it took the farm's map from 16 ms of
+  CPU to 1.3.
+- `IScanOrderedDisplay::SendsPartOfAStrip`: a display that sends only the
+  part of a strip it is told, of any width, says so, and a strip that
+  changed in part is drawn only there instead of across its whole rows. The
+  default is no, as before. With two cores, such a frame's parts are played
+  back on both, half their rows each (`QuadBlit::PlayRecording` takes the
+  columns to draw), when that saves more than recording the frame costs
+  (`SetRecordCostPixels`, 32768 pixels of drawing by default). What changes
+  apart along such a strip (a picture at one end, a widget at the other) is
+  drawn and sent as separate parts, up to four, rather than one across the
+  space between; gaps cheaper to draw than a part are drawn with them.
+  deki-display's DSI panels say yes.
+- `IScanOrderedDisplay::EndStrips`: called once a frame's last strip has been
+  sent, for a display that puts strips together into frames (deki-display's
+  DSI panels). The default does nothing.
+- Strips drawn on two cores, where the platform has one to spare
+  (`RegisterParallelRows`; deki-esp32-integration registers it on the
+  ESP32-P4): the frame is recorded once, walking the scene once, and each
+  strip is drawn from the recording on both cores, half its rows each. A
+  recording keeps every Blit, BlitScaled and BlitRuns into it and the
+  frame's clear (`QuadBlit::BeginRecording`, `PlayRecording`); playing back
+  uses no state of QuadBlit's shared between threads. Anything that writes
+  the frame other than by blits (a pass writing into it itself, lighting)
+  gives the recording up, and the frame is drawn as before, retried after
+  120 frames. A frame redrawn in parts (`redrawChanges`) can be too, when
+  asked (`SetTwoCoresForParts`, off by default: on the Elecrow 9" the second
+  core playing such frames back, frame after frame while something moved,
+  made the panel's brightness flicker, where one core drawing the same
+  pixels did not), once its
+  changed rows reach 12% of the screen's (`kTwoCoresFromRows`; below that,
+  recording costs more than the second core saves): only the rows of each
+  strip that changed are played back and sent, strips without changes not
+  at all. Strips of columns and a kept or captured frame are drawn as
+  before. The same pixels (checked against whole frames, strips of odd
+  heights, rows down and up, in buffers of the renderer's or lent by the
+  display). On the Elecrow 9" the farm in strips went from 41 to 52 fps; a
+  smart home panel's scene changes, redrawn in parts, from 37.5 to 41.6 fps
+  at worst.
+- `QuadBlit::SetScaledCacheLimits`: a platform with memory to spare lets the
+  scaled cache hold more than its 256 KB and 64 sizes.
+  `RenderProfiler::AddPath` takes a count of blits (1 by default).
+- A plain opaque RGB565 source at a whole-number scale takes a path of its
+  own (`RepeatRows`): each pixel repeated across a row as stored, the row then
+  copied down. The same pixels as before (checked against the pipeline at
+  2x, 3x and 4x, clipped).
+
+### Changed
+- A strip drawn whole leaves its clear to the renderer, as a whole frame
+  does: a pass that covers the strip takes it instead of drawing over it
+  (a map's view copy then copies its rows as they are, not blended). The
+  same pixels as before.
+- Objects outside a strip are passed over in the frame's later strips
+  outside their reach (outside the whole view, in all of them), instead of
+  being looked at in every strip until the one they draw in. On an ESP32-P4
+  strips of the farm went from about 1,550 objects looked at a frame to 950.
+- In Auto, a display that offers strips (`RegisterScanOrderedDisplay`) gets
+  them when its whole frame does not fit in internal RAM, whether or not it
+  takes partial frames.
 
 ### Fixed
 - **Drawing in strips while redrawing only what changed left old pieces
@@ -31,6 +111,18 @@ alongside one that has them.
   it is told: the rest of each row went out with what another strip had
   left there. A strip of rows that changed is now drawn across its whole
   width.
+- 2D lighting builds where the C++ library has no threads (a Raspberry Pi
+  Pico build): it lights the frame on one thread there.
+- A copy the platform left running into a strip (`RegisterRectCopy`) is
+  finished before the strip is sent.
+- Redrawing only what changed: an object switched on or off redrew every
+  object drawn after it, all over the screen, because each one's place in
+  the draw order had moved by one. A renderer's place in the order no
+  longer counts as a change by itself; one that drew before another last
+  frame and after it now is drawn again whole, and objects that come or go
+  redraw their own area, as before
+  (`RedrawChanges.AnObjectSwitchedOnOrOffRedrawsOnlyItsArea`: 144 pixels
+  sent where 592 were; `ABlockMovedInTheDrawOrderIsRedrawn`).
 
 ## 0.40.0
 

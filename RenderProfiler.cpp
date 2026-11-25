@@ -114,11 +114,11 @@ std::vector<Entry> Take(uint32_t& frames)
     return out;
 }
 
-void AddPath(uint32_t path, const char* name, uint64_t us, uint64_t pixels)
+void AddPath(uint32_t path, const char* name, uint64_t us, uint64_t pixels, uint32_t blits)
 {
     PathEntry& e = s_Paths[path];
     e.name = name;
-    ++e.blits;
+    e.blits += blits;
     e.pixels += pixels;
     e.us += us;
 }

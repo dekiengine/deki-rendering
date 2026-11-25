@@ -298,8 +298,11 @@ bool DekiRenderSystem::Setup(int32_t width, int32_t height, Deki::ColorFormat fo
 #else
     const size_t freeInternal = Deki::Memory::GetAvailableInternal();
     Deki::IDisplay* display = Deki::Engine::GetInstance().GetDisplay();
+    // A display that takes strips (IScanOrderedDisplay) takes part of a frame
+    // too, though it shows only whole ones (a DSI panel's).
     const FrameChoice choice =
-        ChooseFrameMode(frameMode, bandRows, frameBytes, freeInternal, !display || display->SupportsPartialPresent());
+        ChooseFrameMode(frameMode, bandRows, frameBytes, freeInternal,
+                        !display || display->SupportsPartialPresent() || FindScanOrderedDisplay(display));
 #endif
     NoteFrameChoice(choice, frameBytes, freeInternal);
 
@@ -375,6 +378,12 @@ void DekiRenderSystem::Render(Deki::Scene* currentScene)
     {
         return;
     }
+    // A copy still running into the frame (QuadBlit's rectangle copy, on a
+    // board whose DMA does it) has finished when the frame is handed on.
+    struct FinishCopiesOnReturn
+    {
+        ~FinishCopiesOnReturn() { QuadBlit::FinishCopies(); }
+    } finishCopies;
 
     // A display registered after Setup() may offer a direct buffer: adopt it
     // once. When already using the display's buffer, ask for it each frame,
@@ -918,6 +927,24 @@ void DekiRenderSystem::RenderBands(Deki::Scene* scene, CameraComponent* camera, 
     }
     const bool partial = changes && !MostOfScreen(*changes);
 
+    // Where the platform has a core to spare: the frame recorded once and each
+    // strip drawn on both cores; redrawn in part, only the rows that changed,
+    // once there are enough of them. Strips of rows only, for now.
+    if (m_TwoCoresWait > 0)
+    {
+        --m_TwoCoresWait;
+    }
+    else if ((!partial || (m_TwoCoresForParts && PartWorthTwoCores(*changes, scan))) && !whole &&
+             !m_BandColumns && !m_TwoCoresOff &&
+             QuadBlit::GetParallelRows() &&
+             DrawStripsOnTwoCores(scene, camera, scan, display, clear, partial ? changes : nullptr))
+    {
+        m_ForceFull = false;
+        m_WholeFrameHolds = false;
+        FreeWholeFrame();
+        return;
+    }
+
     // Strips run along the scan order, in the order the panel refreshes
     // them. A strip's buffer is its own width: the screen's for rows, the
     // strip's for columns.
@@ -926,142 +953,135 @@ void DekiRenderSystem::RenderBands(Deki::Scene* scene, CameraComponent* camera, 
     const int32_t across = m_BandColumns ? m_ScreenWidth : m_ScreenHeight;
     const int32_t strips = (across + m_BandRows - 1) / m_BandRows;
     bool firstSent = true;  // no strip of this frame sent yet
+    const DeferredClear stripClear{ &DekiRenderSystem::ClearFrame, this, &DekiRenderSystem::ClearFrameLit,
+                                    &DekiRenderSystem::ClearPixel, &DekiRenderSystem::ClearColour };
     for (int32_t s = 0; s < strips; ++s)
     {
         const int32_t start = (m_BandReverse ? strips - 1 - s : s) * m_BandRows;
         const int32_t size = std::min(m_BandRows, across - start);
         const Deki::Rect strip = m_BandColumns ? Deki::Rect{ start, 0, start + size, m_ScreenHeight }
                                                : Deki::Rect{ 0, start, m_ScreenWidth, start + size };
-        // The part of the strip to draw and send: all of it, or what changed.
-        Deki::Rect part = strip;
-        if (partial)
+        // The parts of the strip to draw and send: all of it, or what changed
+        // (StripParts).
+        StripParts(partial ? changes : nullptr, strip, scan, m_StripParts);
+        for (const Deki::Rect& part : m_StripParts)
         {
-            part = Deki::Rect{ strip.right, strip.bottom, strip.left, strip.top };
-            for (const Deki::Rect& r : changes->Rects())
+            const int32_t sw = strip.Width();
+            const int32_t sh = strip.Height();
+            const size_t stripPitch = static_cast<size_t>(sw) * bpp;
+            uint8_t* const wholeAt =
+                whole ? whole + static_cast<size_t>(strip.top) * pitch + static_cast<size_t>(strip.left) * bpp : nullptr;
+            // The strip's buffer: one the display lends, which it then sends as
+            // it is, or our own.
+            uint8_t* buffer = scan && scan->LendsStripBuffers() ? scan->GetStripBuffer(stripPitch * sh) : nullptr;
+            const bool lent = buffer != nullptr;
+            if (!lent)
             {
-                const int32_t l = std::max(r.left, strip.left), t = std::max(r.top, strip.top);
-                const int32_t rr = std::min(r.right, strip.right), b = std::min(r.bottom, strip.bottom);
-                if (rr > l && b > t)
+                if (!m_BandBuffer && !AllocateBand())
                 {
-                    part.left = std::min(part.left, l);
-                    part.top = std::min(part.top, t);
-                    part.right = std::max(part.right, rr);
-                    part.bottom = std::max(part.bottom, b);
+                    DEKI_LOG_ERROR("[Rendering] no internal memory for a strip; nothing is drawn");
+                    return;
                 }
+                buffer = m_BandBuffer;
             }
-            if (part.Empty())
+            RenderContext ctx{ camera, buffer, sw, sh, m_ColorFormat };
+            ctx.viewTop = strip.top;
+            ctx.viewHeight = m_ScreenHeight;
+            ctx.viewLeft = strip.left;
+            ctx.viewWidth = m_ScreenWidth;
+            ctx.contentFrame = m_ContentFrame;
+            if (partial)
             {
-                continue;
+                ctx.redraw = Deki::Rect{ part.left - strip.left, part.top - strip.top, part.right - strip.left,
+                                         part.bottom - strip.top };
             }
-            // The strip's whole length, since a display may send more of a
-            // strip than it is told: a turned panel sends whole panel rows,
-            // and a panel sent strips of rows as regions (no scan order: no
-            // tear-free sync) sends whole rows of them. What the strip's
-            // buffer holds beside the change is another strip's.
-            if (scan && m_BandColumns)
+
+            // The strip's starting pixels: the kept frame's, or the clear colour
+            // across what is drawn, and nothing when the renderer will cover all
+            // of it (a full-screen background).
+            const uint64_t clearStart = RenderProfiler::IsEnabled() ? RenderProfiler::Now() : 0;
+            if (keep)
             {
-                part.top = strip.top;
-                part.bottom = strip.bottom;
+                CopyPixels(buffer, stripPitch, wholeAt, pitch, stripPitch, sh);
+            }
+            else if (m_Renderer->CoversView(ctx))
+            {
+                // Nothing: every pixel is drawn over.
+            }
+            else if (!partial && m_Renderer->ClearsLazily())
+            {
+                // Left to the renderer, as for a whole frame: run before the
+                // first draw that does not cover it, or taken by a pass that
+                // draws all of it (a map's view copy).
+                m_ClearColor = clear;
+                m_ClearBuffer = buffer;
+                m_ClearWidth = sw;
+                m_ClearHeight = sh;
+                m_ClearRects = nullptr;
+                ctx.clear = &stripClear;
+            }
+            else if (partial)
+            {
+                FillRect(buffer, sw, sh, m_ColorFormat, ctx.redraw.left, ctx.redraw.top, ctx.redraw.Width(),
+                         ctx.redraw.Height(), clear.r, clear.g, clear.b);
             }
             else
             {
-                part.left = strip.left;
-                part.right = strip.right;
+                FillRect(buffer, sw, sh, m_ColorFormat, 0, 0, sw, sh, clear.r, clear.g, clear.b);
             }
-        }
-        const int32_t sw = strip.Width();
-        const int32_t sh = strip.Height();
-        const size_t stripPitch = static_cast<size_t>(sw) * bpp;
-        uint8_t* const wholeAt =
-            whole ? whole + static_cast<size_t>(strip.top) * pitch + static_cast<size_t>(strip.left) * bpp : nullptr;
-        // The strip's buffer: one the display lends, which it then sends as
-        // it is, or our own.
-        uint8_t* buffer = scan && scan->LendsStripBuffers() ? scan->GetStripBuffer(stripPitch * sh) : nullptr;
-        const bool lent = buffer != nullptr;
-        if (!lent)
-        {
-            if (!m_BandBuffer && !AllocateBand())
+            if (RenderProfiler::IsEnabled())
             {
-                DEKI_LOG_ERROR("[Rendering] no internal memory for a strip; nothing is drawn");
-                return;
+                RenderProfiler::AddContent(RenderProfiler::kClear, RenderProfiler::Now() - clearStart);
             }
-            buffer = m_BandBuffer;
-        }
-        RenderContext ctx{ camera, buffer, sw, sh, m_ColorFormat };
-        ctx.viewTop = strip.top;
-        ctx.viewHeight = m_ScreenHeight;
-        ctx.viewLeft = strip.left;
-        ctx.viewWidth = m_ScreenWidth;
-        ctx.contentFrame = m_ContentFrame;
-        if (partial)
-        {
-            ctx.redraw = Deki::Rect{ part.left - strip.left, part.top - strip.top, part.right - strip.left,
-                                     part.bottom - strip.top };
-        }
 
-        // The strip's starting pixels: the kept frame's, or the clear colour
-        // across what is drawn, and nothing when the renderer will cover all
-        // of it (a full-screen background).
-        const uint64_t clearStart = RenderProfiler::IsEnabled() ? RenderProfiler::Now() : 0;
-        if (keep)
-        {
-            CopyPixels(buffer, stripPitch, wholeAt, pitch, stripPitch, sh);
-        }
-        else if (m_Renderer->CoversView(ctx))
-        {
-            // Nothing: every pixel is drawn over.
-        }
-        else if (partial)
-        {
-            FillRect(buffer, sw, sh, m_ColorFormat, ctx.redraw.left, ctx.redraw.top, ctx.redraw.Width(),
-                     ctx.redraw.Height(), clear.r, clear.g, clear.b);
-        }
-        else
-        {
-            FillRect(buffer, sw, sh, m_ColorFormat, 0, 0, sw, sh, clear.r, clear.g, clear.b);
-        }
-        if (RenderProfiler::IsEnabled())
-        {
-            RenderProfiler::AddContent(RenderProfiler::kClear, RenderProfiler::Now() - clearStart);
-        }
+            m_Renderer->Render(scene, ctx);
+            QuadBlit::RunPendingClear();  // a strip nothing drew in still clears
+            m_ClearBuffer = nullptr;
+            m_ClearRects = nullptr;
 
-        m_Renderer->Render(scene, ctx);
+            if (whole)
+            {
+                CopyPixels(wholeAt, pitch, buffer, stripPitch, stripPitch, sh);
+            }
 
-        if (whole)
-        {
-            CopyPixels(wholeAt, pitch, buffer, stripPitch, stripPitch, sh);
-        }
-
-        const Deki::Rect send = part;
-        const uint64_t presentStart = RenderProfiler::IsEnabled() ? RenderProfiler::Now() : 0;
-        if (scan)
-        {
-            ScanStrip out;
-            out.pixels = buffer;
-            out.stride = sw;
-            out.strip = strip;
-            out.changed = send;
-            out.format = m_ColorFormat;
-            out.firstOfFrame = firstSent;
-            firstSent = false;
-            scan->PresentStrip(out);
-        }
-        else
-        {
-            // PresentRegions reads the rectangle's rows out of a whole frame.
-            // The strip is exactly those rows, so it is handed over as a frame
-            // whose row `top` starts at the strip: the display reads nothing
-            // else.
-            const auto* frameBase = reinterpret_cast<const uint8_t*>(reinterpret_cast<uintptr_t>(buffer) -
-                                                                     static_cast<uintptr_t>(strip.top) * pitch);
-            display->PresentRegions(frameBase, m_ScreenWidth, m_ScreenHeight, m_ColorFormat, &send, 1);
-        }
-        if (RenderProfiler::IsEnabled())
-        {
-            RenderProfiler::AddContent(RenderProfiler::kPresent, RenderProfiler::Now() - presentStart, "Present");
+            const Deki::Rect send = part;
+            // Copies the platform left running into the strip (QuadBlit's
+            // RectCopy) end before the display reads it.
+            QuadBlit::FinishCopies();
+            const uint64_t presentStart = RenderProfiler::IsEnabled() ? RenderProfiler::Now() : 0;
+            if (scan)
+            {
+                ScanStrip out;
+                out.pixels = buffer;
+                out.stride = sw;
+                out.strip = strip;
+                out.changed = send;
+                out.format = m_ColorFormat;
+                out.firstOfFrame = firstSent;
+                firstSent = false;
+                scan->PresentStrip(out);
+            }
+            else
+            {
+                // PresentRegions reads the rectangle's rows out of a whole frame.
+                // The strip is exactly those rows, so it is handed over as a frame
+                // whose row `top` starts at the strip: the display reads nothing
+                // else.
+                const auto* frameBase = reinterpret_cast<const uint8_t*>(reinterpret_cast<uintptr_t>(buffer) -
+                                                                         static_cast<uintptr_t>(strip.top) * pitch);
+                display->PresentRegions(frameBase, m_ScreenWidth, m_ScreenHeight, m_ColorFormat, &send, 1);
+            }
+            if (RenderProfiler::IsEnabled())
+            {
+                RenderProfiler::AddContent(RenderProfiler::kPresent, RenderProfiler::Now() - presentStart, "Present");
+            }
         }
     }
 
+    if (scan && !firstSent)
+    {
+        scan->EndStrips();
+    }
     m_ForceFull = false;
 
     // Kept for the next frame or read by a screenshot; otherwise nothing
@@ -1205,6 +1225,318 @@ bool DekiRenderSystem::SetBandRows(int32_t rows)
     return true;
 }
 
+void DekiRenderSystem::StripParts(const DirtyRegion* changes, const Deki::Rect& strip, const IScanOrderedDisplay* scan,
+                                  std::vector<Deki::Rect>& parts) const
+{
+    parts.clear();
+    if (!changes)
+    {
+        parts.push_back(strip);
+        return;
+    }
+    // What changed in the strip, each change cut to it.
+    m_PartScratch.clear();
+    Deki::Rect box{ strip.right, strip.bottom, strip.left, strip.top };
+    for (const Deki::Rect& r : changes->Rects())
+    {
+        const Deki::Rect c{ std::max(r.left, strip.left), std::max(r.top, strip.top), std::min(r.right, strip.right),
+                            std::min(r.bottom, strip.bottom) };
+        if (c.right > c.left && c.bottom > c.top)
+        {
+            m_PartScratch.push_back(c);
+            box = Deki::Rect{ std::min(box.left, c.left), std::min(box.top, c.top), std::max(box.right, c.right),
+                              std::max(box.bottom, c.bottom) };
+        }
+    }
+    if (m_PartScratch.empty())
+    {
+        return;
+    }
+    if (!(scan && scan->SendsPartOfAStrip()))
+    {
+        // One part: what changed, at the strip's whole length, since the
+        // display may send more of a strip than it is told: a turned panel
+        // sends whole panel rows, and a panel sent strips of rows as regions
+        // (no scan order: no tear-free sync) sends whole rows of them. What
+        // the strip's buffer holds beside the change is another strip's.
+        if (scan && m_BandColumns)
+        {
+            box.top = strip.top;
+            box.bottom = strip.bottom;
+        }
+        else
+        {
+            box.left = strip.left;
+            box.right = strip.right;
+        }
+        parts.push_back(box);
+        return;
+    }
+    // A display that sends only what it is told: what changed side by side
+    // in the strip goes as separate parts, apart along the strip (a widget at
+    // one end, a picture at the other), so the space between is not drawn.
+    // Changes that overlap along it, or with a gap cheaper to draw than a
+    // part costs (m_PartCostPixels), are one part; at most kMaxStripParts.
+    const bool columns = m_BandColumns;
+    auto from = [columns](const Deki::Rect& r) { return columns ? r.top : r.left; };
+    auto to = [columns](const Deki::Rect& r) { return columns ? r.bottom : r.right; };
+    std::sort(m_PartScratch.begin(), m_PartScratch.end(),
+              [&](const Deki::Rect& x, const Deki::Rect& y) { return from(x) < from(y); });
+    const int32_t across = columns ? strip.Width() : strip.Height();
+    const int64_t gapCost = across > 0 ? m_PartCostPixels / across : 0;
+    for (const Deki::Rect& c : m_PartScratch)
+    {
+        if (!parts.empty() && from(c) <= to(parts.back()) + gapCost)
+        {
+            Deki::Rect& p = parts.back();
+            p = Deki::Rect{ std::min(p.left, c.left), std::min(p.top, c.top), std::max(p.right, c.right),
+                            std::max(p.bottom, c.bottom) };
+        }
+        else
+        {
+            parts.push_back(c);
+        }
+    }
+    while (parts.size() > static_cast<size_t>(kMaxStripParts))
+    {
+        // The two nearest along the strip become one.
+        size_t nearest = 0;
+        for (size_t n = 1; n + 1 < parts.size(); ++n)
+        {
+            if (from(parts[n + 1]) - to(parts[n]) < from(parts[nearest + 1]) - to(parts[nearest]))
+            {
+                nearest = n;
+            }
+        }
+        Deki::Rect& p = parts[nearest];
+        const Deki::Rect& q = parts[nearest + 1];
+        p = Deki::Rect{ std::min(p.left, q.left), std::min(p.top, q.top), std::max(p.right, q.right),
+                        std::max(p.bottom, q.bottom) };
+        parts.erase(parts.begin() + static_cast<std::ptrdiff_t>(nearest) + 1);
+    }
+}
+
+bool DekiRenderSystem::ChangedPart(const DirtyRegion& changes, int32_t top, int32_t bottom, Deki::Rect& part) const
+{
+    part = Deki::Rect{ m_ScreenWidth, bottom, 0, top };
+    for (const Deki::Rect& r : changes.Rects())
+    {
+        const int32_t l = std::max<int32_t>(r.left, 0), rr = std::min(r.right, m_ScreenWidth);
+        if (rr > l && r.bottom > top && r.top < bottom)
+        {
+            part.left = std::min(part.left, l);
+            part.right = std::max(part.right, rr);
+            part.top = std::min(part.top, std::max(r.top, top));
+            part.bottom = std::max(part.bottom, std::min(r.bottom, bottom));
+        }
+    }
+    return part.right > part.left && part.bottom > part.top;
+}
+
+bool DekiRenderSystem::PartWorthTwoCores(const DirtyRegion& changes, const IScanOrderedDisplay* scan) const
+{
+    if (m_BandRows <= 0)
+    {
+        return false;
+    }
+    int64_t rows = 0, area = 0;
+    for (int32_t top = 0; top < m_ScreenHeight; top += m_BandRows)
+    {
+        const Deki::Rect strip{ 0, top, m_ScreenWidth, std::min(m_ScreenHeight, top + m_BandRows) };
+        Deki::Rect part;
+        if (ChangedPart(changes, strip.top, strip.bottom, part))
+        {
+            rows += part.Height();
+        }
+        if (scan && scan->SendsPartOfAStrip())
+        {
+            StripParts(&changes, strip, scan, m_PartsScratch2);
+            for (const Deki::Rect& p : m_PartsScratch2)
+            {
+                area += static_cast<int64_t>(p.Width()) * p.Height();
+            }
+        }
+    }
+    if (rows * 100 < static_cast<int64_t>(m_ScreenHeight) * kTwoCoresFromRows)
+    {
+        return false;
+    }
+    // Where the display takes parts of strips, two cores draw the parts one
+    // would, half each, after recording the frame: worth it only when that
+    // saves more than the recording costs. Otherwise both draw whole rows.
+    return !(scan && scan->SendsPartOfAStrip()) || area / 2 + m_RecordCostPixels < area;
+}
+
+bool DekiRenderSystem::DrawStripsOnTwoCores(Deki::Scene* scene, CameraComponent* camera, IScanOrderedDisplay* scan,
+                                            Deki::IDisplay* display, const Deki::Color& clear,
+                                            const DirtyRegion* changes)
+{
+    const QuadBlit::ParallelRowsFn twoCores = QuadBlit::GetParallelRows();
+    const size_t bpp = static_cast<size_t>(GetBytesPerPixel(m_ColorFormat));
+    const size_t pitch = static_cast<size_t>(m_ScreenWidth) * bpp;
+    if (!m_RecordFrame)
+    {
+        // A whole frame's room, written only by what does not blit (and
+        // gives the recording up): in external memory where there is some.
+        const bool external = Deki::Memory::IsExternalAvailable();
+        m_RecordFrame = static_cast<uint8_t*>(Deki::Memory::Allocate(
+            pitch * static_cast<size_t>(m_ScreenHeight), external ? Deki::Memory::External : Deki::Memory::Internal));
+        if (!m_RecordFrame)
+        {
+            m_TwoCoresOff = true;
+            DEKI_LOG_INFO("[Rendering] strips are drawn one at a time: no memory to record a frame in");
+            return false;
+        }
+    }
+
+    // The frame, recorded: one walk of the scene.
+    const bool profiling = RenderProfiler::IsEnabled();
+    const uint64_t recordStart = profiling ? RenderProfiler::Now() : 0;
+    if (!QuadBlit::BeginRecording(m_RecordFrame, m_ScreenWidth, m_ScreenHeight, m_ColorFormat))
+    {
+        return false;
+    }
+    // One walk of the whole frame: none of the strips' per-frame plan.
+    RenderContext ctx{ camera, m_RecordFrame, m_ScreenWidth, m_ScreenHeight, m_ColorFormat };
+    const DeferredClear deferred{ &DekiRenderSystem::ClearFrame, this, &DekiRenderSystem::ClearFrameLit,
+                                  &DekiRenderSystem::ClearPixel, &DekiRenderSystem::ClearColour };
+    m_ClearColor = clear;
+    m_ClearRects = nullptr;
+    m_ClearBuffer = m_RecordFrame;
+    m_ClearWidth = m_ScreenWidth;
+    m_ClearHeight = m_ScreenHeight;
+    if (m_Renderer->CoversView(ctx))
+    {
+        // Nothing: every pixel is drawn over.
+    }
+    else if (m_Renderer->ClearsLazily())
+    {
+        ctx.clear = &deferred;
+    }
+    else
+    {
+        ClearFrame();
+    }
+    m_Renderer->Render(scene, ctx);
+    QuadBlit::RunPendingClear();
+    m_ClearBuffer = nullptr;
+    const char* why = nullptr;
+    const QuadBlit::RecordedFrame* frame = QuadBlit::EndRecording(&why);
+    if (profiling)
+    {
+        RenderProfiler::AddContent(RenderProfiler::kRecord, RenderProfiler::Now() - recordStart, "Record");
+    }
+    if (!frame)
+    {
+        if (!m_SaidOneCore)
+        {
+            m_SaidOneCore = true;
+            DEKI_LOG_INFO("[Rendering] strips drawn one at a time for now: %s", why ? why : "?");
+        }
+        m_TwoCoresWait = 120;  // tried again in a while
+        if (++m_ContentFrame == 0)
+        {
+            m_ContentFrame = 1;  // the strips walk the scene afresh
+        }
+        return false;
+    }
+
+    // Its strips, each on both cores: the upper half of its rows here, the
+    // lower half on the other core, into the one buffer, sent as one strip.
+    // Redrawn in part, only the rows of a strip that changed.
+    const int32_t strips = (m_ScreenHeight + m_BandRows - 1) / m_BandRows;
+    const size_t stripBytes = pitch * static_cast<size_t>(m_BandRows);
+    struct Halves
+    {
+        const QuadBlit::RecordedFrame* frame;
+        uint8_t* rows;  // the strip's first row, `top`
+        int32_t top;
+        size_t pitch;
+        int32_t first;  // the first row played, on lane 0
+        int32_t left;   // the columns played: all of them, or a strip's part
+        int32_t right;
+    };
+    const QuadBlit::RowsJob play = [](void* context, int32_t startY, int32_t endY)
+    {
+        const Halves* h = static_cast<const Halves*>(context);
+        QuadBlit::PlayRecording(*h->frame, h->rows + static_cast<size_t>(startY - h->top) * h->pitch, startY, endY,
+                                startY == h->first ? 0 : 1, h->left, h->right);
+    };
+    bool firstSent = true;
+    uint64_t playUs = 0, presentUs = 0;
+    for (int32_t s = 0; s < strips; ++s)
+    {
+        const int32_t index = m_BandReverse ? strips - 1 - s : s;
+        const int32_t top = index * m_BandRows;
+        const int32_t bottom = std::min(m_ScreenHeight, top + m_BandRows);
+        const Deki::Rect strip{ 0, top, m_ScreenWidth, bottom };
+        // Its parts (StripParts): the whole strip, or what changed; strips
+        // without changes are neither drawn nor sent. Only a display that
+        // takes parts of strips is drawn just their columns.
+        StripParts(changes, strip, scan, m_StripParts);
+        const bool columnsToo = scan && scan->SendsPartOfAStrip();
+        for (const Deki::Rect& part : m_StripParts)
+        {
+            const int32_t from = part.top, to = part.bottom;
+            const int32_t left = columnsToo ? part.left : 0, right = columnsToo ? part.right : m_ScreenWidth;
+            uint8_t* buffer = scan && scan->LendsStripBuffers() ? scan->GetStripBuffer(stripBytes) : nullptr;
+            if (!buffer)
+            {
+                if (!m_BandBuffer && !AllocateBand())
+                {
+                    DEKI_LOG_ERROR("[Rendering] no internal memory for a strip; nothing is drawn");
+                    return true;
+                }
+                buffer = m_BandBuffer;
+            }
+            Halves halves{ frame, buffer, top, pitch, from, left, right };
+            const uint64_t playStart = profiling ? RenderProfiler::Now() : 0;
+            const int32_t split = from + (to - from + 1) / 2;
+            if (to - from < 2 || !twoCores(play, &halves, from, split, to))
+            {
+                QuadBlit::PlayRecording(*frame, buffer + static_cast<size_t>(from - top) * pitch, from, to, 0, left,
+                                        right);
+            }
+            const uint64_t presentStart = profiling ? RenderProfiler::Now() : 0;
+            playUs += presentStart - playStart;
+            const Deki::Rect send{ left, from, right, to };
+            if (scan)
+            {
+                ScanStrip out;
+                out.pixels = buffer;
+                out.stride = m_ScreenWidth;
+                out.strip = strip;
+                out.changed = send;
+                out.format = m_ColorFormat;
+                out.firstOfFrame = firstSent;
+                scan->PresentStrip(out);
+            }
+            else
+            {
+                const auto* frameBase = reinterpret_cast<const uint8_t*>(reinterpret_cast<uintptr_t>(buffer) -
+                                                                         static_cast<uintptr_t>(top) * pitch);
+                display->PresentRegions(frameBase, m_ScreenWidth, m_ScreenHeight, m_ColorFormat, &send, 1);
+            }
+            firstSent = false;
+            if (profiling)
+            {
+                presentUs += RenderProfiler::Now() - presentStart;
+            }
+        }
+    }
+    QuadBlit::FlushPlayStats();
+    if (scan && !firstSent)
+    {
+        scan->EndStrips();
+    }
+    if (profiling)
+    {
+        RenderProfiler::AddContent(RenderProfiler::kPlay, playUs, "Strips, on two cores");
+        RenderProfiler::AddContent(RenderProfiler::kPresent, presentUs, "Present");
+    }
+    return true;
+}
+
 bool DekiRenderSystem::AllocateBand()
 {
     // A strip of rows is the screen's width; a strip of columns its height.
@@ -1221,6 +1553,11 @@ void DekiRenderSystem::FreeBand()
     {
         Deki::Memory::Free(m_BandBuffer);
         m_BandBuffer = nullptr;
+    }
+    if (m_RecordFrame)
+    {
+        Deki::Memory::Free(m_RecordFrame);
+        m_RecordFrame = nullptr;
     }
     m_BandRows = 0;
     FreeWholeFrame();
@@ -1293,19 +1630,35 @@ void DekiRenderSystem::ClearFrame()
 void DekiRenderSystem::ClearFrameWith(const uint8_t* pixel)
 {
     const uint64_t clearStart = RenderProfiler::IsEnabled() ? RenderProfiler::Now() : 0;
-    if (m_RenderBuffer)
+    uint8_t* const target = m_ClearBuffer ? m_ClearBuffer : m_RenderBuffer;
+    const int32_t w = m_ClearBuffer ? m_ClearWidth : m_ScreenWidth;
+    const int32_t h = m_ClearBuffer ? m_ClearHeight : m_ScreenHeight;
+    if (target && QuadBlit::IsRecording(target))
     {
+        // Kept among the frame's blits, drawn when its strips are.
         if (!m_ClearRects)
         {
-            FillRect(m_RenderBuffer, m_ScreenWidth, m_ScreenHeight, m_ColorFormat, 0, 0, m_ScreenWidth, m_ScreenHeight,
-                     pixel);
+            QuadBlit::RecordFill(0, 0, w, h, pixel);
         }
         else
         {
             for (const Deki::Rect& r : m_ClearRects->Rects())
             {
-                FillRect(m_RenderBuffer, m_ScreenWidth, m_ScreenHeight, m_ColorFormat, r.left, r.top, r.Width(),
-                         r.Height(), pixel);
+                QuadBlit::RecordFill(r.left, r.top, r.right, r.bottom, pixel);
+            }
+        }
+    }
+    else if (target)
+    {
+        if (!m_ClearRects)
+        {
+            FillRect(target, w, h, m_ColorFormat, 0, 0, w, h, pixel);
+        }
+        else
+        {
+            for (const Deki::Rect& r : m_ClearRects->Rects())
+            {
+                FillRect(target, w, h, m_ColorFormat, r.left, r.top, r.Width(), r.Height(), pixel);
             }
         }
     }
@@ -1335,7 +1688,7 @@ bool DekiRenderSystem::ClearPixel(void* owner, uint8_t* out)
 {
     // Only a clear of the whole frame: a pass that takes it writes all of it.
     const DekiRenderSystem* self = static_cast<const DekiRenderSystem*>(owner);
-    if (!self->m_RenderBuffer || self->m_ClearRects)
+    if ((!self->m_RenderBuffer && !self->m_ClearBuffer) || self->m_ClearRects)
     {
         return false;
     }
@@ -1346,7 +1699,7 @@ bool DekiRenderSystem::ClearPixel(void* owner, uint8_t* out)
 bool DekiRenderSystem::ClearColour(void* owner, uint8_t* out)
 {
     const DekiRenderSystem* self = static_cast<const DekiRenderSystem*>(owner);
-    if (!self->m_RenderBuffer)
+    if (!self->m_RenderBuffer && !self->m_ClearBuffer)
     {
         return false;
     }

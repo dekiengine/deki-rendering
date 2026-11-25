@@ -43,6 +43,11 @@ private:
     bool m_HaveClearColor = false;
     Deki::Color m_ClearColor;
     const DirtyRegion* m_ClearRects = nullptr;
+    // What the clear writes: a strip's buffer and size while one is drawn,
+    // the frame (m_RenderBuffer) when null.
+    uint8_t* m_ClearBuffer = nullptr;
+    int32_t m_ClearWidth = 0;
+    int32_t m_ClearHeight = 0;
     std::vector<Deki::Rect> m_PresentRects;
     int32_t m_PresentCount = -1;
     // Forgets all of it: the next frame is drawn and sent whole.
@@ -134,6 +139,49 @@ private:
     uint32_t m_CaptureSeen = 0;
     bool AllocateBand();
     void FreeBand();
+    // Where the platform has a core to spare (QuadBlit::GetParallelRows): the
+    // frame recorded once, walking the scene once, and each strip drawn from
+    // the recording on both cores, half its rows each. False, having drawn
+    // nothing, when it cannot be (something writes the frame other than by
+    // blits); the strips are then drawn as before. With `changes`, a frame
+    // redrawn in part: only the rows of each strip that changed are drawn
+    // and sent, and strips without changes not at all.
+    bool DrawStripsOnTwoCores(Deki::Scene* scene, CameraComponent* camera, IScanOrderedDisplay* scan,
+                              Deki::IDisplay* display, const Deki::Color& clear, const DirtyRegion* changes);
+    // The part of strip rows [top, bottom) that `changes` touches, as one
+    // rect: false when it touches none.
+    bool ChangedPart(const DirtyRegion& changes, int32_t top, int32_t bottom, Deki::Rect& part) const;
+    // A frame redrawn in part goes to two cores once the rows to draw reach
+    // this share of the screen: below it, the walk of the scene recording
+    // costs takes more than the second core saves. Where the display takes
+    // part of a strip, two cores draw only the parts too, half each, after
+    // recording the frame (about kRecordCostPixels of drawing): only when
+    // that is less than one core drawing them. Policies.
+    static constexpr int32_t kTwoCoresFromRows = 12;  // percent of the screen's rows
+    // Frames redrawn in part go to two cores only when asked (off by
+    // default): on the Elecrow 9" (ESP32-P4) the second core playing them
+    // back, frame after frame while something moves, made the panel's
+    // brightness flicker; one core drawing the same pixels did not.
+    bool m_TwoCoresForParts = false;
+    static constexpr int64_t kRecordCostPixels = 32768;
+    int64_t m_RecordCostPixels = kRecordCostPixels;  // SetRecordCostPixels
+    bool PartWorthTwoCores(const DirtyRegion& changes, const IScanOrderedDisplay* scan) const;
+    // The parts of `strip` to draw and send: the whole strip without
+    // `changes`; otherwise what changed in it (nothing: none), as one part,
+    // at the strip's whole length unless the display sends only what it is
+    // told; and for such a display, what changed apart along the strip as
+    // separate parts, at most kMaxStripParts, gaps cheaper to draw than a
+    // part (m_PartCostPixels) drawn with them.
+    void StripParts(const DirtyRegion* changes, const Deki::Rect& strip, const IScanOrderedDisplay* scan,
+                    std::vector<Deki::Rect>& parts) const;
+    static constexpr int32_t kMaxStripParts = 4;
+    std::vector<Deki::Rect> m_StripParts;            // this strip's, reused
+    mutable std::vector<Deki::Rect> m_PartScratch;   // StripParts' changes in the strip
+    mutable std::vector<Deki::Rect> m_PartsScratch2; // PartWorthTwoCores' parts
+    uint8_t* m_RecordFrame = nullptr;  // the stand-in frame recorded into, in external memory
+    int32_t m_TwoCoresWait = 0;        // frames before recording is tried again, after one could not be
+    bool m_TwoCoresOff = false;        // no memory for the recording
+    bool m_SaidOneCore = false;
     void RenderBands(Deki::Scene* scene, CameraComponent* camera, bool capture);
     uint8_t* EnsureWholeFrame(const Deki::Color& clear);
     void FreeWholeFrame();
@@ -174,6 +222,14 @@ public:
     /// Changed parts are drawn as one where that adds no more than this many
     /// pixels (kPartCostPixels unless set); 0 merges only what costs nothing.
     void SetPartCostPixels(int64_t pixels) { m_PartCostPixels = pixels; }
+    // What recording a frame for two cores costs, as pixels drawn: a frame
+    // redrawn in parts goes to two cores only when that saves more. A policy;
+    // tests set it to 0.
+    void SetRecordCostPixels(int64_t pixels) { m_RecordCostPixels = pixels; }
+    // Whether frames redrawn in part may be drawn on two cores (off by
+    // default; see m_TwoCoresForParts). Whole frames go to two cores where
+    // the platform has one either way.
+    void SetTwoCoresForParts(bool on) { m_TwoCoresForParts = on; }
     void MarkAllDirty() override { m_ForceFull = true; }
 
     // Strip rendering. Setup() reads the project setting on a device (the

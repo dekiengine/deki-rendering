@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <cstring>
+#include <thread>
 #include <vector>
 
 #include <deki/Engine.h>
@@ -76,6 +77,77 @@ private:
 const Deki::ComponentTypeInfo StripSprite::kTypeInfo =
     Deki::MakeHandWrittenTypeInfo<StripSprite, RendererComponent>(/*declaresUpdate=*/false);
 
+// A picture as the panels draw them: RGB565, or RGB565A8 with alpha from clear
+// through every step to opaque, dark tones, a tint and a tint's alpha, kept
+// by revision (as a sprite's own pixels are) so the renderer's packed and
+// unscaled paths take it.
+class PictureSprite : public RendererComponent
+{
+public:
+    static const Deki::ComponentTypeInfo kTypeInfo;
+    PictureSprite() { SetTypeInfo(&kTypeInfo); }
+
+    int32_t w = 24, h = 18;
+    bool withAlpha = true;
+    uint8_t tint[4] = { 255, 255, 255, 255 };
+    uint32_t revision = 0;
+
+    void Make(uint32_t seed)
+    {
+        const int bpp = withAlpha ? 3 : 2;
+        m_Pixels.assign(static_cast<size_t>(w) * h * bpp, 0);
+        for (int y = 0; y < h; ++y)
+        {
+            for (int x = 0; x < w; ++x)
+            {
+                const uint32_t v = (x * 7 + y * 13 + seed * 31) % 64;
+                // Dark blue-greys, as a room at night.
+                const uint16_t c = static_cast<uint16_t>(((v / 8) << 11) | ((v / 4 + 8) << 5) | (v / 4 + 6));
+                uint8_t* p = &m_Pixels[(static_cast<size_t>(y) * w + x) * bpp];
+                DekiPixel::Store565(p, c);
+                if (withAlpha)
+                {
+                    const int edge = std::min({ x, y, w - 1 - x, h - 1 - y });
+                    p[2] = static_cast<uint8_t>(edge >= 4 ? 255 : edge * 60 + (x + y) % 7);
+                }
+            }
+        }
+        revision = QuadBlit::NextRevision();
+    }
+
+    bool GetContentExtents(float& outW, float& outH) const override
+    {
+        outW = w / 16.0f;
+        outH = h / 16.0f;
+        return true;
+    }
+    bool GetContentVersion(uint32_t& outVersion) const override
+    {
+        outVersion = revision;
+        return true;
+    }
+    bool RenderContent(const Deki::Object*, QuadBlit::Source& outSource, float& outPivotX, float& outPivotY,
+                       uint8_t& tr, uint8_t& tg, uint8_t& tb, uint8_t& ta) override
+    {
+        outSource = QuadBlit::MakeSource(m_Pixels.data(), w, h,
+                                         withAlpha ? QuadBlit::PixelLayout::RGB565A8() : QuadBlit::PixelLayout::RGB565(),
+                                         false, nullptr);
+        outSource.pixelsPerMeter = 16.0f;
+        outSource.revision = revision;
+        outPivotX = outPivotY = 0.5f;
+        tr = tint[0];
+        tg = tint[1];
+        tb = tint[2];
+        ta = tint[3];
+        return true;
+    }
+
+private:
+    std::vector<uint8_t> m_Pixels;
+};
+const Deki::ComponentTypeInfo PictureSprite::kTypeInfo =
+    Deki::MakeHandWrittenTypeInfo<PictureSprite, RendererComponent>(/*declaresUpdate=*/false);
+
 // Keeps the frame it is sent, rectangle by rectangle and pixel by pixel, and
 // counts what it was sent. Offered as an IScanOrderedDisplay, it is sent
 // strips along `order` through PresentStrip.
@@ -139,6 +211,10 @@ public:
     ScanOrder GetScanOrder() const override { return order; }
     int32_t GetMaxStripPixels() const override { return maxStripPixels; }
     bool LendsStripBuffers() const override { return lend; }
+    // Sending only the part of a strip it is told, as a DSI panel's frame
+    // buffer takes it.
+    bool partOfStrip = false;
+    bool SendsPartOfAStrip() const override { return partOfStrip; }
     uint8_t* GetStripBuffer(size_t bytes) override
     {
         EXPECT_EQ(lentOut, -1) << "one lent at a time";
@@ -896,4 +972,255 @@ TEST(StripFeatures, StripsDrawnInLentBuffersMatchWholeFrames)
             EXPECT_GT(f.display.lentBack, 0);
         }
     }
+}
+
+namespace
+{
+int g_PairSplits = 0;
+// The other core, as a thread: the lower half of each strip's rows there.
+bool PairOnThread(QuadBlit::RowsJob job, void* context, int32_t startY, int32_t splitY, int32_t endY)
+{
+    ++g_PairSplits;
+    std::thread other([&] { job(context, splitY, endY); });
+    job(context, startY, splitY);
+    other.join();
+    return true;
+}
+}  // namespace
+
+// With a core to spare, the frame is recorded once and each strip drawn on
+// both cores, half its rows each: the same frames as drawn whole, redrawing
+// changes or not, in either direction, strips of an odd height and a last
+// strip shorter than the others included.
+TEST(StripFeatures, StripsDrawnOnTwoCoresMatchWholeFrames)
+{
+    // Only strips go to the other core: no blit here is that large.
+    QuadBlit::RegisterParallelRows(&PairOnThread, INT32_MAX);
+    for (ScanOrder order : { ScanOrder::RowsDown, ScanOrder::RowsUp })
+    {
+        for (int rows : { 7, 8, 10 })
+        {
+            for (bool redraw : { false, true })
+            {
+                g_PairSplits = 0;
+                Fixture f(Deki::ColorFormat::RGB565, rows, redraw, /*scan=*/true, order);
+                for (int i = 0; i < 8; ++i)
+                {
+                    f.mover->SetX(-1.5f + 0.31f * i);
+                    f.mover->SetY(0.6f - 0.07f * i);
+                    f.Frame();
+                    EXPECT_EQ(f.display.frame, f.WholeFrame())
+                        << Name(order) << ", strips of " << rows << ", redraw " << redraw << ", frame " << i;
+                }
+                EXPECT_GT(g_PairSplits, 0) << "strips were drawn on two cores";
+            }
+        }
+    }
+    QuadBlit::RegisterParallelRows(nullptr, 0);
+}
+
+// Redrawn in part, a frame goes to both cores too once enough rows changed:
+// only those rows are drawn and sent, and the frames are still the whole
+// frames. A strip with nothing changed is neither drawn nor sent.
+TEST(StripFeatures, FramesRedrawnInPartAreDrawnOnTwoCores)
+{
+    QuadBlit::RegisterParallelRows(&PairOnThread, INT32_MAX);
+    for (ScanOrder order : { ScanOrder::RowsDown, ScanOrder::RowsUp })
+    {
+        for (bool lend : { false, true })
+        {
+            Fixture f(Deki::ColorFormat::RGB565, 8, /*redraw=*/true, /*scan=*/true, order);
+            f.display.lend = lend;
+            f.strips.SetTwoCoresForParts(true);
+            f.Frame();
+            for (int i = 0; i < 8; ++i)
+            {
+                g_PairSplits = 0;
+                f.mover->SetX(-1.5f + 0.31f * i);
+                f.mover->SetY(0.6f - 0.07f * i);
+                f.Frame();
+                EXPECT_EQ(f.display.frame, f.WholeFrame()) << Name(order) << ", lend " << lend << ", frame " << i;
+                EXPECT_GT(g_PairSplits, 0) << Name(order) << ", frame " << i << ": drawn on two cores";
+                EXPECT_LT(f.display.pixelsSent, kW * kH / 2) << Name(order) << ", frame " << i;
+                EXPECT_EQ(f.display.pixelsSent % kW, 0) << "whole rows";
+                EXPECT_EQ(f.display.lentOut, -1) << "every buffer back";
+            }
+            // Nothing changed: nothing drawn, nothing sent.
+            f.mover->SetActive(false);
+            f.still->SetActive(false);
+            f.Frame();
+            EXPECT_EQ(f.display.frame, f.WholeFrame()) << Name(order);
+            g_PairSplits = 0;
+            f.Frame();
+            EXPECT_EQ(f.display.regionCalls, 0) << Name(order);
+            EXPECT_EQ(g_PairSplits, 0) << Name(order);
+            EXPECT_EQ(f.display.frame, f.WholeFrame()) << Name(order);
+        }
+    }
+    QuadBlit::RegisterParallelRows(nullptr, 0);
+}
+
+
+// A display that sends only the part of a strip it is told gets only the part
+// that changed drawn, not the strip's whole rows: fewer pixels, the same
+// frames, on one core or two, in buffers of its own or the renderer's.
+TEST(StripFeatures, ADisplayThatSendsPartOfAStripGetsOnlyThatDrawn)
+{
+    for (bool twoCores : { false, true })
+    {
+        QuadBlit::RegisterParallelRows(twoCores ? &PairOnThread : nullptr, twoCores ? INT32_MAX : 0);
+        for (bool lend : { false, true })
+        {
+            int64_t sent[2] = {};
+            for (bool partOfStrip : { false, true })
+            {
+                // One at a time: a scan-ordered display is registered for all.
+                Fixture f(Deki::ColorFormat::RGB565, 8, /*redraw=*/true, /*scan=*/true, ScanOrder::RowsDown);
+                f.display.lend = lend;
+                f.display.partOfStrip = partOfStrip;
+                f.strips.SetRecordCostPixels(0);  // two cores for any part, so they are tested
+                f.strips.SetTwoCoresForParts(true);
+                f.Frame();
+                g_PairSplits = 0;
+                for (int i = 0; i < 10; ++i)
+                {
+                    f.mover->SetX(-1.5f + 0.31f * i);
+                    f.mover->SetY(0.6f - 0.07f * i);
+                    f.Frame();
+                    EXPECT_EQ(f.display.frame, f.WholeFrame()) << "two cores " << twoCores << ", lend " << lend
+                                                                << ", part of strip " << partOfStrip << ", frame " << i;
+                    EXPECT_EQ(f.display.lentOut, -1) << "every buffer back";
+                    sent[partOfStrip] += f.display.pixelsSent;
+                }
+            }
+            EXPECT_LT(sent[1], sent[0]) << "two cores " << twoCores << ", lend " << lend;
+            if (twoCores)
+            {
+                EXPECT_GT(g_PairSplits, 0) << "lend " << lend << ": parts drawn on two cores";
+            }
+            EXPECT_GT(sent[1], 0);
+        }
+    }
+    QuadBlit::RegisterParallelRows(nullptr, 0);
+}
+
+// Two things changing at either end of the same rows go to a display that
+// takes parts of strips as two parts, not one across the space between: fewer
+// pixels, the same frames, on one core or two, lent buffers or not.
+TEST(StripFeatures, ChangesApartInAStripAreSentAsSeparateParts)
+{
+    for (bool twoCores : { false, true })
+    {
+        QuadBlit::RegisterParallelRows(twoCores ? &PairOnThread : nullptr, twoCores ? INT32_MAX : 0);
+        for (bool lend : { false, true })
+        {
+            Fixture f(Deki::ColorFormat::RGB565, 8, /*redraw=*/true, /*scan=*/true, ScanOrder::RowsDown);
+            f.display.lend = lend;
+            f.display.partOfStrip = true;
+            f.strips.SetRecordCostPixels(0);
+            f.strips.SetTwoCoresForParts(true);
+            f.strips.SetPartCostPixels(0);
+            // Both on the same rows, at the screen's two ends (64 px is 4 m).
+            f.mover->SetX(-1.7f);
+            f.mover->SetY(0.0f);
+            f.still->SetX(1.7f);
+            f.still->SetY(0.0f);
+            f.Frame();
+            for (int i = 0; i < 8; ++i)
+            {
+                f.mover->SetY(0.05f * i);
+                f.still->SetY(-0.05f * i);
+                f.Frame();
+                EXPECT_EQ(f.display.frame, f.WholeFrame()) << "two cores " << twoCores << ", lend " << lend
+                                                            << ", frame " << i;
+                EXPECT_EQ(f.display.lentOut, -1) << "every buffer back";
+                // Each square is 4 px wide: two parts of about that, never the
+                // 60 px between them.
+                EXPECT_LT(f.display.pixelsSent, 16 * 24) << "frame " << i;
+                EXPECT_GT(f.display.pixelsSent, 0);
+            }
+        }
+    }
+    QuadBlit::RegisterParallelRows(nullptr, 0);
+}
+
+// What two cores draw from a recording is exactly what one core draws: dark
+// pictures with alpha, tinted and see-through, over one another, redrawn in
+// parts as something moves over them. Two ways of drawing that differ by one
+// step of a colour would make a dark area shimmer as it is redrawn by one
+// and then the other.
+TEST(StripFeatures, TwoCoresDrawWhatOneCoreDraws)
+{
+    QuadBlit::RegisterParallelRows(&PairOnThread, INT32_MAX);
+    for (bool partOfStrip : { false, true })
+    {
+        Fixture f(Deki::ColorFormat::RGB565, 8, /*redraw=*/true, /*scan=*/true, ScanOrder::RowsDown);
+        f.display.partOfStrip = partOfStrip;
+        f.strips.SetRecordCostPixels(0);
+        f.strips.SetTwoCoresForParts(true);
+        f.strips.SetPartCostPixels(0);
+        struct Spec
+        {
+            float x, y;
+            int32_t w, h;
+            bool alpha;
+            uint8_t r, g, b, a;
+        };
+        const Spec specs[] = {
+            { 0.0f, 0.0f, 64, 48, false, 255, 255, 255, 255 },    // the night plan, under everything
+            { -0.6f, 0.2f, 30, 22, false, 255, 226, 188, 140 },   // a room's light, warm, fading in
+            { 0.7f, -0.3f, 26, 20, false, 212, 230, 255, 255 },   // a room lit, cool, opaque
+            { -0.9f, -0.4f, 20, 14, true, 255, 255, 255, 255 },   // furniture with soft edges
+            { 0.4f, 0.5f, 18, 12, true, 255, 226, 188, 170 },     // its lit body fading in
+        };
+        uint32_t seed = 1;
+        for (const Spec& s : specs)
+        {
+            auto* o = new Deki::Object("picture");
+            o->SetX(s.x);
+            o->SetY(s.y);
+            auto* p = o->AddComponent<PictureSprite>();
+            p->w = s.w;
+            p->h = s.h;
+            p->withAlpha = s.alpha;
+            p->tint[0] = s.r;
+            p->tint[1] = s.g;
+            p->tint[2] = s.b;
+            p->tint[3] = s.a;
+            p->Make(seed++);
+            f.scene.AddObject(o);
+        }
+        f.Frame();
+        for (int i = 0; i < 16; ++i)
+        {
+            f.mover->SetX(-1.6f + 0.21f * i);
+            f.mover->SetY(0.5f - 0.06f * i);
+            f.Frame();
+            ASSERT_EQ(f.display.frame, f.WholeFrame()) << "part of strip " << partOfStrip << ", frame " << i;
+        }
+    }
+    QuadBlit::RegisterParallelRows(nullptr, 0);
+}
+
+// Unless asked, a frame redrawn in part stays on one core (a whole frame goes
+// to two): the second core playing them back, frame after frame, made a
+// panel's brightness flicker.
+TEST(StripFeatures, FramesRedrawnInPartStayOnOneCoreUnlessAsked)
+{
+    QuadBlit::RegisterParallelRows(&PairOnThread, INT32_MAX);
+    Fixture f(Deki::ColorFormat::RGB565, 8, /*redraw=*/true, /*scan=*/true, ScanOrder::RowsDown);
+    f.display.partOfStrip = true;
+    f.strips.SetRecordCostPixels(0);
+    g_PairSplits = 0;
+    f.Frame();
+    EXPECT_GT(g_PairSplits, 0) << "the first frame, whole, on two cores";
+    for (int i = 0; i < 6; ++i)
+    {
+        g_PairSplits = 0;
+        f.mover->SetX(-1.5f + 0.31f * i);
+        f.Frame();
+        EXPECT_EQ(f.display.frame, f.WholeFrame()) << "frame " << i;
+        EXPECT_EQ(g_PairSplits, 0) << "frame " << i << ": in part, on one core";
+    }
+    QuadBlit::RegisterParallelRows(nullptr, 0);
 }

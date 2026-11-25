@@ -17,8 +17,9 @@
 
 // The pixels of a frame are lit on two threads where there are two cores, on
 // a device or a game build: the editor loads this package as a DLL it can
-// unload, which a thread kept running would outlive.
-#if !defined(DEKI_EDITOR)
+// unload, which a thread kept running would outlive. A C++ library built for
+// one thread (the Pico SDK's) lights them on one.
+#if !defined(DEKI_EDITOR) && (defined(ESP_PLATFORM) || defined(__STDCPP_THREADS__))
 #define DEKI_LIGHTING_WORKER 1
 #if defined(ESP_PLATFORM)
 #include <freertos/FreeRTOS.h>

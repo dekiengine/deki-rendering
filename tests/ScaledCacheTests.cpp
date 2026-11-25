@@ -158,6 +158,39 @@ TEST_F(ScaledCache, CopiesASizeOnlyInItsSecondFrame)
     EXPECT_GT(QuadBlit::ScaledCacheBytes(), 0u);
 }
 
+// Limits a platform sets: lower ones drop the copies past them at once, and
+// a size that does not fit them is not tracked or copied; the defaults back.
+TEST_F(ScaledCache, LimitsLowerDropCopiesAndRaisedKeepMore)
+{
+    const std::vector<uint8_t> pixels = MakePixels(true);
+    const QuadBlit::Source s = SourceOf(pixels, true, true);
+    for (int frame = 0; frame < 2; ++frame)
+    {
+        Draw(s, 4, 3, 18, 14, 255, 255, 255, 255);
+        Draw(s, 1, 1, 27, 21, 255, 255, 255, 255);
+        QuadBlit::NextFrame();
+    }
+    Draw(s, 4, 3, 18, 14, 255, 255, 255, 255);
+    Draw(s, 1, 1, 27, 21, 255, 255, 255, 255);
+    const size_t both = QuadBlit::ScaledCacheBytes();
+    EXPECT_GT(both, 0u);
+    EXPECT_EQ(QuadBlit::ScaledCacheEntries(), 2u);
+
+    QuadBlit::SetScaledCacheLimits(256 * 1024, 1);
+    EXPECT_EQ(QuadBlit::ScaledCacheEntries(), 1u);
+    QuadBlit::SetScaledCacheLimits(0, 64);
+    EXPECT_EQ(QuadBlit::ScaledCacheBytes(), 0u);
+    // Nothing fits: drawn scaled as before, the same pixels.
+    const std::vector<uint8_t> scaled = Draw(SourceOf(pixels, true, false), 4, 3, 18, 14, 255, 255, 255, 255);
+    for (int frame = 0; frame < 3; ++frame)
+    {
+        EXPECT_EQ(Draw(s, 4, 3, 18, 14, 255, 255, 255, 255), scaled);
+        QuadBlit::NextFrame();
+    }
+    EXPECT_EQ(QuadBlit::ScaledCacheBytes(), 0u);
+    QuadBlit::SetScaledCacheLimits(256 * 1024, 64);
+}
+
 // A size that changes every frame (an animated scale) is never copied.
 TEST_F(ScaledCache, AnimatedSizeIsNotCopied)
 {

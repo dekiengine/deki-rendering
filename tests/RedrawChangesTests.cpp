@@ -452,6 +452,75 @@ TEST(RedrawChanges, ASwapOfDrawOrderIsRedrawn)
     }
 }
 
+// Four see-through squares on one spot, reordered as a block (x a y b to
+// y b x a): a and b swap though neither has a new neighbour before it, and
+// the frame is still right.
+TEST(RedrawChanges, ABlockMovedInTheDrawOrderIsRedrawn)
+{
+    for (Mode mode : kModes)
+    {
+        Fixture f(mode);
+        Square* x = f.Add("x", 0.0f, 0.0f, 0xF800, 1);
+        Square* a = f.Add("a", 0.1f, 0.05f, 0x07E0, 2);
+        Square* y = f.Add("y", 0.05f, 0.1f, 0x001F, 3);
+        Square* b = f.Add("b", 0.15f, 0.15f, 0xFFE0, 4);
+        for (Square* s : { x, a, y, b })
+        {
+            s->alpha = 150;
+        }
+        f.Frame();
+        f.Frame();
+        y->sortingOrder = 1;
+        b->sortingOrder = 2;
+        x->sortingOrder = 3;
+        a->sortingOrder = 4;
+        f.Frame();
+        EXPECT_TRUE(f.Shows()) << Name(mode);
+        f.Frame();
+        EXPECT_TRUE(f.Shows()) << Name(mode);
+    }
+}
+
+// An object switched on or off, drawn before the others, redraws only where
+// it is: the objects drawn after it, elsewhere on the screen, are not drawn
+// again for having moved one place in the draw order.
+TEST(RedrawChanges, AnObjectSwitchedOnOrOffRedrawsOnlyItsArea)
+{
+    for (Mode mode : kModes)
+    {
+        Fixture f(mode);
+        Square* blink = f.Add("blink", -1.6f, 1.1f, 0xF800, 0);
+        for (int i = 0; i < 6; ++i)
+        {
+            f.Add("later", -0.4f + 0.36f * i, -0.8f + 0.25f * i, 0x07E0, 1);
+        }
+        f.Frame();
+        f.Frame();
+        f.Frame();
+        // A square is 6x6 pixels: switched off, its area is sent, 12x12 at
+        // most once aligned to 4, and not the six later ones (they sent 592).
+        // In strips of rows, those rows whole: a display not told the strips'
+        // order may send whole rows of what it is told, so they are drawn
+        // whole.
+        const int64_t most = mode == Mode::RowStrips ? 12 * kW : 12 * 12;
+        blink->GetOwner()->SetActive(false);
+        const int64_t off = f.Frame();
+        EXPECT_TRUE(f.Shows()) << Name(mode);
+        blink->GetOwner()->SetActive(true);
+        const int64_t on = f.Frame();
+        EXPECT_TRUE(f.Shows()) << Name(mode);
+        f.Frame();
+        EXPECT_TRUE(f.Shows()) << Name(mode);
+        if (mode != Mode::ColumnStripsLent && mode != Mode::AlternatingBuffers)
+        {
+            EXPECT_LE(off, most) << Name(mode);
+            EXPECT_LE(on, most) << Name(mode);
+        }
+        EXPECT_GT(off, 0) << Name(mode);
+        EXPECT_GT(on, 0) << Name(mode);
+    }
+}
+
 // Objects that go leave nothing behind; a clear colour of another colour and
 // MarkAllDirty send everything.
 TEST(RedrawChanges, GoneObjectsAndNewClearColours)
