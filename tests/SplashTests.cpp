@@ -6,6 +6,7 @@
 
 #include "CameraComponent.h"
 #include "DekiRenderSystem.h"
+#include "PixelFormat.h"
 #include "QuadBlit.h"
 #include "Splash.h"
 #include "SplashShapes.h"
@@ -35,7 +36,7 @@ namespace
 constexpr float kFrameMs = 1000.0f / 30.0f;
 
 // The screen `seconds` after the logo is first on it, `width` x `height`,
-// RGB565: the splash scene played frame by frame as a game plays it.
+// RGB565 values: the splash scene played frame by frame as a game plays it.
 struct SplashFrame
 {
     int width = 0;
@@ -79,6 +80,12 @@ struct SplashFrame
             QuadBlit::ClearClipStack();
             screen.SetRenderer(nullptr);
             std::memcpy(pixels.data(), screen.GetFrameBuffer(), pixels.size() * sizeof(uint16_t));
+            // As values, red in the top bits, whatever byte order the board
+            // stores them in.
+            for (uint16_t& pixel : pixels)
+            {
+                pixel = DekiPixel::FromMemory565(pixel);
+            }
         }
 
         UnregisterSplash();
