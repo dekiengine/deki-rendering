@@ -161,9 +161,21 @@ private:
     /// Draws the 2D queued so far: before anything else touches the frame.
     void Flush2D();
     /// Lights the frame built so far with `lighting`, worked out per pixel
-    /// (GLLight2DShader.inl). False when its program does not build.
+    /// (GLLight2DShader.inl): all of it, or after BeginLit2D what was drawn
+    /// since, with the frame's colour put back under it unlit. False when
+    /// its program does not build.
     bool DrawLight2D(const DekiRendering::Lighting2D& lighting);
     bool BuildLight2D();
+    /// Sets the colour the frame was cleared to (ClearFrame) aside, while
+    /// the frame holds nothing else: the frame becomes transparent, so what
+    /// is drawn from here keeps its coverage in the frame's alpha, and
+    /// DrawLight2D lights that and puts the colour back under it. False when
+    /// something was drawn into the frame already, or the light's program
+    /// does not build.
+    bool BeginLit2D();
+    /// The colour set aside, under what the frame holds, and the frame
+    /// opaque again.
+    void PutClearUnder();
 
     std::shared_ptr<GLContext> m_Context;
     Window m_Window;
@@ -180,6 +192,13 @@ private:
     int m_Width = 0;   // of the frame (and the layer texture)
     int m_Height = 0;
     bool m_InFrame = false;  // a frame is being built
+    // The colour the frame was last cleared to, and whether it is set aside
+    // for the 2D light (BeginLit2D).
+    float m_ClearColor[3] = { 0.0f, 0.0f, 0.0f };
+    bool m_ClearAside = false;
+    // Something was drawn into the frame since it was cleared: 2D, a layer,
+    // or whoever bound it (BindFrame).
+    bool m_FrameDrawn = false;
     bool m_ErrorReported = false;
 
     std::vector<uint8_t> m_Staging;  // a layer's rows as RGBA8, premultiplied

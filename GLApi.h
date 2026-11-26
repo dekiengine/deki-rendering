@@ -197,6 +197,10 @@ struct GL
     X(void, UniformMatrix4fv, (GLint location, GLsizei count, GLboolean transpose, const GLfloat* value))         \
     X(void, DrawElements, (GLenum mode, GLsizei count, GLenum type, const void* offset))                         \
     X(void, DrawArrays, (GLenum mode, GLint first, GLsizei count))                                                \
+    X(void, DrawElementsInstanced,                                                                                \
+      (GLenum mode, GLsizei count, GLenum type, const void* offset, GLsizei instances))                           \
+    X(void, DrawArraysInstanced, (GLenum mode, GLint first, GLsizei count, GLsizei instances))                    \
+    X(void, VertexAttribDivisor, (GLuint index, GLuint divisor))                                                  \
     X(void, BlendFunc, (GLenum src, GLenum dst))                                                                  \
     X(void, ColorMask, (GLboolean r, GLboolean g, GLboolean b, GLboolean a))                                      \
     X(void, PolygonOffset, (GLfloat factor, GLfloat units))                                                       \

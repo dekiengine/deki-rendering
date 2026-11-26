@@ -1,7 +1,7 @@
 {
     "Camera Component": "카메라 컴포넌트",
     "Clear Color": "클리어 색상",
-    "Colour the screen is filled with before anything is drawn. What shows wherever nothing covers it.": "무언가를 그리기 전에 화면을 채우는 색상입니다. 아무것도 덮지 않은 곳에 이 색상이 보입니다.",
+    "Colour the screen is filled with before anything is drawn. What shows wherever nothing covers it. Lights do not change it.": "무언가를 그리기 전에 화면을 채우는 색상입니다. 아무것도 덮지 않은 곳에 이 색상이 보입니다. 조명은 이 색상을 바꾸지 않습니다.",
     "Projection": "투영",
     "Orthographic": "직교",
     "Perspective": "원근",

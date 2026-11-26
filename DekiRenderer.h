@@ -15,13 +15,9 @@ namespace DekiRendering
 {
 class CameraComponent;
 class DirtyRegion;
-class Lighting2D;
 
 /// A clear of the frame's buffer that its caller leaves to the renderer
-/// (DekiRenderer::ClearsLazily): run(owner) clears it. runLit, when given,
-/// clears it in the clear colour lit by `light`, which must light the view the
-/// same all over (Lighting2D::Uniform): what Lighting2D::Apply would make of
-/// a frame holding only the clear, without the pass over it. pixel, when
+/// (DekiRenderer::ClearsLazily): run(owner) clears it. pixel, when
 /// given, writes the clear's one pixel in the frame's format to `out` (4
 /// bytes) and says true, when the clear is of the whole frame: a render pass
 /// that writes every pixel of the frame itself takes it instead
@@ -34,7 +30,6 @@ struct DeferredClear
 {
     void (*run)(void* owner) = nullptr;
     void* owner = nullptr;
-    void (*runLit)(void* owner, Lighting2D& light, int32_t viewLeft, int32_t viewTop) = nullptr;
     bool (*pixel)(void* owner, uint8_t* out) = nullptr;
     bool (*colour)(void* owner, uint8_t* out) = nullptr;
 };

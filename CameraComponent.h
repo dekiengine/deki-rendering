@@ -38,7 +38,8 @@ class CameraComponent : public Deki::Component, public Deki::ICamera
 {
 public:
     DEKI_EXPORT
-    DEKI_TOOLTIP("Colour the screen is filled with before anything is drawn. What shows wherever nothing covers it.")
+    DEKI_TOOLTIP("Colour the screen is filled with before anything is drawn. What shows wherever nothing covers it. "
+                 "Lights do not change it.")
     Deki::Color clearColor = Deki::Color(49, 77, 121);
 
     DEKI_TOOLTIP("Orthographic shows a fixed height of world, flat. Perspective shows a field of view in depth, for 3D "

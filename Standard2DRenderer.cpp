@@ -10,6 +10,7 @@
 #include <deki/SceneSystem.h>
 #include "CameraComponent.h"
 #include "RendererComponent.h"
+#include "PixelFormat.h"
 #include "QuadBlit.h"
 #include <deki/Object.h>
 #include <deki/Scene.h>
@@ -526,6 +527,19 @@ void Standard2DRenderer::ExecuteBuiltins(const SortItem& item, RenderContext& ct
                                                            : static_cast<int32_t>(fScreenY)) -
                 viewTop;
 
+            // Under the light, the first draw: when it covers everything
+            // drawn opaquely, none of the clear colour can show, and the
+            // frame is drawn into and lit whole, as before.
+            if (m_LitInto == LitInto::Layer && ctx.buffer == m_Layer.Data() && !m_LayerWritten)
+            {
+                const Deki::Rect cover = ctx.redraw.Empty() ? Deki::Rect{ 0, 0, ctx.width, ctx.height } : ctx.redraw;
+                if (QuadBlit::CoversRect(source, intScreenX, intScreenY, drawScaleX, drawScaleY, wt.rotation, pivotX,
+                                         pivotY, tintA, cover.left, cover.top, cover.right, cover.bottom))
+                {
+                    LightWholeFrame(ctx);
+                }
+            }
+
             // Recording a frame's first strip: does this draw cover the whole
             // view? (Content handed over with ownsPixels is produced again in
             // each strip, so it may not be the same there.)
@@ -711,8 +725,9 @@ void Standard2DRenderer::ExecuteBuiltins(const SortItem& item, RenderContext& ct
             }
 
             // The frame's first draw: when it covers what is drawn opaquely,
-            // the clear would only be drawn over.
-            if (QuadBlit::PendingClear())
+            // the clear would only be drawn over. (A draw into the layer
+            // leaves the frame as it is.)
+            if (QuadBlit::PendingClear() && ctx.buffer != m_Layer.Data())
             {
                 const Deki::Rect cover = ctx.redraw.Empty() ? Deki::Rect{ 0, 0, ctx.width, ctx.height } : ctx.redraw;
                 if (ctx.buffer == m_FrameBuffer &&
@@ -935,6 +950,11 @@ void Standard2DRenderer::Render(Deki::Scene* scene, const RenderContext& ctx)
     frameCtx.cam = frameCtx.camera->CaptureFrameCamera(viewWidth, viewHeight);
     m_Lighting.Build(scene, frameCtx.cam, viewWidth, viewHeight, frameCtx.camera->litUpToSortOrder);
     m_Lit = false;
+    m_LitInto = LitInto::Nothing;
+    if (!m_Lighting.On())
+    {
+        m_Layer.Reset();  // a scene without lights keeps none of it
+    }
     frameCtx.cam.halfW -= static_cast<float>(frameCtx.viewLeft);
     frameCtx.cam.halfH -= static_cast<float>(frameCtx.viewTop);
     SetCurrentDrawView({ frameCtx.cam.ppm, viewWidth, viewHeight });
@@ -958,8 +978,7 @@ void Standard2DRenderer::Render(Deki::Scene* scene, const RenderContext& ctx)
             {
                 continue;
             }
-            LightFrameIfDue(&m_Plan[i].item, frameCtx);
-            RenderObject(m_Plan[i].item, frameCtx, static_cast<int32_t>(i));
+            RenderObject(m_Plan[i].item, LightBefore(&m_Plan[i].item, frameCtx), static_cast<int32_t>(i));
         }
     }
     else
@@ -1005,8 +1024,8 @@ void Standard2DRenderer::Render(Deki::Scene* scene, const RenderContext& ctx)
         // but deeper levels use their own scratch lists, so this one stays put.
         for (size_t i = 0; i < sortableItems.size(); i++)
         {
-            LightFrameIfDue(&sortableItems[i], frameCtx);
-            RenderObject(sortableItems[i], frameCtx, m_PlanMode == PlanMode::Recording ? static_cast<int32_t>(i) : -1);
+            RenderObject(sortableItems[i], LightBefore(&sortableItems[i], frameCtx),
+                         m_PlanMode == PlanMode::Recording ? static_cast<int32_t>(i) : -1);
         }
 
         if (m_PlanMode == PlanMode::Recording)
@@ -1016,8 +1035,9 @@ void Standard2DRenderer::Render(Deki::Scene* scene, const RenderContext& ctx)
     }
     m_PlanMode = PlanMode::Off;
 
-    // Nothing was drawn: the clear is all there is, and is lit if the frame is.
-    LightFrameIfDue(nullptr, frameCtx);
+    // The light, if nothing above it came: over what was drawn under it.
+    // With nothing drawn, the clear colour is all there is.
+    LightBefore(nullptr, frameCtx);
     RunClear();
 
     // Post-frame composites (e.g. screen-space overlays).
@@ -1703,35 +1723,261 @@ bool Standard2DRenderer::VisiblePartOf(const QuadBlit::Source& source, QuadBlit:
     y = drawn.top;
     return true;
 }
-void Standard2DRenderer::LightFrameIfDue(const SortItem* next, const RenderContext& ctx)
+namespace
+{
+// Narrows `area` to the rows and columns in which `layer` (RGB565A8, `width`
+// pixels a row) covers anything. False when it covers nothing there.
+bool CoveredPart(const uint8_t* layer, int32_t width, Deki::Rect& area)
+{
+    int32_t left = area.right, top = area.bottom, right = area.left, bottom = area.top;
+    for (int32_t y = area.top; y < area.bottom; y++)
+    {
+        const uint8_t* alpha = layer + (static_cast<size_t>(y) * width + area.left) * 3 + 2;
+        int32_t first = -1, last = -1;
+        for (int32_t x = area.left; x < area.right; x++, alpha += 3)
+        {
+            if (*alpha != 0)
+            {
+                first = first < 0 ? x : first;
+                last = x;
+            }
+        }
+        if (first >= 0)
+        {
+            left = std::min(left, first);
+            right = std::max(right, last + 1);
+            top = std::min(top, y);
+            bottom = y + 1;
+        }
+    }
+    if (top >= bottom)
+    {
+        return false;
+    }
+    area = Deki::Rect{ left, top, right, bottom };
+    return true;
+}
+
+// Lays `area` of `layer` (RGB565A8 holding each pixel's colour times its
+// coverage, and the coverage) over the same pixels of `frame`: the layer's
+// colour, plus what its coverage leaves of the frame's.
+template <Deki::ColorFormat F>
+void LayOver(const uint8_t* layer, uint8_t* frame, int32_t width, const Deki::Rect& area)
+{
+    for (int32_t y = area.top; y < area.bottom; y++)
+    {
+        size_t at = static_cast<size_t>(y) * width + area.left;
+        const uint8_t* p = layer + at * 3;
+        for (int32_t x = area.left; x < area.right; x++, at++, p += 3)
+        {
+            const uint32_t cover = p[2];
+            if (cover == 0)
+            {
+                continue;
+            }
+            uint8_t r, g, b, a = 255;
+            DekiPixel::UnpackRGB565(DekiPixel::Load565(p), r, g, b);
+            if (cover != 255)
+            {
+                uint8_t fr, fg, fb, fa;
+                DekiPixel::ReadDstPixel<F>(frame, at, fr, fg, fb, fa);
+                const uint32_t rest = 255u - cover;
+                // Lit above a colour as it is, the layer's can pass its coverage.
+                r = static_cast<uint8_t>(std::min<uint32_t>(255u, r + DekiPixel::Div255(fr * rest)));
+                g = static_cast<uint8_t>(std::min<uint32_t>(255u, g + DekiPixel::Div255(fg * rest)));
+                b = static_cast<uint8_t>(std::min<uint32_t>(255u, b + DekiPixel::Div255(fb * rest)));
+                a = DekiPixel::AlphaUnion(static_cast<uint8_t>(cover), fa);
+            }
+            DekiPixel::WriteDstPixel<F>(frame, at, r, g, b, a);
+        }
+    }
+}
+}  // namespace
+
+const RenderContext& Standard2DRenderer::LightBefore(const SortItem* next, const RenderContext& ctx)
 {
     if (m_Lit || !m_Lighting.On())
     {
-        return;
+        return ctx;
     }
     if (next && next->order <= m_Lighting.LitUpToSortOrder() && !(next->renderer && next->renderer->LightsItself()))
     {
-        return;
+        return UnderLight(ctx);
     }
     m_Lit = true;
-    // Nothing has written the frame yet, and it is lit the same all over:
-    // lit, the clear is one colour, so it is made in that colour instead of
-    // lit after, still when the frame is first written.
-    const DeferredClear* clear = QuadBlit::PendingClear();
-    if (clear && clear->runLit && !m_SinkFrame && m_Lighting.Uniform())
+    LayLight(ctx);
+    return ctx;
+}
+
+const RenderContext& Standard2DRenderer::UnderLight(const RenderContext& ctx)
+{
+    if (m_LitInto == LitInto::Nothing)
     {
-        m_LitFrom = clear;
-        m_LitFormat = ctx.format;
-        m_LitViewLeft = ctx.viewLeft;
-        m_LitViewTop = ctx.viewTop;
-        m_LitClear.run = &Standard2DRenderer::RunLitClear;
-        m_LitClear.owner = this;
-        m_LitClear.pixel = clear->pixel ? &Standard2DRenderer::LitClearPixel : nullptr;
-        m_LitClear.colour = clear->colour ? &Standard2DRenderer::LitClearColour : nullptr;
-        QuadBlit::SetPendingClear(m_FrameBuffer, &m_LitClear);
+        // The first object under the light: where it and the rest go.
+        m_LitInto = LitInto::Frame;
+        if (m_SinkFrame)
+        {
+            // A GPU keeps what it draws from here apart from the clear
+            // colour, while the frame holds nothing else; otherwise the
+            // clear colour is lit with it, as a frame lit whole.
+            QuadBlit::BeginLitSinkFrame();
+        }
+        else if (QuadBlit::IsRecording(ctx.buffer))
+        {
+            // A frame recorded for two cores is not lit: it is drawn again
+            // without them.
+            QuadBlit::AbandonRecording("the frame is lit");
+        }
+        else if (ctx.camera->clearEveryFrame && OpenLayer(ctx))
+        {
+            m_LitInto = LitInto::Layer;
+        }
+    }
+    if (m_LitInto != LitInto::Layer)
+    {
+        return ctx;
+    }
+    GuardFrame();
+    return m_LayerCtx;
+}
+
+bool Standard2DRenderer::OpenLayer(const RenderContext& ctx)
+{
+    if (ctx.buffer != m_FrameBuffer || ctx.width <= 0 || ctx.height <= 0)
+    {
+        return false;  // a pass moved the frame elsewhere: it is lit whole
+    }
+    // Kept at the largest size asked for: a frame's strips differ in size.
+    const size_t bytes = Deki::FrameBufferBytes(Deki::ColorFormat::RGB565A8, ctx.width, ctx.height);
+    if (m_Layer.Count() < bytes)
+    {
+        if (!m_Layer.Allocate(bytes, Deki::Memory::External))
+        {
+            if (!m_LayerSaid)
+            {
+                m_LayerSaid = true;
+                DEKI_LOG_ERROR("Lights: no memory (%u KB) to light what is drawn apart from the clear colour, so "
+                               "the clear colour is lit too",
+                               static_cast<unsigned>(bytes / 1024));
+            }
+            return false;
+        }
+        std::memset(m_Layer.Data(), 0, bytes);
+    }
+    m_LayerCtx = ctx;
+    m_LayerCtx.buffer = m_Layer.Data();
+    m_LayerCtx.format = Deki::ColorFormat::RGB565A8;
+    m_LayerOver = ctx.buffer;
+    m_FrameFormat = ctx.format;
+    m_LayerFirst.run = &Standard2DRenderer::LayLayerFirst;
+    m_LayerFirst.owner = this;
+    m_ClearUnder = nullptr;
+    m_LayerWritten = false;
+    QuadBlit::WatchWrites(m_Layer.Data(), &m_LayerWritten);
+    return true;
+}
+
+void Standard2DRenderer::GuardFrame()
+{
+    if (m_LayerWritten && QuadBlit::PendingClear() != &m_LayerFirst)
+    {
+        m_ClearUnder = QuadBlit::PendingClear();
+        QuadBlit::SetPendingClear(m_FrameBuffer, &m_LayerFirst);
+    }
+}
+
+void Standard2DRenderer::UnguardFrame()
+{
+    if (QuadBlit::PendingClear() == &m_LayerFirst)
+    {
+        // The clear it stood for waits again.
+        QuadBlit::SetPendingClear(m_ClearUnder ? m_FrameBuffer : nullptr, m_ClearUnder);
+    }
+    m_ClearUnder = nullptr;
+}
+
+void Standard2DRenderer::LayLayerFirst(void* owner)
+{
+    // Something is about to write into the frame itself: the clear, then
+    // what the layer holds, go under it.
+    Standard2DRenderer* self = static_cast<Standard2DRenderer*>(owner);
+    const DeferredClear* clear = self->m_ClearUnder;
+    self->m_ClearUnder = nullptr;
+    if (clear && clear->run)
+    {
+        clear->run(clear->owner);
+    }
+    self->LayLayer();
+}
+
+void Standard2DRenderer::LayLayer()
+{
+    if (!m_LayerWritten)
+    {
         return;
     }
-    RunClear();  // the clear colour is lit too: it shows wherever nothing covers it
+    const RenderContext& ctx = m_LayerCtx;
+    Deki::Rect area = ctx.redraw.Empty() ? Deki::Rect{ 0, 0, ctx.width, ctx.height } : ctx.redraw;
+    if (CoveredPart(ctx.buffer, ctx.width, area))
+    {
+        m_Lighting.Apply(ctx.buffer, ctx.width, ctx.height, ctx.format, area, ctx.viewLeft, ctx.viewTop);
+        switch (m_FrameFormat)
+        {
+            case Deki::ColorFormat::RGB565:
+                LayOver<Deki::ColorFormat::RGB565>(ctx.buffer, m_LayerOver, ctx.width, area);
+                break;
+            case Deki::ColorFormat::RGB565A8:
+                LayOver<Deki::ColorFormat::RGB565A8>(ctx.buffer, m_LayerOver, ctx.width, area);
+                break;
+            case Deki::ColorFormat::RGB888:
+                LayOver<Deki::ColorFormat::RGB888>(ctx.buffer, m_LayerOver, ctx.width, area);
+                break;
+            case Deki::ColorFormat::ARGB8888:
+                LayOver<Deki::ColorFormat::ARGB8888>(ctx.buffer, m_LayerOver, ctx.width, area);
+                break;
+        }
+        // Transparent again, for what is drawn under the light next.
+        const size_t rowBytes = static_cast<size_t>(area.right - area.left) * 3;
+        for (int32_t y = area.top; y < area.bottom; y++)
+        {
+            std::memset(ctx.buffer + (static_cast<size_t>(y) * ctx.width + area.left) * 3, 0, rowBytes);
+        }
+    }
+    m_LayerWritten = false;
+    QuadBlit::WatchWrites(ctx.buffer, &m_LayerWritten);
+}
+
+void Standard2DRenderer::LightWholeFrame(RenderContext& ctx)
+{
+    m_LitInto = LitInto::Frame;
+    QuadBlit::WatchWrites(nullptr, nullptr);
+    UnguardFrame();
+    ctx.buffer = m_LayerOver;
+    ctx.format = m_FrameFormat;
+}
+
+void Standard2DRenderer::LayLight(const RenderContext& ctx)
+{
+    const LitInto into = m_LitInto;
+    m_LitInto = LitInto::Nothing;
+    if (into == LitInto::Nothing)
+    {
+        // Nothing is drawn under the light: every object lights itself or
+        // draws above it. The clear colour is not lit.
+        return;
+    }
+    if (into == LitInto::Layer)
+    {
+        QuadBlit::WatchWrites(nullptr, nullptr);
+        UnguardFrame();
+        if (m_LayerWritten)
+        {
+            QuadBlit::BeforeWriting(m_FrameBuffer);  // the clear, under the layer
+            LayLayer();
+            QuadBlit::WatchWrites(nullptr, nullptr);
+        }
+        return;
+    }
     if (m_SinkFrame)
     {
         // The frame is on the GPU: the CPU's buffer holds none of it.
@@ -1748,39 +1994,11 @@ void Standard2DRenderer::LightFrameIfDue(const SortItem* next, const RenderConte
         QuadBlit::AbandonRecording("the frame is lit");
         return;
     }
+    if (QuadBlit::PendingClear())
+    {
+        return;  // nothing has been drawn, and the clear colour is not lit
+    }
     m_Lighting.Apply(ctx.buffer, ctx.width, ctx.height, ctx.format, ctx.redraw, ctx.viewLeft, ctx.viewTop);
-}
-
-void Standard2DRenderer::RunLitClear(void* owner)
-{
-    Standard2DRenderer* self = static_cast<Standard2DRenderer*>(owner);
-    self->m_LitFrom->runLit(self->m_LitFrom->owner, self->m_Lighting, self->m_LitViewLeft, self->m_LitViewTop);
-}
-
-bool Standard2DRenderer::LitClearColour(void* owner, uint8_t* out)
-{
-    // As LitClearPixel, whatever the clear covers.
-    Standard2DRenderer* self = static_cast<Standard2DRenderer*>(owner);
-    if (!self->m_LitFrom->colour(self->m_LitFrom->owner, out))
-    {
-        return false;
-    }
-    self->m_Lighting.Apply(out, 1, 1, self->m_LitFormat, Deki::Rect{ 0, 0, 1, 1 }, self->m_LitViewLeft,
-                           self->m_LitViewTop);
-    return true;
-}
-
-bool Standard2DRenderer::LitClearPixel(void* owner, uint8_t* out)
-{
-    // The clear's pixel, lit by Apply itself, as DekiRenderSystem's lit clear.
-    Standard2DRenderer* self = static_cast<Standard2DRenderer*>(owner);
-    if (!self->m_LitFrom->pixel(self->m_LitFrom->owner, out))
-    {
-        return false;
-    }
-    self->m_Lighting.Apply(out, 1, 1, self->m_LitFormat, Deki::Rect{ 0, 0, 1, 1 }, self->m_LitViewLeft,
-                           self->m_LitViewTop);
-    return true;
 }
 
 void Standard2DRenderer::ForgetRecords()
@@ -1886,11 +2104,25 @@ void Standard2DRenderer::RenderObject(const SortItem& item, const RenderContext&
 
     Deki::Object* obj = item.obj;
     RenderContext objCtx = ctx;
+    if (objCtx.buffer == m_Layer.Data() && objCtx.buffer)
+    {
+        if (m_LitInto == LitInto::Layer)
+        {
+            GuardFrame();
+        }
+        else
+        {
+            // The layer was given up (LightWholeFrame) after the parent got it.
+            objCtx.buffer = m_LayerOver;
+            objCtx.format = m_FrameFormat;
+        }
+    }
 
     // Phase 1: PreExecute passes, which may redirect ctx.buffer for this object.
     RunClearFor(m_PrePasses);
     for (RenderPass* pass : m_PrePasses)
     {
+        BeforeHook(pass, objCtx);
         pass->PreExecute(obj, objCtx);
         AfterHook(pass);
     }
@@ -1953,6 +2185,7 @@ void Standard2DRenderer::RenderObject(const SortItem& item, const RenderContext&
         {
             RunClear();
         }
+        BeforeHook(pass, objCtx);
         if (RenderProfiler::IsEnabled())
         {
             const uint64_t start = RenderProfiler::Now();
@@ -2023,6 +2256,7 @@ void Standard2DRenderer::RenderObject(const SortItem& item, const RenderContext&
     RunClearFor(m_PostPasses);
     for (auto it = m_PostPasses.rbegin(); it != m_PostPasses.rend(); ++it)
     {
+        BeforeHook(*it, objCtx);
         (*it)->PostExecute(obj, objCtx);
         AfterHook(*it);
     }

@@ -43,7 +43,9 @@ enum class LightType : uint8_t
 /// A light sits at its object's position, and a spot points along its
 /// object's X axis: in 2D, the way its rotation turns it. A directional light
 /// lights 2D evenly, as ambient does. What the camera draws above its
-/// litUpToSortOrder (the UI) is not lit.
+/// litUpToSortOrder (the UI) is not lit, and neither is the camera's clear
+/// colour: lights light what is drawn, and the clear colour shows as it is
+/// set wherever nothing covers it.
 ///
 /// Shadows: directional and spot lights cast them where the display draws
 /// through OpenGL, at most two lights a frame. A board without OpenGL draws

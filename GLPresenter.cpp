@@ -28,6 +28,9 @@ namespace
 
 GLPresenter* s_Active = nullptr;
 
+// Not among GLApi.h's blend factors.
+constexpr GLenum kOneMinusDstAlpha = 0x0305;
+
 // One triangle over the whole target, from the vertex id alone: no buffers.
 const char* const kVertexShader = R"(
 void main()
@@ -261,6 +264,8 @@ void GLPresenter::StartFrame(int width, int height)
     gl.DepthMask(gl::kTrue);
     gl.Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT);
     m_InFrame = true;
+    m_ClearAside = false;
+    m_FrameDrawn = false;
 }
 
 void GLPresenter::ClearFrame(int width, int height, uint8_t r, uint8_t g, uint8_t b)
@@ -274,7 +279,12 @@ void GLPresenter::ClearFrame(int width, int height, uint8_t r, uint8_t g, uint8_
     gl.BindFramebuffer(gl::FRAMEBUFFER, m_Framebuffer);
     gl.Viewport(0, 0, m_Width, m_Height);
     gl.Disable(gl::SCISSOR_TEST);
-    gl.ClearColor(static_cast<float>(r) / 255.0f, static_cast<float>(g) / 255.0f, static_cast<float>(b) / 255.0f, 1.0f);
+    m_ClearColor[0] = static_cast<float>(r) / 255.0f;
+    m_ClearColor[1] = static_cast<float>(g) / 255.0f;
+    m_ClearColor[2] = static_cast<float>(b) / 255.0f;
+    m_ClearAside = false;
+    m_FrameDrawn = false;
+    gl.ClearColor(m_ClearColor[0], m_ClearColor[1], m_ClearColor[2], 1.0f);
     gl.Clear(gl::COLOR_BUFFER_BIT);
 }
 
@@ -320,6 +330,7 @@ void GLPresenter::BindFrame(int width, int height)
     const GL& gl = m_Context->Functions();
     gl.BindFramebuffer(gl::FRAMEBUFFER, m_Framebuffer);
     gl.Viewport(0, 0, m_Width, m_Height);
+    m_FrameDrawn = true;  // whoever asked draws into it
 }
 
 void GLPresenter::PushLayer(const uint8_t* buffer, int width, int height, Deki::ColorFormat format)
@@ -383,6 +394,7 @@ void GLPresenter::PushLayer(const uint8_t* buffer, int width, int height, Deki::
     gl.Disable(gl::CULL_FACE);
     gl.Enable(gl::BLEND);
     gl.BlendFunc(gl::ONE, gl::ONE_MINUS_SRC_ALPHA);
+    m_FrameDrawn = true;
     // Only the covered rows; GL counts them from the bottom.
     gl.Enable(gl::SCISSOR_TEST);
     gl.Scissor(0, height - 1 - last, width, rows);
@@ -535,6 +547,68 @@ bool GLPresenter::BuildLight2D()
     return true;
 }
 
+bool GLPresenter::BeginLit2D()
+{
+    if (!m_InFrame || !m_Context->MakeCurrent())
+    {
+        return false;
+    }
+    if (!m_Light2D.tried)
+    {
+        BuildLight2D();
+    }
+    if (!m_Light2D.id)
+    {
+        return false;  // the frame will not be lit at all
+    }
+    Flush2D();
+    if (m_FrameDrawn)
+    {
+        return false;  // the frame holds more than its colour
+    }
+    const GL& gl = m_Context->Functions();
+    gl.BindFramebuffer(gl::FRAMEBUFFER, m_Framebuffer);
+    gl.Viewport(0, 0, m_Width, m_Height);
+    gl.Disable(gl::SCISSOR_TEST);
+    gl.ClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+    gl.Clear(gl::COLOR_BUFFER_BIT);
+    m_ClearAside = true;
+    return true;
+}
+
+void GLPresenter::PutClearUnder()
+{
+    if (!m_ClearAside)
+    {
+        return;
+    }
+    m_ClearAside = false;
+    // The light's program with no lights draws half its ambient: the colour
+    // itself, from twice the colour. Blended by what the frame's alpha
+    // leaves uncovered, it goes under what is there; then the frame's alpha
+    // is made opaque, as a cleared frame's is.
+    const GL& gl = m_Context->Functions();
+    gl.UseProgram(m_Light2D.id);
+    gl.Uniform1i(m_Light2D.count, 0);
+    gl.Uniform3f(m_Light2D.ambient, m_ClearColor[0] * 2.0f, m_ClearColor[1] * 2.0f, m_ClearColor[2] * 2.0f);
+    gl.Uniform1f(m_Light2D.height, static_cast<float>(m_Height));
+    gl.BindFramebuffer(gl::FRAMEBUFFER, m_Framebuffer);
+    gl.Viewport(0, 0, m_Width, m_Height);
+    gl.Disable(gl::SCISSOR_TEST);
+    gl.Disable(gl::DEPTH_TEST);
+    gl.Disable(gl::CULL_FACE);
+    gl.Enable(gl::BLEND);
+    gl.BlendFunc(kOneMinusDstAlpha, gl::ONE);
+    gl.ColorMask(gl::kTrue, gl::kTrue, gl::kTrue, gl::kFalse);
+    gl.BindVertexArray(m_VertexArray);
+    gl.DrawArrays(gl::TRIANGLES, 0, 3);
+    gl.Disable(gl::BLEND);
+    gl.ColorMask(gl::kFalse, gl::kFalse, gl::kFalse, gl::kTrue);
+    gl.ClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+    gl.Clear(gl::COLOR_BUFFER_BIT);
+    gl.ColorMask(gl::kTrue, gl::kTrue, gl::kTrue, gl::kTrue);
+}
+
 bool GLPresenter::DrawLight2D(const DekiRendering::Lighting2D& lighting)
 {
     if (!m_InFrame || !m_Context->MakeCurrent())
@@ -584,6 +658,9 @@ bool GLPresenter::DrawLight2D(const DekiRendering::Lighting2D& lighting)
     gl.BindVertexArray(m_VertexArray);
     gl.DrawArrays(gl::TRIANGLES, 0, 3);
     gl.Disable(gl::BLEND);
+    // Only what was drawn since BeginLit2D was lit: the frame's colour goes
+    // back under it as it is.
+    PutClearUnder();
 
     const GLenum error = gl.GetError();
     if (error != 0 && !m_ErrorReported)

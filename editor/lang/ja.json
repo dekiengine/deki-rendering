@@ -1,7 +1,7 @@
 {
     "Camera Component": "カメラコンポーネント",
     "Clear Color": "クリアカラー",
-    "Colour the screen is filled with before anything is drawn. What shows wherever nothing covers it.": "何かを描く前に画面を塗りつぶす色です。何も覆っていない場所にはこの色が見えます。",
+    "Colour the screen is filled with before anything is drawn. What shows wherever nothing covers it. Lights do not change it.": "何かを描く前に画面を塗りつぶす色です。何も覆っていない場所にはこの色が見えます。ライトはこの色を変えません。",
     "Projection": "投影",
     "Orthographic": "平行投影",
     "Perspective": "透視投影",

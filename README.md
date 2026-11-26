@@ -46,8 +46,26 @@ lights everything evenly, like ambient light, and a Point or Spot light with
 
 - What draws above the camera's `litUpToSortOrder`, the UI, keeps its own
   colours.
-- The 2D light is laid over the frame, so a renderer that lights itself (a
-  lit mesh, `RendererComponent::LightsItself`) has it laid before it draws.
+- Lights never change the camera's `clearColor`. It shows as it is set
+  wherever nothing covers it, and through what covers it in part (a soft
+  edge, a translucent sprite) by as much as shows. A sky's colour under a
+  sun and an ambient light is the colour picked.
+- The 2D light is laid over what is drawn, so a renderer that lights itself
+  (a lit mesh, `RendererComponent::LightsItself`) has it laid before it
+  draws. With nothing drawn under it (a scene of lit meshes), no 2D light is
+  laid at all.
+- To keep the clear colour out of the light, what is drawn under the light
+  goes into a layer of its own, which is lit and laid over the frame. The
+  layer is the frame's size at 3 bytes a pixel, in external memory where
+  there is some, and is kept while the scene has lights. A first draw that
+  covers the whole view opaquely (a full-screen background) needs none: the
+  frame is drawn and lit as it is, which is the fastest. A camera that does
+  not clear is lit that way too. On the GPU the frame's own alpha keeps the
+  two apart.
+- A render pass that writes into the frame's buffer itself, rather than the
+  buffer its object is drawn into (`RenderContext::buffer`), keeps its place
+  in the draw order, but the 2D light does not fall on what it writes:
+  deki-3d's unlit meshes drawn by the software rasteriser, for one.
 - On the CPU (`Lighting2D`), the light is worked out per 4x4 block of the
   view and blended between blocks, dithered, where it changes. It is kept
   from frame to frame while the lights stay put, and a device lights the

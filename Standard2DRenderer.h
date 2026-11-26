@@ -10,6 +10,7 @@
 #include "RenderPass.h"
 #include <deki/ComponentInterfaceAdapters.h>
 #include <deki/Object.h>
+#include <deki/providers/Buffer.h>
 
 #include <cstdint>
 #include <deque>
@@ -263,25 +264,74 @@ private:
     void RunClearFor(const std::vector<RenderPass*>& passes);
 
     // The frame's 2D light (Lighting2D.h), worked out at the start of each
-    // Render(), and whether it has been laid over the frame yet. It is laid
-    // over what is drawn up to the camera's litUpToSortOrder, before the
-    // first object above it, or before a renderer that lights itself (a lit
-    // mesh), or at the end.
+    // Render(), and whether it has been laid yet. It is laid over what is
+    // drawn up to the camera's litUpToSortOrder: before the first object
+    // above it, or before a renderer that lights itself (a lit mesh), or at
+    // the end. It falls on what is drawn, never on the camera's clear
+    // colour, so what is drawn under it goes where the two stay apart
+    // (LitInto).
     Lighting2D m_Lighting;
     bool m_Lit = false;
-    // The frame's clear, lit, waiting for the frame's first write as the
-    // clear itself did (QuadBlit::PendingClear): it stands for m_LitFrom,
-    // the clear DekiRenderSystem left, made in its colour lit.
-    DeferredClear m_LitClear;
-    const DeferredClear* m_LitFrom = nullptr;
-    Deki::ColorFormat m_LitFormat = Deki::ColorFormat::RGB565;
-    int32_t m_LitViewLeft = 0;
-    int32_t m_LitViewTop = 0;
-    static void RunLitClear(void* owner);
-    static bool LitClearPixel(void* owner, uint8_t* out);
-    static bool LitClearColour(void* owner, uint8_t* out);
-    // Lights the frame now if `next` (null: the frame's end) is where it is due.
-    void LightFrameIfDue(const SortItem* next, const RenderContext& ctx);
+    // Where what is drawn under the light goes.
+    //
+    // Nothing  nothing is drawn under it yet.
+    // Frame    into the frame, which is lit whole: none of the clear colour
+    //          can show (the first draw covered it, the camera does not
+    //          clear), or a GPU draws the frame and keeps the two apart
+    //          itself (QuadBlit::BeginLitSinkFrame).
+    // Layer    into m_Layer, which is lit and laid over the frame.
+    enum class LitInto : uint8_t
+    {
+        Nothing,
+        Frame,
+        Layer,
+    };
+    LitInto m_LitInto = LitInto::Nothing;
+    // The layer: the frame's size as RGB565A8, transparent except while what
+    // is drawn under the light is in it. Drawn into from transparent, it
+    // holds each pixel's colour times how much of the pixel is covered, and
+    // that coverage. Lit, it is laid over the frame by that coverage, and
+    // the clear colour shows where and as much as nothing covers it.
+    Deki::Buffer<uint8_t> m_Layer;
+    RenderContext m_LayerCtx = {};  // the frame's, into the layer
+    uint8_t* m_LayerOver = nullptr;  // the frame's buffer
+    Deki::ColorFormat m_FrameFormat = Deki::ColorFormat::RGB565;
+    bool m_LayerWritten = false;  // something was drawn into it (QuadBlit::WatchWrites)
+    bool m_LayerSaid = false;     // no memory for it, said once
+    // While the layer holds something, a write into the frame itself must
+    // come after it: m_LayerFirst takes the place of the frame's clear
+    // (QuadBlit::PendingClear), runs the clear it stands for (m_ClearUnder)
+    // and lays the layer.
+    DeferredClear m_LayerFirst;
+    const DeferredClear* m_ClearUnder = nullptr;
+    static void LayLayerFirst(void* owner);
+    void GuardFrame();
+    void UnguardFrame();
+    // The layer for a frame drawn with `ctx`. False with no memory for it.
+    bool OpenLayer(const RenderContext& ctx);
+    // Lights what the layer holds, lays it over the frame and leaves it
+    // transparent. The frame's clear has run.
+    void LayLayer();
+    // Gives the layer up before anything is drawn into it: `ctx`, an
+    // object's into the layer, becomes the frame's, and the frame is lit
+    // whole.
+    void LightWholeFrame(RenderContext& ctx);
+    // The context `next` (null: the frame's end) is drawn with: `ctx`, or
+    // the layer's for what the light falls on. Lays the light when `next` is
+    // where it is due.
+    const RenderContext& LightBefore(const SortItem* next, const RenderContext& ctx);
+    const RenderContext& UnderLight(const RenderContext& ctx);
+    void LayLight(const RenderContext& ctx);
+    // Before a hook of `pass` drawing with `ctx`: a pass that may write
+    // anywhere without saying so may write into the layer.
+    void BeforeHook(const RenderPass* pass, const RenderContext& ctx)
+    {
+        if (m_LitInto == LitInto::Layer && ctx.buffer == m_Layer.Data())
+        {
+            m_LayerWritten = m_LayerWritten || pass->WritesBuffer();
+            GuardFrame();
+        }
+    }
 
     // planIndex: the object's entry in m_Plan while recording or replaying, -1 otherwise.
     void RenderObject(const SortItem& item, const RenderContext& ctx, int32_t planIndex);

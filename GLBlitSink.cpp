@@ -543,6 +543,13 @@ void GLBlitSink::LayerPushed(const uint8_t* buffer)
     }
 }
 
+bool GLBlitSink::BeginLit()
+{
+    // What was written into the buffer and is not in the frame yet is drawn
+    // already too.
+    return !m_Written && m_Presenter.BeginLit2D();
+}
+
 bool GLBlitSink::Light(const DekiRendering::Lighting2D& lighting)
 {
     return m_Presenter.DrawLight2D(lighting);
@@ -796,6 +803,7 @@ void GLBlitSink::Flush()
     }
     const GL& gl = m_Presenter.m_Context->Functions();
     const int width = m_Presenter.m_Width, height = m_Presenter.m_Height;
+    m_Presenter.m_FrameDrawn = true;
 
     // Everything set each time: meshes and layers draw in between.
     gl.BindFramebuffer(gl::FRAMEBUFFER, m_Presenter.m_Framebuffer);

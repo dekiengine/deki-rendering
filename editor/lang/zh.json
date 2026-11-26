@@ -1,7 +1,7 @@
 {
     "Camera Component": "相机组件",
     "Clear Color": "清除颜色",
-    "Colour the screen is filled with before anything is drawn. What shows wherever nothing covers it.": "绘制任何内容之前用来填充屏幕的颜色。没有内容覆盖的地方就显示这个颜色。",
+    "Colour the screen is filled with before anything is drawn. What shows wherever nothing covers it. Lights do not change it.": "绘制任何内容之前用来填充屏幕的颜色。没有内容覆盖的地方就显示这个颜色。灯光不会改变它。",
     "Projection": "投影",
     "Orthographic": "正交",
     "Perspective": "透视",

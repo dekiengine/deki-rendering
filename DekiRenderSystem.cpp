@@ -3,7 +3,6 @@
 #include "DekiRenderer.h"
 #include "PixelFormat.h"
 #include "QuadBlit.h"
-#include "Lighting2D.h"
 #include <deki/Engine.h>
 #include <deki/LogSystem.h>
 #include <deki/SceneSystem.h>
@@ -526,7 +525,7 @@ void DekiRenderSystem::Render(Deki::Scene* currentScene)
     ClearChanged(*camera);
     m_ClearColor = camera->clearColor;
     m_ClearRects = nullptr;
-    const DeferredClear deferred{ &DekiRenderSystem::ClearFrame, this, &DekiRenderSystem::ClearFrameLit,
+    const DeferredClear deferred{ &DekiRenderSystem::ClearFrame, this,
                                   &DekiRenderSystem::ClearPixel, &DekiRenderSystem::ClearColour };
     const bool lazily = camera->clearEveryFrame && m_Renderer->ClearsLazily();
     if (camera->clearEveryFrame && !lazily)
@@ -800,7 +799,7 @@ bool DekiRenderSystem::RenderChanges(Deki::Scene* scene, CameraComponent* camera
     }
     QuadBlit::NextFrame();
     m_ClearColor = camera->clearColor;
-    const DeferredClear deferred{ &DekiRenderSystem::ClearFrame, this, &DekiRenderSystem::ClearFrameLit,
+    const DeferredClear deferred{ &DekiRenderSystem::ClearFrame, this,
                                   &DekiRenderSystem::ClearPixel, &DekiRenderSystem::ClearColour };
     const bool lazily = m_Renderer->ClearsLazily();
     RenderContext ctx{ camera, m_RenderBuffer, m_ScreenWidth, m_ScreenHeight, m_ColorFormat };
@@ -953,7 +952,7 @@ void DekiRenderSystem::RenderBands(Deki::Scene* scene, CameraComponent* camera, 
     const int32_t across = m_BandColumns ? m_ScreenWidth : m_ScreenHeight;
     const int32_t strips = (across + m_BandRows - 1) / m_BandRows;
     bool firstSent = true;  // no strip of this frame sent yet
-    const DeferredClear stripClear{ &DekiRenderSystem::ClearFrame, this, &DekiRenderSystem::ClearFrameLit,
+    const DeferredClear stripClear{ &DekiRenderSystem::ClearFrame, this,
                                     &DekiRenderSystem::ClearPixel, &DekiRenderSystem::ClearColour };
     for (int32_t s = 0; s < strips; ++s)
     {
@@ -1398,7 +1397,7 @@ bool DekiRenderSystem::DrawStripsOnTwoCores(Deki::Scene* scene, CameraComponent*
     }
     // One walk of the whole frame: none of the strips' per-frame plan.
     RenderContext ctx{ camera, m_RecordFrame, m_ScreenWidth, m_ScreenHeight, m_ColorFormat };
-    const DeferredClear deferred{ &DekiRenderSystem::ClearFrame, this, &DekiRenderSystem::ClearFrameLit,
+    const DeferredClear deferred{ &DekiRenderSystem::ClearFrame, this,
                                   &DekiRenderSystem::ClearPixel, &DekiRenderSystem::ClearColour };
     m_ClearColor = clear;
     m_ClearRects = nullptr;
@@ -1671,17 +1670,6 @@ void DekiRenderSystem::ClearFrameWith(const uint8_t* pixel)
 void DekiRenderSystem::ClearFrame(void* owner)
 {
     static_cast<DekiRenderSystem*>(owner)->ClearFrame();
-}
-
-void DekiRenderSystem::ClearFrameLit(void* owner, Lighting2D& light, int32_t viewLeft, int32_t viewTop)
-{
-    // The clear's pixel, lit by Apply itself: lit the same all over, every
-    // pixel of a frame holding only the clear comes out as this one.
-    DekiRenderSystem* self = static_cast<DekiRenderSystem*>(owner);
-    uint8_t pixel[4];
-    WritePixel(pixel, self->m_ColorFormat, self->m_ClearColor.r, self->m_ClearColor.g, self->m_ClearColor.b);
-    light.Apply(pixel, 1, 1, self->m_ColorFormat, Deki::Rect{ 0, 0, 1, 1 }, viewLeft, viewTop);
-    self->ClearFrameWith(pixel);
 }
 
 bool DekiRenderSystem::ClearPixel(void* owner, uint8_t* out)

@@ -471,9 +471,17 @@ public:
     /// nothing kept of them may be used for pixels later at those addresses.
     virtual void Forget(const uint8_t* begin, size_t bytes) = 0;
 
+    /// What is drawn from here until Light is all that Light lights: the
+    /// colour the frame started as (BeginFrame's) keeps its own colour where
+    /// it shows beside or through it. Called while the frame holds nothing
+    /// but that colour. False when the sink cannot keep the two apart: Light
+    /// then lights that colour too.
+    virtual bool BeginLit() { return false; }
+
     /// Lights the frame drawn so far with `lighting` (Lighting2D::Apply's
-    /// light, worked out per pixel where the sink can). False when the sink
-    /// cannot light: the renderer then says so, and the frame is not lit.
+    /// light, worked out per pixel where the sink can): all of it, or after
+    /// BeginLit what was drawn since. False when the sink cannot light: the
+    /// renderer then says so, and the frame is not lit.
     virtual bool Light(const DekiRendering::Lighting2D& lighting)
     {
         (void)lighting;
@@ -503,6 +511,16 @@ void NoteWritten(const uint8_t* buffer);
 /// Lights what the sink frame drew so far (BlitSink::Light). False outside a
 /// sink frame, or when the sink cannot.
 bool LightSinkFrame(const DekiRendering::Lighting2D& lighting);
+/// Sets what the sink frame draws from here apart from the colour it started
+/// as, for LightSinkFrame to light only that (BlitSink::BeginLit). False
+/// outside a sink frame, or when the sink cannot.
+bool BeginLitSinkFrame();
+
+/// Notes the next write into `buffer`: `*written` becomes true when a blit
+/// goes into it, or a render pass says it writes there itself
+/// (BeforeWriting, NoteWritten), and the watch ends. One buffer at a time;
+/// null stops watching.
+void WatchWrites(const uint8_t* buffer, bool* written);
 
 /// The frame's clear while nothing has written `buffer` yet: the renderer
 /// leaves it here (RenderContext::clear), and a blit into `buffer` runs it

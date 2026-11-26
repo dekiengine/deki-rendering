@@ -390,6 +390,26 @@ const uint8_t* SinkTarget()
     return s_SinkTarget;
 }
 
+// The buffer whose next write is noted (WatchWrites), and where.
+static const uint8_t* s_WatchTarget = nullptr;
+static bool* s_Watched = nullptr;
+
+void WatchWrites(const uint8_t* buffer, bool* written)
+{
+    s_WatchTarget = written ? buffer : nullptr;
+    s_Watched = s_WatchTarget ? written : nullptr;
+}
+
+static inline void NoteWatched(const uint8_t* buffer)
+{
+    if (buffer == s_WatchTarget && buffer)
+    {
+        *s_Watched = true;
+        s_WatchTarget = nullptr;
+        s_Watched = nullptr;
+    }
+}
+
 // The frame's clear while nothing has written its buffer: a blit tests one
 // pointer for it.
 static const uint8_t* s_ClearTarget = nullptr;
@@ -446,6 +466,7 @@ bool PendingClearColour(const uint8_t* buffer, uint8_t* pixel)
 
 void BeforeWriting(const uint8_t* buffer)
 {
+    NoteWatched(buffer);
     if (buffer && buffer == s_RecordTarget)
     {
         AbandonRecording("a render pass writes into the frame itself");
@@ -468,6 +489,7 @@ static void BeforeWritingRows(const uint8_t* buffer, int32_t endY)
     {
         return;  // a strip of its own: no clear pending, no copy running into it
     }
+    NoteWatched(buffer);
     if (buffer && buffer == s_ClearTarget)
     {
         // The clear covers every row.
@@ -480,6 +502,7 @@ static void BeforeWritingRows(const uint8_t* buffer, int32_t endY)
 
 void NoteWritten(const uint8_t* buffer)
 {
+    NoteWatched(buffer);
     if (buffer && buffer == s_RecordTarget)
     {
         AbandonRecording("something wrote into the frame itself");
@@ -493,6 +516,11 @@ void NoteWritten(const uint8_t* buffer)
 bool LightSinkFrame(const DekiRendering::Lighting2D& lighting)
 {
     return s_Sink && s_SinkTarget && s_Sink->Light(lighting);
+}
+
+bool BeginLitSinkFrame()
+{
+    return s_Sink && s_SinkTarget && s_Sink->BeginLit();
 }
 
 // Hands a blit to the sink; true when it drew it. When it cannot, the CPU
